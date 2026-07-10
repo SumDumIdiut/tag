@@ -1,0 +1,57 @@
+name: Build Tag
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Godot editor
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_win64.exe.zip" -OutFile godot.zip
+          Expand-Archive godot.zip -DestinationPath godot_editor
+          Move-Item "godot_editor\Godot_v4.7-stable_win64.exe" "godot.exe"
+
+      - name: Download and install export templates
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_export_templates.tpz" -OutFile templates.tpz
+          Expand-Archive templates.tpz -DestinationPath templates_extracted
+          $dest = "$env:APPDATA\Godot\export_templates\4.7.stable"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item "templates_extracted\templates\*" $dest -Recurse -Force
+
+      - name: Import project (registers global class names)
+        shell: pwsh
+        run: .\godot.exe --headless --path game --editor --quit
+
+      - name: Create builds directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path builds
+
+      - name: Export client
+        shell: pwsh
+        run: .\godot.exe --headless --path game --export-release "Windows Desktop" "../builds/Tag.exe"
+
+      - name: Export dedicated server
+        shell: pwsh
+        run: .\godot.exe --headless --path game --export-release "Windows Dedicated Server" "../builds/Tag-Server.exe"
+
+      - name: Publish build as a release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $tag = "build-$($env:GITHUB_RUN_NUMBER)"
+          gh release create $tag builds/Tag.exe builds/Tag-Server.exe `
+            --title "Build $($env:GITHUB_RUN_NUMBER)" `
+            --notes "Automated build from commit $($env:GITHUB_SHA)"

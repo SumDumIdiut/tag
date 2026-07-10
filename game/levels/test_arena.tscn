@@ -1,0 +1,276 @@
+[gd_scene load_steps=11 format=3]
+
+[sub_resource type="RectangleShape2D" id="Rect_boundary_h"]
+size = Vector2(3600, 40)
+
+[sub_resource type="RectangleShape2D" id="Rect_boundary_v"]
+size = Vector2(40, 1400)
+
+[sub_resource type="RectangleShape2D" id="Rect_start"]
+size = Vector2(200, 40)
+
+[sub_resource type="RectangleShape2D" id="Rect_climbwall"]
+size = Vector2(30, 300)
+
+[sub_resource type="RectangleShape2D" id="Rect_plat_mid"]
+size = Vector2(200, 20)
+
+[sub_resource type="RectangleShape2D" id="Rect_bouncewall"]
+size = Vector2(30, 50)
+
+[sub_resource type="RectangleShape2D" id="Rect_bouncelanding"]
+size = Vector2(220, 20)
+
+[sub_resource type="RectangleShape2D" id="Rect_finish"]
+size = Vector2(240, 40)
+
+[sub_resource type="RectangleShape2D" id="Rect_freewall"]
+size = Vector2(20, 160)
+
+[sub_resource type="RectangleShape2D" id="Rect_platform2"]
+size = Vector2(200, 40)
+
+[node name="TestArena" type="Node2D"]
+
+[node name="Floor" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(1000, 560)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Floor"]
+shape = SubResource("Rect_boundary_h")
+
+[node name="Visual" type="ColorRect" parent="Floor"]
+offset_left = -1800.0
+offset_top = -20.0
+offset_right = 1800.0
+offset_bottom = 20.0
+color = Color(0.5, 0.5, 0.55, 1)
+
+[node name="Ceiling" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(1000, -760)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Ceiling"]
+shape = SubResource("Rect_boundary_h")
+
+[node name="Visual" type="ColorRect" parent="Ceiling"]
+offset_left = -1800.0
+offset_top = -20.0
+offset_right = 1800.0
+offset_bottom = 20.0
+color = Color(0.5, 0.5, 0.55, 1)
+
+[node name="LeftWall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-800, -100)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="LeftWall"]
+shape = SubResource("Rect_boundary_v")
+
+[node name="Visual" type="ColorRect" parent="LeftWall"]
+offset_left = -20.0
+offset_top = -700.0
+offset_right = 20.0
+offset_bottom = 700.0
+color = Color(0.5, 0.5, 0.55, 1)
+
+[node name="RightWall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(2800, -100)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RightWall"]
+shape = SubResource("Rect_boundary_v")
+
+[node name="Visual" type="ColorRect" parent="RightWall"]
+offset_left = -20.0
+offset_top = -700.0
+offset_right = 20.0
+offset_bottom = 700.0
+color = Color(0.5, 0.5, 0.55, 1)
+
+[node name="StartFloor" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-650, 300)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="StartFloor"]
+shape = SubResource("Rect_start")
+
+[node name="Visual" type="ColorRect" parent="StartFloor"]
+offset_left = -100.0
+offset_top = -20.0
+offset_right = 100.0
+offset_bottom = 20.0
+color = Color(0.65, 0.65, 0.7, 1)
+
+[node name="FreeWall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-420, 200)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="FreeWall"]
+shape = SubResource("Rect_freewall")
+
+[node name="Visual" type="ColorRect" parent="FreeWall"]
+offset_left = -10.0
+offset_top = -80.0
+offset_right = 10.0
+offset_bottom = 80.0
+color = Color(0.6, 0.5, 0.35, 1)
+
+[node name="DashPlatform" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-190, 300)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="DashPlatform"]
+shape = SubResource("Rect_platform2")
+
+[node name="Visual" type="ColorRect" parent="DashPlatform"]
+offset_left = -100.0
+offset_top = -20.0
+offset_right = 100.0
+offset_bottom = 20.0
+color = Color(0.65, 0.65, 0.7, 1)
+
+[node name="ClimbWall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-40, 150)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ClimbWall"]
+shape = SubResource("Rect_climbwall")
+
+[node name="Visual" type="ColorRect" parent="ClimbWall"]
+offset_left = -15.0
+offset_top = -150.0
+offset_right = 15.0
+offset_bottom = 150.0
+color = Color(0.4, 0.6, 0.4, 1)
+
+[node name="ClimbTopPlatform" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(40, -10)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ClimbTopPlatform"]
+shape = SubResource("Rect_plat_mid")
+
+[node name="Visual" type="ColorRect" parent="ClimbTopPlatform"]
+offset_left = -100.0
+offset_top = -10.0
+offset_right = 100.0
+offset_bottom = 10.0
+color = Color(0.65, 0.65, 0.7, 1)
+
+[node name="ShaftLeftWall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(220, -170)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ShaftLeftWall"]
+shape = SubResource("Rect_climbwall")
+
+[node name="Visual" type="ColorRect" parent="ShaftLeftWall"]
+offset_left = -15.0
+offset_top = -150.0
+offset_right = 15.0
+offset_bottom = 150.0
+color = Color(0.6, 0.5, 0.35, 1)
+
+[node name="ShaftRightWall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(360, -170)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ShaftRightWall"]
+shape = SubResource("Rect_climbwall")
+
+[node name="Visual" type="ColorRect" parent="ShaftRightWall"]
+offset_left = -15.0
+offset_top = -150.0
+offset_right = 15.0
+offset_bottom = 150.0
+color = Color(0.6, 0.5, 0.35, 1)
+
+[node name="ShaftTopPlatform" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(290, -360)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ShaftTopPlatform"]
+shape = SubResource("Rect_plat_mid")
+
+[node name="Visual" type="ColorRect" parent="ShaftTopPlatform"]
+offset_left = -100.0
+offset_top = -10.0
+offset_right = 100.0
+offset_bottom = 10.0
+color = Color(0.65, 0.65, 0.7, 1)
+
+[node name="DiagonalPlatform" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(650, -460)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="DiagonalPlatform"]
+shape = SubResource("Rect_plat_mid")
+
+[node name="Visual" type="ColorRect" parent="DiagonalPlatform"]
+offset_left = -100.0
+offset_top = -10.0
+offset_right = 100.0
+offset_bottom = 10.0
+color = Color(0.65, 0.65, 0.7, 1)
+
+[node name="DiagonalBounceWall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(830, -425)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="DiagonalBounceWall"]
+shape = SubResource("Rect_bouncewall")
+
+[node name="Visual" type="ColorRect" parent="DiagonalBounceWall"]
+offset_left = -15.0
+offset_top = -25.0
+offset_right = 15.0
+offset_bottom = 25.0
+color = Color(0.75, 0.3, 0.3, 1)
+
+[node name="BounceLandingPlatform" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(650, -560)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="BounceLandingPlatform"]
+shape = SubResource("Rect_bouncelanding")
+
+[node name="Visual" type="ColorRect" parent="BounceLandingPlatform"]
+offset_left = -110.0
+offset_top = -10.0
+offset_right = 110.0
+offset_bottom = 10.0
+color = Color(0.65, 0.65, 0.7, 1)
+
+[node name="DoubleJumpGoal" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(1050, -560)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="DoubleJumpGoal"]
+shape = SubResource("Rect_plat_mid")
+
+[node name="Visual" type="ColorRect" parent="DoubleJumpGoal"]
+offset_left = -100.0
+offset_top = -10.0
+offset_right = 100.0
+offset_bottom = 10.0
+color = Color(0.65, 0.65, 0.7, 1)
+
+[node name="FinishPlatform" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(1350, -560)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="FinishPlatform"]
+shape = SubResource("Rect_finish")
+
+[node name="Visual" type="ColorRect" parent="FinishPlatform"]
+offset_left = -120.0
+offset_top = -20.0
+offset_right = 120.0
+offset_bottom = 20.0
+color = Color(0.85, 0.75, 0.2, 1)
+
+[node name="SpawnPoints" type="Node2D" parent="."]
+
+[node name="Spawn1" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(-650, 260)

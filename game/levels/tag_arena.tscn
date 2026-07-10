@@ -1,0 +1,251 @@
+[gd_scene load_steps=7 format=3]
+
+[sub_resource type="RectangleShape2D" id="Rect_boundary_h"]
+size = Vector2(2400, 40)
+
+[sub_resource type="RectangleShape2D" id="Rect_boundary_v"]
+size = Vector2(40, 960)
+
+[sub_resource type="RectangleShape2D" id="Rect_pillar"]
+size = Vector2(20, 160)
+
+[sub_resource type="RectangleShape2D" id="Rect_side_platform"]
+size = Vector2(220, 20)
+
+[sub_resource type="RectangleShape2D" id="Rect_top_platform"]
+size = Vector2(280, 20)
+
+[sub_resource type="RectangleShape2D" id="Rect_outer_platform"]
+size = Vector2(180, 20)
+
+[node name="TagArena" type="Node2D"]
+
+[node name="Floor" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(0, 460)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Floor"]
+shape = SubResource("Rect_boundary_h")
+
+[node name="Visual" type="ColorRect" parent="Floor"]
+offset_left = -1200.0
+offset_top = -20.0
+offset_right = 1200.0
+offset_bottom = 20.0
+color = Color(0.5, 0.5, 0.55, 1)
+
+[node name="Ceiling" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(0, -460)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Ceiling"]
+shape = SubResource("Rect_boundary_h")
+
+[node name="Visual" type="ColorRect" parent="Ceiling"]
+offset_left = -1200.0
+offset_top = -20.0
+offset_right = 1200.0
+offset_bottom = 20.0
+color = Color(0.5, 0.5, 0.55, 1)
+
+[node name="LeftWall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-1200, 0)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="LeftWall"]
+shape = SubResource("Rect_boundary_v")
+
+[node name="Visual" type="ColorRect" parent="LeftWall"]
+offset_left = -20.0
+offset_top = -480.0
+offset_right = 20.0
+offset_bottom = 480.0
+color = Color(0.5, 0.5, 0.55, 1)
+
+[node name="RightWall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(1200, 0)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RightWall"]
+shape = SubResource("Rect_boundary_v")
+
+[node name="Visual" type="ColorRect" parent="RightWall"]
+offset_left = -20.0
+offset_top = -480.0
+offset_right = 20.0
+offset_bottom = 480.0
+color = Color(0.5, 0.5, 0.55, 1)
+
+[node name="CenterPillarL" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-150, 380)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="CenterPillarL"]
+shape = SubResource("Rect_pillar")
+
+[node name="Visual" type="ColorRect" parent="CenterPillarL"]
+offset_left = -10.0
+offset_top = -80.0
+offset_right = 10.0
+offset_bottom = 80.0
+color = Color(0.6, 0.5, 0.35, 1)
+
+[node name="CenterPillarR" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(150, 380)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="CenterPillarR"]
+shape = SubResource("Rect_pillar")
+
+[node name="Visual" type="ColorRect" parent="CenterPillarR"]
+offset_left = -10.0
+offset_top = -80.0
+offset_right = 10.0
+offset_bottom = 80.0
+color = Color(0.6, 0.5, 0.35, 1)
+
+[node name="PlatformL" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-650, 160)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlatformL"]
+shape = SubResource("Rect_side_platform")
+
+[node name="Visual" type="ColorRect" parent="PlatformL"]
+offset_left = -110.0
+offset_top = -10.0
+offset_right = 110.0
+offset_bottom = 10.0
+color = Color(0.65, 0.65, 0.7, 1)
+
+[node name="PlatformR" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(650, 160)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlatformR"]
+shape = SubResource("Rect_side_platform")
+
+[node name="Visual" type="ColorRect" parent="PlatformR"]
+offset_left = -110.0
+offset_top = -10.0
+offset_right = 110.0
+offset_bottom = 10.0
+color = Color(0.65, 0.65, 0.7, 1)
+
+[node name="PlatformTop" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(0, -60)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlatformTop"]
+shape = SubResource("Rect_top_platform")
+
+[node name="Visual" type="ColorRect" parent="PlatformTop"]
+offset_left = -140.0
+offset_top = -10.0
+offset_right = 140.0
+offset_bottom = 10.0
+color = Color(0.65, 0.65, 0.7, 1)
+
+[node name="PlatformOuterL" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-950, -120)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlatformOuterL"]
+shape = SubResource("Rect_outer_platform")
+
+[node name="Visual" type="ColorRect" parent="PlatformOuterL"]
+offset_left = -90.0
+offset_top = -10.0
+offset_right = 90.0
+offset_bottom = 10.0
+color = Color(0.65, 0.65, 0.7, 1)
+
+[node name="PlatformOuterR" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(950, -120)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlatformOuterR"]
+shape = SubResource("Rect_outer_platform")
+
+[node name="Visual" type="ColorRect" parent="PlatformOuterR"]
+offset_left = -90.0
+offset_top = -10.0
+offset_right = 90.0
+offset_bottom = 10.0
+color = Color(0.65, 0.65, 0.7, 1)
+
+[node name="SpawnPoints" type="Node2D" parent="."]
+
+[node name="Spawn1" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(-1050, 420)
+
+[node name="Spawn2" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(-780, 420)
+
+[node name="Spawn3" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(-500, 420)
+
+[node name="Spawn4" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(-250, 420)
+
+[node name="Spawn5" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(250, 420)
+
+[node name="Spawn6" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(500, 420)
+
+[node name="Spawn7" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(780, 420)
+
+[node name="Spawn8" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(1050, 420)
+
+[node name="Waypoints" type="Node2D" parent="."]
+
+[node name="WFloor1" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(-1050, 424)
+
+[node name="WFloor2" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(-780, 424)
+
+[node name="WFloor3" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(-500, 424)
+
+[node name="WFloor4" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(-250, 424)
+
+[node name="WFloor5" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(0, 424)
+
+[node name="WFloor6" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(250, 424)
+
+[node name="WFloor7" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(500, 424)
+
+[node name="WFloor8" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(780, 424)
+
+[node name="WFloor9" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(1050, 424)
+
+[node name="WPlatformL" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(-650, 134)
+
+[node name="WPlatformR" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(650, 134)
+
+[node name="WPlatformTop" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(0, -86)
+
+[node name="WPlatformOuterL" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(-950, -146)
+
+[node name="WPlatformOuterR" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(950, -146)
+
+[node name="WPillarL" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(-150, 284)
+
+[node name="WPillarR" type="Marker2D" parent="Waypoints" groups=["ai_waypoint"]]
+position = Vector2(150, 284)

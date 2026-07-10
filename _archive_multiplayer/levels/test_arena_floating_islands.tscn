@@ -1,0 +1,277 @@
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/tiles/ground.png" id="ground_tex"]
+[ext_resource type="Texture2D" path="res://assets/tiles/stone.png" id="stone_tex"]
+[ext_resource type="Texture2D" path="res://assets/bg/sky.png" id="sky_tex"]
+[ext_resource type="Texture2D" path="res://assets/bg/mountains.png" id="mtn_tex"]
+[ext_resource type="Texture2D" path="res://assets/bg/clouds.png" id="cloud_tex"]
+
+[sub_resource type="RectangleShape2D" id="Rect_hub"]
+size = Vector2(300, 40)
+
+[sub_resource type="RectangleShape2D" id="Rect_lowerisland"]
+size = Vector2(200, 30)
+
+[sub_resource type="RectangleShape2D" id="Rect_upperisland"]
+size = Vector2(180, 30)
+
+[sub_resource type="RectangleShape2D" id="Rect_topisland"]
+size = Vector2(220, 30)
+
+[sub_resource type="RectangleShape2D" id="Rect_smallisland"]
+size = Vector2(120, 20)
+
+[sub_resource type="RectangleShape2D" id="Rect_wallcolumn"]
+size = Vector2(20, 260)
+
+[sub_resource type="RectangleShape2D" id="Rect_shaftwall"]
+size = Vector2(500, 20)
+
+[node name="TestArena" type="Node2D"]
+
+[node name="ParallaxBackground" type="ParallaxBackground" parent="."]
+
+[node name="SkyLayer" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.05, 0.05)
+
+[node name="Sky" type="Sprite2D" parent="ParallaxBackground/SkyLayer"]
+position = Vector2(0, -50)
+scale = Vector2(60, 1.2)
+texture = ExtResource("sky_tex")
+texture_filter = 2
+
+[node name="MountainLayer" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.25, 0.15)
+motion_mirroring = Vector2(512, 0)
+
+[node name="Mountains" type="Sprite2D" parent="ParallaxBackground/MountainLayer"]
+position = Vector2(-256, 60)
+centered = false
+texture = ExtResource("mtn_tex")
+texture_filter = 2
+
+[node name="CloudLayer" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.5, 0.3)
+motion_mirroring = Vector2(512, 0)
+
+[node name="Clouds" type="Sprite2D" parent="ParallaxBackground/CloudLayer"]
+position = Vector2(-256, -180)
+centered = false
+texture = ExtResource("cloud_tex")
+texture_filter = 2
+
+[node name="IslandHub" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(0, 400)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="IslandHub"]
+shape = SubResource("Rect_hub")
+
+[node name="Visual" type="TextureRect" parent="IslandHub"]
+offset_left = -150.0
+offset_top = -20.0
+offset_right = 150.0
+offset_bottom = 20.0
+texture = ExtResource("ground_tex")
+texture_filter = 1
+stretch_mode = 1
+
+[node name="IslandLeftLower" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-450, 300)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="IslandLeftLower"]
+shape = SubResource("Rect_lowerisland")
+
+[node name="Visual" type="TextureRect" parent="IslandLeftLower"]
+offset_left = -100.0
+offset_top = -15.0
+offset_right = 100.0
+offset_bottom = 15.0
+texture = ExtResource("ground_tex")
+texture_filter = 1
+stretch_mode = 1
+
+[node name="IslandRightLower" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(450, 300)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="IslandRightLower"]
+shape = SubResource("Rect_lowerisland")
+
+[node name="Visual" type="TextureRect" parent="IslandRightLower"]
+offset_left = -100.0
+offset_top = -15.0
+offset_right = 100.0
+offset_bottom = 15.0
+texture = ExtResource("ground_tex")
+texture_filter = 1
+stretch_mode = 1
+
+[node name="IslandLeftUpper" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-600, 50)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="IslandLeftUpper"]
+shape = SubResource("Rect_upperisland")
+
+[node name="Visual" type="TextureRect" parent="IslandLeftUpper"]
+offset_left = -90.0
+offset_top = -15.0
+offset_right = 90.0
+offset_bottom = 15.0
+texture = ExtResource("ground_tex")
+texture_filter = 1
+stretch_mode = 1
+
+[node name="IslandRightUpper" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(600, 50)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="IslandRightUpper"]
+shape = SubResource("Rect_upperisland")
+
+[node name="Visual" type="TextureRect" parent="IslandRightUpper"]
+offset_left = -90.0
+offset_top = -15.0
+offset_right = 90.0
+offset_bottom = 15.0
+texture = ExtResource("ground_tex")
+texture_filter = 1
+stretch_mode = 1
+
+[node name="IslandTop" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(0, -200)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="IslandTop"]
+shape = SubResource("Rect_topisland")
+
+[node name="Visual" type="TextureRect" parent="IslandTop"]
+offset_left = -110.0
+offset_top = -15.0
+offset_right = 110.0
+offset_bottom = 15.0
+texture = ExtResource("ground_tex")
+texture_filter = 1
+stretch_mode = 1
+
+[node name="IslandLeftSmall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-200, 150)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="IslandLeftSmall"]
+shape = SubResource("Rect_smallisland")
+
+[node name="Visual" type="TextureRect" parent="IslandLeftSmall"]
+offset_left = -60.0
+offset_top = -10.0
+offset_right = 60.0
+offset_bottom = 10.0
+texture = ExtResource("ground_tex")
+texture_filter = 1
+stretch_mode = 1
+
+[node name="IslandRightSmall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(200, 150)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="IslandRightSmall"]
+shape = SubResource("Rect_smallisland")
+
+[node name="Visual" type="TextureRect" parent="IslandRightSmall"]
+offset_left = -60.0
+offset_top = -10.0
+offset_right = 60.0
+offset_bottom = 10.0
+texture = ExtResource("ground_tex")
+texture_filter = 1
+stretch_mode = 1
+
+[node name="LeftWallColumn" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-500, 175)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="LeftWallColumn"]
+shape = SubResource("Rect_wallcolumn")
+
+[node name="Visual" type="TextureRect" parent="LeftWallColumn"]
+offset_left = -10.0
+offset_top = -130.0
+offset_right = 10.0
+offset_bottom = 130.0
+texture = ExtResource("stone_tex")
+texture_filter = 1
+stretch_mode = 1
+
+[node name="RightWallColumn" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(500, 175)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RightWallColumn"]
+shape = SubResource("Rect_wallcolumn")
+
+[node name="Visual" type="TextureRect" parent="RightWallColumn"]
+offset_left = -10.0
+offset_top = -130.0
+offset_right = 10.0
+offset_bottom = 130.0
+texture = ExtResource("stone_tex")
+texture_filter = 1
+stretch_mode = 1
+
+[node name="ShaftLeftWall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(-40, 50)
+rotation_degrees = 90.0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ShaftLeftWall"]
+shape = SubResource("Rect_shaftwall")
+
+[node name="Visual" type="ColorRect" parent="ShaftLeftWall"]
+offset_left = -250.0
+offset_top = -10.0
+offset_right = 250.0
+offset_bottom = 10.0
+color = Color(0.4, 0.7, 0.8, 0.55)
+
+[node name="ShaftRightWall" type="StaticBody2D" parent="."]
+collision_layer = 1
+position = Vector2(40, 50)
+rotation_degrees = -90.0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ShaftRightWall"]
+shape = SubResource("Rect_shaftwall")
+
+[node name="Visual" type="ColorRect" parent="ShaftRightWall"]
+offset_left = -250.0
+offset_top = -10.0
+offset_right = 250.0
+offset_bottom = 10.0
+color = Color(0.4, 0.7, 0.8, 0.55)
+
+[node name="SpawnPoints" type="Node2D" parent="."]
+
+[node name="Spawn1" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(0, 360)
+
+[node name="Spawn2" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(-450, 265)
+
+[node name="Spawn3" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(450, 265)
+
+[node name="Spawn4" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(-600, 15)
+
+[node name="Spawn5" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(600, 15)
+
+[node name="Spawn6" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(0, -235)
+
+[node name="Spawn7" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(-200, 120)
+
+[node name="Spawn8" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(200, 120)

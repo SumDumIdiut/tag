@@ -1,0 +1,10 @@
+# Build outputs -- the autobuild workflow publishes these to GitHub Releases
+# instead of committing them into the repo.
+/builds/
+
+# Downloaded Godot editor binary (170MB+) -- a tool dependency, not source.
+/tools/godot/
+
+# Godot's local import/cache metadata -- regenerated automatically, machine-
+# specific, not meant to be versioned.
+/game/.godot/
