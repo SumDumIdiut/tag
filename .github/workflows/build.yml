@@ -52,6 +52,6 @@ jobs:
         shell: pwsh
         run: |
           $tag = "build-$($env:GITHUB_RUN_NUMBER)"
-          gh release create $tag builds/Tag.exe builds/Tag-Server.exe `
+          gh release create $tag "builds/Tag.exe" "builds/Tag-Server.exe" `
             --title "Build $($env:GITHUB_RUN_NUMBER)" `
             --notes "Automated build from commit $($env:GITHUB_SHA)"
