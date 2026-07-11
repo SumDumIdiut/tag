@@ -11,5 +11,3 @@
 
 # relay-server's npm dependencies -- reinstalled by install.sh, not versioned.
 /relay-server/node_modules/
-
-.claude/
