@@ -67,7 +67,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 realApp.use(BASE_PATH || '/', app);
 
 const server = http.createServer(realApp);
-const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
+// perMessageDeflate: false -- the portal's http-proxy-middleware WS proxy
+// doesn't correctly relay permessage-deflate-compressed frames (every
+// connection through it fails immediately with "Invalid WebSocket frame:
+// RSV1 must be clear", confirmed by bypassing it entirely and connecting
+// directly, which works fine). Disabling compression negotiation here means
+// the extension is never offered in the handshake, so neither side ever
+// sets the RSV1 bit and the proxy has nothing to corrupt.
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES, perMessageDeflate: false });
 
 // ─── WebSocket relay ──────────────────────────────────────────────────────────
 // Three logical endpoints, dispatched by hand off the raw HTTP server's
