@@ -13,6 +13,7 @@ var _child_pid := -1
 var _pending_port := -1
 var _attempts := 0
 var _username := "Player"
+var _server_name := "Someone's Server"
 var _retry_timer: Timer
 
 func _ready() -> void:
@@ -39,13 +40,13 @@ func _on_host_pressed() -> void:
 		status_label.text = "Couldn't find a free local port."
 		return
 
-	var server_name := server_name_edit.text.strip_edges()
-	if server_name.is_empty():
-		server_name = "Someone's Server"
+	_server_name = server_name_edit.text.strip_edges()
+	if _server_name.is_empty():
+		_server_name = "Someone's Server"
 
 	var args := PackedStringArray([
 		"--port=%d" % port,
-		"--name=%s" % server_name,
+		"--name=%s" % _server_name,
 		"--parent-pid=%d" % OS.get_process_id(),
 	])
 	_child_pid = OS.create_process(server_exe, args)
@@ -78,12 +79,19 @@ func _on_connect_attempt_failed() -> void:
 func _on_connected() -> void:
 	if _pending_port == -1:
 		return
-	get_tree().change_scene_to_file("res://main/lobby_browser.tscn")
+	# Skip lobby_browser's manual create/browse step entirely -- as the host,
+	# there's nothing to browse for and re-typing the server name as a lobby
+	# name too would just be re-doing what this screen already collected.
+	NetworkManager.lobby_state_updated.connect(_on_lobby_created, CONNECT_ONE_SHOT)
+	NetworkManager.create_lobby(_server_name, NetworkManager.MAX_LOBBY_PLAYERS)
+
+func _on_lobby_created(_lobby: Dictionary) -> void:
+	get_tree().change_scene_to_file("res://main/lobby_room.tscn")
 
 func _on_back_pressed() -> void:
 	if _child_pid != -1:
 		OS.kill(_child_pid)
-	get_tree().change_scene_to_file("res://main/main_menu.tscn")
+	get_tree().change_scene_to_file("res://main/online_menu.tscn")
 
 ## Bind to port 0 so the OS assigns a free one, read it back, then release --
 ## there's a small window before Tag-Server.exe binds it where another

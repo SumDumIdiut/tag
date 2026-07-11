@@ -87,4 +87,4 @@ func _on_connection_failed() -> void:
 	connect_button.disabled = false
 
 func _on_back_pressed() -> void:
-	get_tree().change_scene_to_file("res://main/main_menu.tscn")
+	get_tree().change_scene_to_file("res://main/online_menu.tscn")
