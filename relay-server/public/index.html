@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tag — Server Browser</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: #0b0d14; color: #e4e7f0;
+    padding: 32px 20px 60px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  header { margin-bottom: 24px; }
+  h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 4px; }
+  .sub { color: #7b82a8; font-size: 13px; }
+  .count-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(124,108,248,.15); color: #b6acf9;
+    border-radius: 999px; padding: 4px 12px; font-size: 12.5px; font-weight: 700;
+    margin-top: 10px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #3ef5a8; box-shadow: 0 0 6px #3ef5a8; }
+  .list { display: flex; flex-direction: column; gap: 10px; }
+  .card {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 16px 18px; border-radius: 14px;
+    border: 1.5px solid rgba(255,255,255,.09); background: rgba(255,255,255,.04);
+  }
+  .card-name { font-weight: 700; font-size: 14.5px; margin-bottom: 3px; }
+  .card-meta { color: #7b82a8; font-size: 12.5px; }
+  .players { text-align: right; }
+  .players-count { font-weight: 800; font-size: 17px; }
+  .players-label { color: #7b82a8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .connect-link {
+    display: inline-block; margin-top: 8px; padding: 6px 12px; border-radius: 8px;
+    background: rgba(124,108,248,.18); color: #b6acf9; font-size: 12px; font-weight: 700;
+    text-decoration: none; cursor: pointer; border: none; font-family: inherit;
+  }
+  .connect-link:hover { background: rgba(124,108,248,.28); }
+  .empty { color: #4e5578; font-size: 13.5px; padding: 40px 0; text-align: center; }
+  footer { margin-top: 32px; color: #4e5578; font-size: 11.5px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Tag — Server Browser</h1>
+      <p class="sub">Live servers hosted by players, updated every few seconds.</p>
+      <div class="count-pill"><span class="dot"></span><span id="count-text">Loading…</span></div>
+    </header>
+    <div class="list" id="list"></div>
+    <footer>codecade.co.za/tag</footer>
+  </div>
+
+<script>
+const BASE_PATH = window.__BASE_PATH__ || '';
+const listEl = document.getElementById('list');
+const countEl = document.getElementById('count-text');
+
+function fmtAge(createdAt) {
+  const s = Math.floor((Date.now() - createdAt) / 1000);
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  return Math.floor(s / 3600) + 'h ago';
+}
+
+function render(servers) {
+  countEl.textContent = servers.length + (servers.length === 1 ? ' server online' : ' servers online');
+  if (!servers.length) {
+    listEl.innerHTML = '<div class="empty">No servers online right now. Host one from the Tag client!</div>';
+    return;
+  }
+  listEl.innerHTML = servers.map(s => {
+    const connectUrl = 'wss://' + location.host + BASE_PATH + '/relay/join/' + s.id;
+    return '<div class="card">' +
+      '<div>' +
+        '<div class="card-name">' + esc(s.name) + '</div>' +
+        '<div class="card-meta">Created ' + fmtAge(s.createdAt) + '</div>' +
+        '<button class="connect-link" data-url="' + esc(connectUrl) + '" onclick="copyConnect(this)">Copy connect link</button>' +
+      '</div>' +
+      '<div class="players">' +
+        '<div class="players-count">' + s.playerCount + '/' + s.maxPlayers + '</div>' +
+        '<div class="players-label">players</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function copyConnect(btn) {
+  const url = btn.getAttribute('data-url');
+  navigator.clipboard.writeText(url).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  });
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function refresh() {
+  fetch(BASE_PATH + '/api/servers')
+    .then(r => r.json())
+    .then(render)
+    .catch(() => { countEl.textContent = 'Could not reach the relay server.'; });
+}
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
