@@ -3,9 +3,14 @@ extends Node
 const DEFAULT_RELAY_URL := "wss://codecade.co.za/tag/relay/host"
 const DEFAULT_SERVER_NAME := "Someone's Server"
 const DEFAULT_MAX_PLAYERS := 16
-const PARENT_CHECK_INTERVAL_SEC := 2.0
+const EMPTY_CHECK_INTERVAL_SEC := 2.0
+# Tolerates a brief reconnect blip (network hiccup, scene transition) before
+# actually shutting down -- only the sustained empty case should quit.
+const EMPTY_GRACE_PERIOD_SEC := 15.0
 
 var _relay_client: RelayClient = null
+var _had_a_player := false
+var _empty_since_sec := -1.0
 
 func _ready() -> void:
 	var port := NetworkManager.DEFAULT_PORT
@@ -13,7 +18,7 @@ func _ready() -> void:
 	var max_players := DEFAULT_MAX_PLAYERS
 	var relay_url := DEFAULT_RELAY_URL
 	var is_private := false
-	var parent_pid := -1
+	var quit_when_empty := false
 
 	for arg in OS.get_cmdline_args():
 		if arg.begins_with("--port="):
@@ -26,8 +31,8 @@ func _ready() -> void:
 			relay_url = arg.substr(12)
 		elif arg == "--private":
 			is_private = true
-		elif arg.begins_with("--parent-pid="):
-			parent_pid = int(arg.substr(13))
+		elif arg == "--quit-when-empty":
+			quit_when_empty = true
 
 	var ok := NetworkManager.start_server(port)
 	if not ok:
@@ -39,21 +44,41 @@ func _ready() -> void:
 		_relay_client = RelayClient.new(relay_url, server_name, max_players, port)
 		add_child(_relay_client)
 
-	# Godot has no native "die with parent" -- when spawned by a client via
-	# Host Server (host_setup.gd), this polls to catch the client crashing
-	# without a clean shutdown so the process doesn't linger as an orphan.
-	if parent_pid != -1:
+	# Godot has no native "die with parent". This used to poll
+	# OS.is_process_running(parent_pid), but that call only reliably tracks
+	# processes *this* instance itself spawned as a child -- checking an
+	# arbitrary external PID (the client that spawned *us*, the reverse
+	# relationship) isn't valid, and was observed returning false for a
+	# very-much-alive client, killing the server out from under a connected
+	# player. Watching the real, already-working peer connection instead:
+	# Host Server (host_setup.gd) passes --quit-when-empty, and once someone
+	# has actually joined and then everyone leaves, there's no reason for
+	# this ephemeral per-host server to keep running. A standalone dedicated
+	# server (no --quit-when-empty) behaves as before -- always persistent.
+	if quit_when_empty:
 		var timer := Timer.new()
-		timer.wait_time = PARENT_CHECK_INTERVAL_SEC
-		timer.timeout.connect(func():
-			if not OS.is_process_running(parent_pid):
-				print("server_main: parent process %d gone -- shutting down" % parent_pid)
-				_graceful_quit()
-		)
+		timer.wait_time = EMPTY_CHECK_INTERVAL_SEC
+		timer.timeout.connect(_check_empty)
 		add_child(timer)
 		timer.start()
 
 	get_tree().auto_accept_quit = false
+
+func _check_empty() -> void:
+	var count := NetworkManager.get_player_count()
+	if count > 0:
+		_had_a_player = true
+		_empty_since_sec = -1.0
+		return
+	if not _had_a_player:
+		return # nobody has joined yet -- keep waiting, not "emptied out"
+	var now := Time.get_ticks_msec() / 1000.0
+	if _empty_since_sec < 0.0:
+		_empty_since_sec = now
+		return
+	if now - _empty_since_sec >= EMPTY_GRACE_PERIOD_SEC:
+		print("server_main: empty for %ds -- shutting down" % int(EMPTY_GRACE_PERIOD_SEC))
+		_graceful_quit()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:

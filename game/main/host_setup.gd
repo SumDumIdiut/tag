@@ -47,7 +47,7 @@ func _on_host_pressed() -> void:
 	var args := PackedStringArray([
 		"--port=%d" % port,
 		"--name=%s" % _server_name,
-		"--parent-pid=%d" % OS.get_process_id(),
+		"--quit-when-empty",
 	])
 	_child_pid = OS.create_process(server_exe, args)
 	if _child_pid == -1:
