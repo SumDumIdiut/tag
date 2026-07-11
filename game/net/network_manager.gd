@@ -40,6 +40,14 @@ func is_online() -> bool:
 	return multiplayer.multiplayer_peer != null \
 		and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
 
+## Used by RelayClient to report live player counts in its heartbeat. The
+## dedicated server never plays (peer 1 is a non-participating authority), so
+## get_peers() -- which already excludes the local id -- is the full count.
+func get_player_count() -> int:
+	if not is_server:
+		return 0
+	return multiplayer.get_peers().size()
+
 ## WebSockets (not ENet/raw UDP) specifically because this needs to be
 ## reachable through a Cloudflare Tunnel -- Cloudflare's edge can proxy a
 ## WebSocket connection to an arbitrary public hostname, but can't carry
@@ -179,6 +187,11 @@ func _remove_peer_from_lobby(peer_id: int, lobby_id: int) -> void:
 		return
 	var lobby: Dictionary = _lobbies[lobby_id]
 	lobby.members.erase(peer_id)
+	# Drop the peer from the running match's own roster immediately, whether
+	# or not this empties the whole lobby -- otherwise ServerMatch keeps
+	# trying to push match-state to a peer_id nothing is listening on anymore.
+	if _matches.has(lobby_id):
+		_matches[lobby_id].remove_peer(peer_id)
 	if lobby.members.is_empty():
 		_lobbies.erase(lobby_id)
 		if _matches.has(lobby_id):

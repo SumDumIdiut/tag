@@ -25,6 +25,26 @@ func get_it() -> Node:
 func is_it(p: Node) -> bool:
 	return p == get_it()
 
+## Called when a participant leaves mid-match (e.g. a player disconnects).
+## Keeps it_index pointing at the same logical "it" across the removal, or
+## picks a new one (wrapping safely) if the removed participant was "it".
+func remove_participant(p: Node) -> void:
+	var idx := participants.find(p)
+	if idx == -1:
+		return
+	var was_it := (idx == it_index)
+	participants.remove_at(idx)
+	if participants.is_empty():
+		it_index = -1
+		return
+	if was_it:
+		it_index = idx % participants.size()
+		immunity_timer = IMMUNITY_TIME
+		_apply_it_color()
+		it_changed.emit(get_it())
+	elif idx < it_index:
+		it_index -= 1
+
 ## What an NPC should move toward this decision: the nearest other
 ## participant if it's the one chasing, or the current "it" (to flee) if not.
 func get_ai_target(requester: Node) -> Node:

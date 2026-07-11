@@ -51,6 +51,22 @@ func _ready() -> void:
 func receive_input(peer_id: int, input: Dictionary) -> void:
 	_pending_input[peer_id] = input
 
+## Called by NetworkManager when a player disconnects mid-match. Without
+## this, _physics_process below kept pushing match-state RPCs to the
+## disconnected peer_id forever (there was nothing to ever stop it) --
+## visible as a continuous stream of "ready_state != STATE_OPEN" send
+## errors in the server log for the rest of the match.
+func remove_peer(peer_id: int) -> void:
+	if not _players.has(peer_id):
+		return
+	var p: Player = _players[peer_id]
+	if _tag_mode:
+		_tag_mode.remove_participant(p)
+	p.queue_free()
+	_players.erase(peer_id)
+	_usernames.erase(peer_id)
+	_pending_input.erase(peer_id)
+
 func _physics_process(delta: float) -> void:
 	if _players.is_empty():
 		return
