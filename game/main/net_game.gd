@@ -4,12 +4,16 @@ const PLAYER_SCENE := preload("res://player/player.tscn")
 const REMOTE_AVATAR_SCENE := preload("res://player/remote_avatar.tscn")
 const ARENA_SCENE := preload("res://levels/tag_arena.tscn")
 
-# How far the server's authoritative position may drift from what we
-# predicted locally before we just snap to it -- small mispredictions
-# resolve invisibly next frame as normal control continues, large ones
-# (a real desync, e.g. from packet loss during a dash) get hard-corrected
-# rather than left to compound.
-const RECONCILE_THRESHOLD := 24.0
+# Every locally-predicted input is kept here (tagged with its own tick) until
+# the server confirms it's been processed. On every correction we don't just
+# snap to the server's position -- that's what read as being "shot back"
+# under real latency, since the snapshot the server just sent is already
+# several ticks stale by the time it arrives. Instead we jump to the
+# server's authoritative state for that tick and then immediately replay
+# every input newer than it, so the visible result is (unless the server
+# genuinely diverged, e.g. a real desync) exactly where prediction already
+# had us -- the correction resolves invisibly instead of rubber-banding.
+const MAX_INPUT_HISTORY := 180 # 3s at 60fps -- generous headroom over any realistic RTT
 
 var arena: Node2D
 var local_player: Player
@@ -17,6 +21,9 @@ var remote_avatars := {} # peer_id -> RemoteAvatar
 var my_peer_id := -1
 var roster := {}
 var hud: Label
+
+var _local_tick := 0
+var _input_history: Array[Dictionary] = [] # [{tick, input, delta}], oldest first
 
 func setup(p_my_peer_id: int, p_roster: Dictionary) -> void:
 	my_peer_id = p_my_peer_id
@@ -55,7 +62,9 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if not local_player:
 		return
+	_local_tick += 1
 	var input := {
+		"tick": _local_tick,
 		"move_dir": Vector2(
 			Input.get_action_strength("move_right") - Input.get_action_strength("move_left"),
 			Input.get_action_strength("move_down") - Input.get_action_strength("move_up")
@@ -68,19 +77,46 @@ func _physics_process(delta: float) -> void:
 	# Client-side prediction: apply input locally immediately using the same
 	# movement script the server runs, so local input feels instant instead
 	# of waiting on a round trip. The server's periodic snapshot in
-	# _on_match_state corrects any drift.
+	# _on_match_state corrects any drift via replay, not this call directly.
 	local_player.apply_input(input, delta)
 	NetworkManager.submit_input(input)
+
+	_input_history.append({"tick": _local_tick, "input": input, "delta": delta})
+	if _input_history.size() > MAX_INPUT_HISTORY:
+		_input_history.pop_front()
 
 func _on_match_state(_tick: int, states: Dictionary) -> void:
 	if not states.has(my_peer_id):
 		return
 	var my_state: Dictionary = states[my_peer_id]
-	var server_pos: Vector2 = my_state.pos
-	if local_player.global_position.distance_to(server_pos) > RECONCILE_THRESHOLD:
-		local_player.global_position = server_pos
-		local_player.velocity = my_state.vel
+	var acked_tick: int = int(my_state.get("input_tick", 0))
+	var pre_snap_pos := local_player.global_position
+
+	# Jump to the server's authoritative state for the tick it just
+	# acknowledged, then replay (apply_input only -- NOT submit_input, that
+	# would re-send everything we're just replaying locally) every input
+	# already predicted since. move_and_slide() displaces by
+	# get_physics_process_delta_time(), not the delta passed here, so this
+	# is only exactly correct because physics_ticks_per_second is fixed at
+	# 60 project-wide (project.godot) and nothing scales it at runtime --
+	# each replayed entry's recorded delta always matches the engine's
+	# actual physics delta. If that ever changes, this replay needs revisiting.
+	local_player.global_position = my_state.pos
+	local_player.velocity = my_state.vel
+
+	while not _input_history.is_empty() and _input_history[0].tick <= acked_tick:
+		_input_history.pop_front()
+	for entry in _input_history:
+		local_player.apply_input(entry.input, entry.delta)
+
+	# Only break interpolation when the resync actually moved us somewhere
+	# meaningfully different from where prediction already had us -- doing
+	# this unconditionally at up to 60hz would fight physics_interpolation
+	# (on project-wide) and read as constant micro-jitter instead of smooth
+	# motion for the common, in-sync case.
+	if pre_snap_pos.distance_to(local_player.global_position) > 0.5:
 		local_player.reset_physics_interpolation()
+
 	hud.text = "IT: %s" % ("you" if my_state.is_it else "someone else")
 
 	for peer_id in states.keys():

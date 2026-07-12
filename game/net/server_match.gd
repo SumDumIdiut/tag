@@ -78,6 +78,10 @@ func _physics_process(delta: float) -> void:
 	var states := {}
 	for peer_id in _players.keys():
 		var p: Player = _players[peer_id]
+		# input_tick lets each client know which of its own already-predicted
+		# inputs this state reflects, so it can discard everything up to that
+		# point and replay only what's newer instead of hard-snapping. 0 is a
+		# safe "nothing acked yet" sentinel -- client ticks start at 1.
 		states[peer_id] = {
 			"pos": p.global_position,
 			"vel": p.velocity,
@@ -85,6 +89,7 @@ func _physics_process(delta: float) -> void:
 			"is_dashing": p.is_dashing,
 			"is_climbing": p.is_climbing,
 			"is_it": _tag_mode.is_it(p),
+			"input_tick": int(_pending_input.get(peer_id, {}).get("tick", 0)),
 		}
 	for peer_id in _players.keys():
 		_network_manager.push_match_state(peer_id, _tick, states)
