@@ -21,37 +21,68 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 5;
 
 // ─── Skins (server-side cosmetic storage) ────────────────────────────────────
-// Each client generates and keeps its own random id locally (there's no
-// account/login system here) and treats this service as the sole source of
-// truth for its skin selection and any custom images it's uploaded --
-// nothing skin-related lives on the game client's own disk anymore, so
-// switching machines (or wiping local data) doesn't lose your skins the way
-// it would have if this were still stored in user://.
+// The skin catalog (built-in colors are client-side; custom image skins live
+// here) is entirely server-curated -- there is deliberately no HTTP endpoint
+// that lets a client add or remove a custom skin. New custom skins can only
+// be added by someone with direct access to this machine, via add-skin.js
+// run locally (see that file). Clients may only fetch the catalog and pick
+// (select) among the skins already in it.
+//
+// catalog.json and selections.json are deliberately separate files owned by
+// different writers: add-skin.js writes catalog.json directly on disk while
+// this server may be running, so catalog reads always re-read it fresh
+// (cheap -- it's tiny) rather than caching it in memory. Caching it would
+// mean the next client selection's save silently clobbered whatever
+// add-skin.js had just written. Selections are still cached in memory since
+// this server is their only writer.
 const DATA_DIR = path.join(__dirname, 'data');
 const SKIN_IMAGE_DIR = path.join(DATA_DIR, 'skin_images');
-const SKINS_JSON_PATH = path.join(DATA_DIR, 'skins.json');
-const MAX_CUSTOM_SKINS_PER_CLIENT = 10;
-const MAX_SKIN_IMAGE_BYTES = 100 * 1024; // generous over a 20x32 PNG's real size -- just an abuse backstop
+const CATALOG_JSON_PATH = path.join(DATA_DIR, 'catalog.json');
+const SELECTIONS_JSON_PATH = path.join(DATA_DIR, 'selections.json');
+const LEGACY_SKINS_JSON_PATH = path.join(DATA_DIR, 'skins.json');
 const CLIENT_ID_RE = /^[a-f0-9-]{8,64}$/i;
 
 fs.mkdirSync(SKIN_IMAGE_DIR, { recursive: true });
 
-function loadSkinsDb() {
+// One-time migration from the old combined per-client format
+// ({ clientId: { selected, custom: [{id, name}] } }), from back when any
+// client could upload its own custom skins -- folds everything already
+// uploaded into the new shared catalog instead of discarding it, and keeps
+// everyone's existing selection.
+if (!fs.existsSync(CATALOG_JSON_PATH) && !fs.existsSync(SELECTIONS_JSON_PATH) && fs.existsSync(LEGACY_SKINS_JSON_PATH)) {
   try {
-    return JSON.parse(fs.readFileSync(SKINS_JSON_PATH, 'utf-8'));
-  } catch {
-    return {};
-  }
+    const legacy = JSON.parse(fs.readFileSync(LEGACY_SKINS_JSON_PATH, 'utf-8'));
+    const catalog = [];
+    const selections = {};
+    const seenIds = new Set();
+    for (const [clientId, entry] of Object.entries(legacy || {})) {
+      if (!entry || typeof entry !== 'object') continue;
+      if (entry.selected) selections[clientId] = entry.selected;
+      for (const skin of entry.custom || []) {
+        if (skin && skin.id && !seenIds.has(skin.id)) {
+          seenIds.add(skin.id);
+          catalog.push({ id: skin.id, name: skin.name });
+        }
+      }
+    }
+    fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
+    fs.writeFileSync(SELECTIONS_JSON_PATH, JSON.stringify(selections));
+  } catch { /* legacy file unreadable -- just start fresh below */ }
 }
-let skinsDb = loadSkinsDb(); // clientId -> { selected: string, custom: [{id, name}] }
 
-function saveSkinsDb() {
-  fs.writeFileSync(SKINS_JSON_PATH, JSON.stringify(skinsDb));
+function readCatalog() {
+  try { return JSON.parse(fs.readFileSync(CATALOG_JSON_PATH, 'utf-8')); }
+  catch { return []; }
 }
 
-function getClientEntry(clientId) {
-  if (!skinsDb[clientId]) skinsDb[clientId] = { selected: 'red', custom: [] };
-  return skinsDb[clientId];
+function loadSelections() {
+  try { return JSON.parse(fs.readFileSync(SELECTIONS_JSON_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+let selections = loadSelections(); // clientId -> skinId
+
+function saveSelections() {
+  fs.writeFileSync(SELECTIONS_JSON_PATH, JSON.stringify(selections));
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -91,53 +122,23 @@ app.get('/api/servers', (req, res) => {
 // ─── HTTP: skins ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '256kb' }));
 
+// The shared catalog of server-curated custom skins -- every client sees the
+// same list, since there's no more per-client uploading.
+app.get('/api/skins/catalog', (req, res) => {
+  res.json(readCatalog());
+});
+
 app.get('/api/skins/:clientId', (req, res) => {
   if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  res.json(getClientEntry(req.params.clientId));
+  res.json({ selected: selections[req.params.clientId] || 'red' });
 });
 
 app.post('/api/skins/:clientId/select', (req, res) => {
   if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
   const skinId = String(req.body.skinId || '');
   if (!skinId) return res.status(400).json({ error: 'skinId required' });
-  getClientEntry(req.params.clientId).selected = skinId;
-  saveSkinsDb();
-  res.json({ ok: true });
-});
-
-app.post('/api/skins/:clientId/upload', (req, res) => {
-  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
-  const entry = getClientEntry(req.params.clientId);
-  if (entry.custom.length >= MAX_CUSTOM_SKINS_PER_CLIENT) {
-    return res.status(400).json({ error: `max ${MAX_CUSTOM_SKINS_PER_CLIENT} custom skins per client` });
-  }
-  const name = sanitizeName(req.body.name);
-  let imageBytes;
-  try {
-    imageBytes = Buffer.from(String(req.body.imageBase64 || ''), 'base64');
-  } catch {
-    return res.status(400).json({ error: 'bad image data' });
-  }
-  if (imageBytes.length === 0 || imageBytes.length > MAX_SKIN_IMAGE_BYTES) {
-    return res.status(400).json({ error: 'image too large or empty' });
-  }
-  const id = 'custom_' + crypto.randomBytes(8).toString('hex');
-  fs.writeFileSync(path.join(SKIN_IMAGE_DIR, id + '.png'), imageBytes);
-  entry.custom.push({ id, name });
-  saveSkinsDb();
-  res.json({ id });
-});
-
-app.delete('/api/skins/:clientId/:skinId', (req, res) => {
-  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  const entry = getClientEntry(req.params.clientId);
-  const before = entry.custom.length;
-  entry.custom = entry.custom.filter(s => s.id !== req.params.skinId);
-  if (entry.custom.length === before) return res.status(404).json({ error: 'not found' });
-  if (entry.selected === req.params.skinId) entry.selected = 'red';
-  saveSkinsDb();
-  try { fs.unlinkSync(path.join(SKIN_IMAGE_DIR, req.params.skinId + '.png')); } catch {}
+  selections[req.params.clientId] = skinId;
+  saveSelections();
   res.json({ ok: true });
 });
 

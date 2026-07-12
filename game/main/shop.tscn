@@ -64,21 +64,6 @@ columns = 4
 theme_override_constants/h_separation = 12
 theme_override_constants/v_separation = 12
 
-[node name="HBox" type="HBoxContainer" parent="VBox"]
-layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="AddCustomButton" type="Button" parent="VBox/HBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 40)
-text = "+ Add Custom Skin..."
-
-[node name="RemoveButton" type="Button" parent="VBox/HBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 40)
-text = "Remove Selected"
-
 [node name="StatusLabel" type="Label" parent="VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.4, 0.4, 1)
@@ -89,10 +74,3 @@ autowrap_mode = 2
 layout_mode = 2
 custom_minimum_size = Vector2(0, 40)
 text = "Back"
-
-[node name="FilePicker" type="FileDialog" parent="."]
-title = "Choose a skin image"
-size = Vector2i(600, 400)
-access = 2
-file_mode = 0
-filters = PackedStringArray("*.png, *.jpg, *.jpeg, *.bmp, *.webp ; Images")
