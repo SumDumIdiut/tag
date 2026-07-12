@@ -1,10 +1,10 @@
 extends Control
 
 # Lets a player pick from the built-in skins or add their own image as a
-# custom one. Selection is purely cosmetic and persists via SkinCatalog
-# (user://settings.cfg); a custom skin's image gets sent to other players
-# the first time they're seen together in a match (see NetworkManager),
-# since there's no server-side asset hosting to fetch it from otherwise.
+# custom one. Selection and custom images are stored server-side (see
+# SkinCatalog) rather than on this machine, keyed by an anonymous client id
+# -- there's no server-side asset hosting apart from that, so this same
+# lookup is what lets other players in a match see a custom skin too.
 #
 # Cards are built entirely in code (no per-skin scene files) so adding a
 # skin to the catalog is purely a data change -- rarity-colored border +
@@ -27,6 +27,12 @@ func _ready() -> void:
 	remove_button.pressed.connect(_on_remove_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 	file_picker.file_selected.connect(_on_file_selected)
+	SkinCatalog.catalog_loaded.connect(_refresh_grid)
+	# A custom skin's texture (yours or one already known from a previous
+	# session) can still be in flight when this screen opens -- re-render
+	# once it actually lands instead of leaving its card blank forever.
+	SkinCatalog.skin_received.connect(func(_id): _refresh_grid())
+	status_label.text = "Loading your skins..."
 	_refresh_grid()
 
 func _refresh_grid() -> void:
@@ -36,6 +42,8 @@ func _refresh_grid() -> void:
 	for skin in SkinCatalog.get_all_skins():
 		skin_grid.add_child(_build_card(skin, selected_id))
 	remove_button.disabled = SkinCatalog.is_builtin(selected_id)
+	if status_label.text == "Loading your skins...":
+		status_label.text = ""
 
 func _build_card(skin: Dictionary, selected_id: String) -> Button:
 	var rarity: String = skin.get("rarity", "common")
@@ -156,10 +164,14 @@ func _on_add_custom_pressed() -> void:
 	file_picker.popup_centered()
 
 func _on_file_selected(path: String) -> void:
-	var id := SkinCatalog.add_custom_skin(path, path.get_file().get_basename())
+	status_label.text = "Uploading..."
+	add_custom_button.disabled = true
+	var id: String = await SkinCatalog.add_custom_skin(path, path.get_file().get_basename())
+	add_custom_button.disabled = false
 	if id.is_empty():
-		status_label.text = "Couldn't load that image."
+		status_label.text = "Couldn't upload that image."
 		return
+	status_label.text = ""
 	SkinCatalog.select_skin(id)
 	_refresh_grid()
 

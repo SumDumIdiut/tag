@@ -16,7 +16,7 @@ shape = SubResource("CapsuleShape2D_body")
 
 [node name="Visual" type="Sprite2D" parent="."]
 centered = false
-offset = Vector2(-10, -16)
+offset = Vector2(-16, -32)
 
 [node name="Camera2D" type="Camera2D" parent="."]
 enabled = false

@@ -11,3 +11,7 @@
 
 # relay-server's npm dependencies -- reinstalled by install.sh, not versioned.
 /relay-server/node_modules/
+
+# relay-server's runtime skin storage (player selections + uploaded custom
+# skin images) -- generated data, not source, and grows over time.
+/relay-server/data/
