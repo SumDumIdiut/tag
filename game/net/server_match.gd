@@ -2,10 +2,13 @@ extends Node
 class_name ServerMatch
 
 # The authoritative simulation for one lobby's match. Reuses the exact same
-# Player movement script and TagMode logic as local/singleplayer play --
-# same reasoning as the very first architecture decision on this project:
-# one shared movement script means client prediction can never silently
-# drift from what the server actually simulates.
+# Player movement script and TagMode logic as local/singleplayer play, so
+# there's one movement implementation, not a server copy plus a separately-
+# maintained client one. Clients never simulate movement themselves at all
+# (see net_game.gd) -- every peer, their own included, is rendered purely
+# from this simulation's confirmed state, interpolated for smoothness. That
+# trades instant local responsiveness for input lag equal to round-trip
+# time, in exchange for the render never needing a correction/snap.
 
 const PLAYER_SCENE := preload("res://player/player.tscn")
 const ARENA_SCENE := preload("res://levels/tag_arena.tscn")
@@ -56,16 +59,16 @@ func receive_input(peer_id: int, input: Dictionary) -> void:
 	# flush several at once even with nothing truly dropped -- would
 	# silently discard every EDGE-TRIGGERED press but the last, so a
 	# queued jump_pressed=true that gets overtaken by a newer packet
-	# before this tick just never fires, even though the client predicted
-	# and replayed it) or queuing-and-draining-one-per-tick (tried this;
-	# it falls permanently behind under any sustained rate mismatch
-	# between arrival and physics tick rate, which real relay-path jitter
-	# reliably produces -- measured worse, not better, via the bot harness).
-	# Continuous fields (move_dir, jump_held, climb_held, tick) take the
-	# latest value, so the server is never processing stale-by-many-ticks
-	# state. Edge-triggered ones (jump_pressed/dash_pressed) OR together
-	# everything received since the last tick, so a press that arrived
-	# and got overtaken still fires exactly once when this tick consumes it.
+	# before this tick just never fires) or queuing-and-draining-one-per-
+	# tick (tried this; it falls permanently behind under any sustained
+	# rate mismatch between arrival and physics tick rate, which real
+	# relay-path jitter reliably produces -- measured worse, not better,
+	# via the bot harness). Continuous fields (move_dir, jump_held,
+	# climb_held) take the latest value, so the server is never processing
+	# stale-by-many-ticks state. Edge-triggered ones (jump_pressed/
+	# dash_pressed) OR together everything received since the last tick,
+	# so a press that arrived and got overtaken still fires exactly once
+	# when this tick consumes it.
 	if not _coalesced_input.has(peer_id):
 		_coalesced_input[peer_id] = {}
 	var merged: Dictionary = _coalesced_input[peer_id]
@@ -111,13 +114,15 @@ func _physics_process(delta: float) -> void:
 		if input.has("dash_pressed"):
 			input["dash_pressed"] = false
 
-	# Lightweight state for rendering everyone else's avatar -- this is all
-	# remote_avatar.gd ever reads, no need to pay for the full snapshot below
-	# on every peer's view of every OTHER peer, just their own.
-	var light_states := {}
+	# Every client renders every player -- their own included -- purely from
+	# this confirmed state via RemoteAvatar's dead-reckoning interpolation,
+	# with no local prediction/reconciliation involved at all, so one
+	# shared, lightweight state dict for everyone is all any client ever
+	# needs (no more per-peer full snapshot/input_tick for replay).
+	var states := {}
 	for peer_id in _players.keys():
 		var p: Player = _players[peer_id]
-		light_states[peer_id] = {
+		states[peer_id] = {
 			"pos": p.global_position,
 			"vel": p.velocity,
 			"facing": p.facing,
@@ -125,23 +130,7 @@ func _physics_process(delta: float) -> void:
 			"is_climbing": p.is_climbing,
 			"is_it": _tag_mode.is_it(p),
 		}
-
 	for peer_id in _players.keys():
-		# Each peer's OWN entry gets swapped for a full physics-state
-		# snapshot instead of the lightweight fields above, plus input_tick
-		# so the client knows which of its own already-predicted inputs this
-		# reflects and can replay just what's newer instead of hard-
-		# snapping. Reconciliation needs the complete internal state (see
-		# Player.get_state_snapshot()), not just position/velocity, or
-		# replaying an edge-triggered input like a jump press can re-trigger
-		# it instead of correctly continuing past it. 0 is a safe "nothing
-		# acked yet" sentinel -- client ticks start at 1.
-		var states := light_states.duplicate()
-		var p: Player = _players[peer_id]
-		var full: Dictionary = p.get_state_snapshot()
-		full["is_it"] = _tag_mode.is_it(p)
-		full["input_tick"] = int(_coalesced_input.get(peer_id, {}).get("tick", 0))
-		states[peer_id] = full
 		_network_manager.push_match_state(peer_id, _tick, states)
 
 func teardown() -> void:

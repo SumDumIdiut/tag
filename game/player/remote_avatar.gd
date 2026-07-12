@@ -1,16 +1,23 @@
 extends Node2D
 class_name RemoteAvatar
 
-# A non-simulated puppet for other players in a networked match -- no
-# physics, no movement code, just interpolates toward whatever position the
-# server last reported. The local player still runs the real Player
-# movement script for prediction; everyone else is purely a rendering of
-# server state.
+# A non-simulated puppet for a player in a networked match -- no physics, no
+# movement code, just interpolates toward whatever position the server last
+# reported. Used uniformly for every player, the local one included: no
+# client-side prediction happens anywhere anymore, so every avatar is purely
+# a rendering of confirmed server state. That trades instant local
+# responsiveness for input lag equal to round-trip time, in exchange for the
+# render never needing a correction/snap.
 
 @onready var visual: ColorRect = $Visual
 @onready var name_label: Label = $NameLabel
+@onready var camera: Camera2D = $Camera2D
 
 const REMOTE_COLOR := Color(0.25, 0.45, 0.85, 1.0)
+# Matches the color Player.tscn used back when the local player ran its own
+# predicted instance of Player -- kept distinct from REMOTE_COLOR so you can
+# still tell yourself apart from everyone else at a glance.
+const OWN_COLOR := Color(0.85, 0.2, 0.2, 1.0)
 const LERP_WEIGHT := 0.35
 # Dead-reckoning cap -- how far past the last known update we'll still trust
 # its velocity to extrapolate forward. Past this, a stale/no-longer-accurate
@@ -18,6 +25,11 @@ const LERP_WEIGHT := 0.35
 # beyond it we fall back to just trusting the last known position instead of
 # extending the guess further.
 const MAX_EXTRAPOLATION_SEC := 0.15
+
+## Set before _ready() (net_game.gd sets this right after instantiating) --
+## enables this instance's camera and switches its base color from
+## REMOTE_COLOR to OWN_COLOR.
+var is_local := false
 
 var display_name: String = "":
 	set(value):
@@ -33,6 +45,9 @@ var _time_since_update := 0.0
 func _ready() -> void:
 	if name_label:
 		name_label.text = display_name
+	if is_local and camera:
+		camera.enabled = true
+		camera.make_current()
 
 func _physics_process(delta: float) -> void:
 	_time_since_update += delta
@@ -51,7 +66,7 @@ func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_it:
 	target_facing = facing
 	_time_since_update = 0.0
 	if visual:
-		visual.color = Player.TAG_IT_COLOR if is_it else REMOTE_COLOR
+		visual.color = Player.TAG_IT_COLOR if is_it else (OWN_COLOR if is_local else REMOTE_COLOR)
 		visual.scale = Vector2(1.5, 0.6) if is_dashing else Vector2.ONE
 		var flip := absf(visual.scale.x) * (1.0 if facing >= 0 else -1.0)
 		visual.scale.x = flip
