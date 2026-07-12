@@ -1,14 +1,14 @@
 extends Node
 
-# Built-in cosmetic skins (solid colors, shipped with the game -- every
-# client already has these, so they're guaranteed to render correctly for
-# everyone) plus support for a player adding their own image as a custom
-# skin. Skin selection and custom images are stored server-side (the relay
-# service at codecade.co.za/tag/api/skins) rather than on this machine's own
-# disk -- the only thing that ever lives locally is an anonymous client id
-# (there's no account/login system here) used to look your own data back up,
-# so switching machines or wiping local data doesn't lose your skins the way
-# storing them in user:// would have.
+# Built-in cosmetic skins (solid colors, shipped with the game) plus a
+# shared catalog of custom image skins that lives entirely on the server --
+# clients can only fetch the catalog and select from it, never add to it.
+# New custom skins can only be added directly on the server (see
+# relay-server/add-skin.js), not through any in-game action, so nobody can
+# push arbitrary images into the game just by playing it. The only thing
+# that ever lives locally is an anonymous client id (there's no
+# account/login system here) used to remember your selection across
+# sessions/machines.
 
 const VISUAL_WIDTH := 32
 const VISUAL_HEIGHT := 48
@@ -39,18 +39,17 @@ const RARITY_COLORS := {
 }
 
 signal skin_selected(id: String)
-## Emitted once a skin's texture finishes arriving from the server -- either
-## your own custom skin's image after upload, or another player's after a
-## fetch. Listeners re-resolve anything they'd shown a placeholder for.
+## Emitted once a custom skin's texture finishes arriving from the server --
+## listeners re-resolve anything they'd shown a placeholder for.
 signal skin_received(id: String)
-## Emitted once the initial fetch of your own selection + custom skin list
+## Emitted once the initial fetch of the shared catalog + your own selection
 ## completes -- the shop UI waits for this before its first real render,
 ## since get_all_skins()/selected_skin_id are unreliable before it fires.
 signal catalog_loaded
 
 var client_id := ""
 var selected_skin_id := "red"
-var _known_custom_skins := [] # [{id, name}], from the server's record of what you've uploaded
+var _catalog_custom_skins := [] # [{id, name}], the server's shared custom-skin catalog
 var _texture_cache := {} # id -> Texture2D
 var _fetch_in_flight := {} # id -> true, de-dupes concurrent image fetches
 
@@ -58,15 +57,15 @@ func _ready() -> void:
 	client_id = _load_or_create_client_id()
 	_fetch_catalog()
 
-## Built-in skins plus every custom skin the server has on record for you,
-## in a shape the shop UI can list directly. Custom entries may be present
-## here before their texture has finished fetching (see get_texture) --
-## that's expected, not an error.
+## Built-in skins plus every custom skin in the server's shared catalog, in a
+## shape the shop UI can list directly. Custom entries may be present here
+## before their texture has finished fetching (see get_texture) -- that's
+## expected, not an error.
 func get_all_skins() -> Array:
 	var out := []
 	for s in BUILTIN_SKINS:
 		out.append(s)
-	for s in _known_custom_skins:
+	for s in _catalog_custom_skins:
 		out.append({"id": s.id, "name": s.name, "rarity": "custom", "custom": true})
 	return out
 
@@ -95,50 +94,6 @@ func select_skin(id: String) -> void:
 	selected_skin_id = id
 	skin_selected.emit(id)
 	_post_selection(id)
-
-## Reads, downscales, and uploads an arbitrary image file (from a native
-## file-picker dialog) as a new custom skin. Async -- callers need `await`.
-## Returns the new skin's server-assigned id, or "" on failure.
-func add_custom_skin(source_path: String, skin_name: String) -> String:
-	var img := Image.new()
-	if img.load(source_path) != OK:
-		return ""
-	img.resize(VISUAL_WIDTH, VISUAL_HEIGHT, Image.INTERPOLATE_LANCZOS)
-	var png_bytes := img.save_png_to_buffer()
-
-	var req := HTTPRequest.new()
-	add_child(req)
-	var body := JSON.stringify({"name": skin_name, "imageBase64": Marshalls.raw_to_base64(png_bytes)})
-	var err := req.request(
-		"%s/%s/upload" % [API_BASE, client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body
-	)
-	if err != OK:
-		req.queue_free()
-		return ""
-	var response: Array = await req.request_completed
-	req.queue_free()
-	var response_code: int = response[1]
-	if response_code != 200:
-		return ""
-	var parsed = JSON.parse_string(response[3].get_string_from_utf8())
-	if typeof(parsed) != TYPE_DICTIONARY or not parsed.has("id"):
-		return ""
-	var id: String = parsed.id
-	# We already have the (downscaled) image in hand locally -- no need to
-	# immediately re-fetch what we just uploaded.
-	_texture_cache[id] = ImageTexture.create_from_image(img)
-	_known_custom_skins.append({"id": id, "name": skin_name})
-	return id
-
-func remove_custom_skin(id: String) -> void:
-	for i in _known_custom_skins.size():
-		if _known_custom_skins[i].id == id:
-			_known_custom_skins.remove_at(i)
-			break
-	_texture_cache.erase(id)
-	if selected_skin_id == id:
-		select_skin(BUILTIN_SKINS[0].id)
-	_delete_remote(id)
 
 func _builtin_color(id: String) -> Color:
 	for s in BUILTIN_SKINS:
@@ -211,21 +166,42 @@ func _fetch_custom_texture(id: String) -> void:
 	)
 	req.request("%s/image/%s" % [API_BASE, id])
 
+# Two independent fetches -- the shared custom-skin catalog, and this
+# client's own current selection -- that both have to land before
+# catalog_loaded fires. `pending` is a single-element array (not a plain
+# int) so both request callbacks can share and mutate the same counter --
+# GDScript lambdas capture locals by value, so a plain int wouldn't be
+# shared between the two closures below.
 func _fetch_catalog() -> void:
-	var req := HTTPRequest.new()
-	add_child(req)
-	req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
-		req.queue_free()
-		if response_code != 200:
-			catalog_loaded.emit() # still emit -- fall back to defaults (red, no custom skins) rather than hang forever
-			return
-		var parsed = JSON.parse_string(body.get_string_from_utf8())
-		if typeof(parsed) == TYPE_DICTIONARY:
-			selected_skin_id = parsed.get("selected", "red")
-			_known_custom_skins = parsed.get("custom", [])
-		catalog_loaded.emit()
+	var pending := [2]
+	var on_one_done := func():
+		pending[0] -= 1
+		if pending[0] == 0:
+			catalog_loaded.emit()
+
+	var catalog_req := HTTPRequest.new()
+	add_child(catalog_req)
+	catalog_req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+		catalog_req.queue_free()
+		if response_code == 200:
+			var parsed = JSON.parse_string(body.get_string_from_utf8())
+			if typeof(parsed) == TYPE_ARRAY:
+				_catalog_custom_skins = parsed
+		on_one_done.call()
 	)
-	req.request("%s/%s" % [API_BASE, client_id])
+	catalog_req.request("%s/catalog" % API_BASE)
+
+	var selection_req := HTTPRequest.new()
+	add_child(selection_req)
+	selection_req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+		selection_req.queue_free()
+		if response_code == 200:
+			var parsed = JSON.parse_string(body.get_string_from_utf8())
+			if typeof(parsed) == TYPE_DICTIONARY:
+				selected_skin_id = parsed.get("selected", "red")
+		on_one_done.call()
+	)
+	selection_req.request("%s/%s" % [API_BASE, client_id])
 
 func _post_selection(id: String) -> void:
 	var req := HTTPRequest.new()
@@ -233,12 +209,6 @@ func _post_selection(id: String) -> void:
 	req.request_completed.connect(func(_r, _c, _h, _b): req.queue_free())
 	var body := JSON.stringify({"skinId": id})
 	req.request("%s/%s/select" % [API_BASE, client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
-
-func _delete_remote(id: String) -> void:
-	var req := HTTPRequest.new()
-	add_child(req)
-	req.request_completed.connect(func(_r, _c, _h, _b): req.queue_free())
-	req.request("%s/%s/%s" % [API_BASE, client_id, id], [], HTTPClient.METHOD_DELETE)
 
 func _load_or_create_client_id() -> String:
 	if FileAccess.file_exists(CLIENT_ID_PATH):

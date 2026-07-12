@@ -1,21 +1,19 @@
 extends Control
 
-# Lets a player pick from the built-in skins or add their own image as a
-# custom one. Selection and custom images are stored server-side (see
-# SkinCatalog) rather than on this machine, keyed by an anonymous client id
-# -- there's no server-side asset hosting apart from that, so this same
-# lookup is what lets other players in a match see a custom skin too.
+# Lets a player pick from the shared skin catalog (built-in colors plus any
+# custom image skins the server has on record). Selection is stored
+# server-side (see SkinCatalog) keyed by an anonymous client id. Custom
+# skins can only be added directly on the server (relay-server/add-skin.js)
+# -- there is no in-game way to add or remove one, so this screen is
+# select-only.
 #
 # Cards are built entirely in code (no per-skin scene files) so adding a
 # skin to the catalog is purely a data change -- rarity-colored border +
 # banner, big centered preview art, an EQUIPPED badge on your current pick.
 
 @onready var skin_grid: GridContainer = $VBox/ScrollContainer/SkinGrid
-@onready var add_custom_button: Button = $VBox/HBox/AddCustomButton
-@onready var remove_button: Button = $VBox/HBox/RemoveButton
 @onready var status_label: Label = $VBox/StatusLabel
 @onready var back_button: Button = $VBox/BackButton
-@onready var file_picker: FileDialog = $FilePicker
 
 const CARD_SIZE := Vector2(140, 184)
 const BANNER_HEIGHT_FRACTION := 0.3
@@ -23,16 +21,13 @@ const BANNER_HEIGHT_FRACTION := 0.3
 var _button_group := ButtonGroup.new()
 
 func _ready() -> void:
-	add_custom_button.pressed.connect(_on_add_custom_pressed)
-	remove_button.pressed.connect(_on_remove_pressed)
 	back_button.pressed.connect(_on_back_pressed)
-	file_picker.file_selected.connect(_on_file_selected)
 	SkinCatalog.catalog_loaded.connect(_refresh_grid)
-	# A custom skin's texture (yours or one already known from a previous
-	# session) can still be in flight when this screen opens -- re-render
+	# A custom skin's texture (from a previous session, or one just added
+	# server-side) can still be in flight when this screen opens -- re-render
 	# once it actually lands instead of leaving its card blank forever.
 	SkinCatalog.skin_received.connect(func(_id): _refresh_grid())
-	status_label.text = "Loading your skins..."
+	status_label.text = "Loading skins..."
 	_refresh_grid()
 
 func _refresh_grid() -> void:
@@ -41,8 +36,7 @@ func _refresh_grid() -> void:
 	var selected_id := SkinCatalog.selected_skin_id
 	for skin in SkinCatalog.get_all_skins():
 		skin_grid.add_child(_build_card(skin, selected_id))
-	remove_button.disabled = SkinCatalog.is_builtin(selected_id)
-	if status_label.text == "Loading your skins...":
+	if status_label.text == "Loading skins...":
 		status_label.text = ""
 
 func _build_card(skin: Dictionary, selected_id: String) -> Button:
@@ -158,28 +152,6 @@ func _banner_style(rarity_color: Color) -> StyleBoxFlat:
 func _on_skin_pressed(id: String) -> void:
 	SkinCatalog.select_skin(id)
 	status_label.text = ""
-	_refresh_grid()
-
-func _on_add_custom_pressed() -> void:
-	file_picker.popup_centered()
-
-func _on_file_selected(path: String) -> void:
-	status_label.text = "Uploading..."
-	add_custom_button.disabled = true
-	var id: String = await SkinCatalog.add_custom_skin(path, path.get_file().get_basename())
-	add_custom_button.disabled = false
-	if id.is_empty():
-		status_label.text = "Couldn't upload that image."
-		return
-	status_label.text = ""
-	SkinCatalog.select_skin(id)
-	_refresh_grid()
-
-func _on_remove_pressed() -> void:
-	var selected_id := SkinCatalog.selected_skin_id
-	if SkinCatalog.is_builtin(selected_id):
-		return
-	SkinCatalog.remove_custom_skin(selected_id)
 	_refresh_grid()
 
 func _on_back_pressed() -> void:
