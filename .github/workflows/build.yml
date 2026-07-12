@@ -46,21 +46,12 @@ jobs:
         shell: pwsh
         run: .\godot.exe --headless --path game --export-release "Windows Dedicated Server" "../builds/Tag-Server.exe"
 
-      # Host Server (in-client hosting) spawns Tag-Server.exe as a sibling
-      # process next to Tag.exe, so a normal player downloading a release
-      # needs both executables in the same folder -- ship them bundled
-      # together, in addition to the two individual uploads kept for
-      # backward compatibility (dedicated-server-only deploys, etc.).
-      - name: Bundle client + server together
-        shell: pwsh
-        run: Compress-Archive -Path "builds\Tag.exe", "builds\Tag-Server.exe" -DestinationPath "builds\Tag-Windows.zip"
-
       - name: Publish build as a release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
           $tag = "build-$($env:GITHUB_RUN_NUMBER)"
-          gh release create $tag "builds/Tag.exe" "builds/Tag-Server.exe" "builds/Tag-Windows.zip" `
+          gh release create $tag "builds/Tag.exe" "builds/Tag-Server.exe" `
             --title "Build $($env:GITHUB_RUN_NUMBER)" `
-            --notes "Automated build from commit $($env:GITHUB_SHA)"
+            --notes "Automated build from commit $($env:GITHUB_SHA). Download Tag.exe to play. If you want to use the in-client Host Server button, also grab Tag-Server.exe and put it in the same folder as Tag.exe."
