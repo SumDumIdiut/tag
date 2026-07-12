@@ -38,13 +38,35 @@ jobs:
         shell: pwsh
         run: New-Item -ItemType Directory -Force -Path builds
 
+      # The Godot CLI has been observed exiting almost instantly with no
+      # error and no output on some CI runs -- no scan, no pack, nothing --
+      # leaving the target .exe missing, while the very next export (same
+      # runner, same project) always succeeds. Root cause not pinned down
+      # (doesn't reproduce locally); retrying with a short pause is a
+      # pragmatic, standard fix for this class of intermittent CLI failure
+      # regardless of cause, and verifies the file actually landed instead
+      # of trusting a zero exit code.
       - name: Export client
         shell: pwsh
-        run: .\godot.exe --headless --path game --export-release "Windows Desktop" "../builds/Tag.exe"
+        run: |
+          for ($i = 1; $i -le 3; $i++) {
+            .\godot.exe --headless --path game --export-release "Windows Desktop" "../builds/Tag.exe"
+            if (Test-Path "builds\Tag.exe") { break }
+            Write-Host "Tag.exe missing after attempt $i -- retrying..."
+            Start-Sleep -Seconds 5
+          }
+          if (-not (Test-Path "builds\Tag.exe")) { throw "Tag.exe still missing after 3 attempts" }
 
       - name: Export dedicated server
         shell: pwsh
-        run: .\godot.exe --headless --path game --export-release "Windows Dedicated Server" "../builds/Tag-Server.exe"
+        run: |
+          for ($i = 1; $i -le 3; $i++) {
+            .\godot.exe --headless --path game --export-release "Windows Dedicated Server" "../builds/Tag-Server.exe"
+            if (Test-Path "builds\Tag-Server.exe") { break }
+            Write-Host "Tag-Server.exe missing after attempt $i -- retrying..."
+            Start-Sleep -Seconds 5
+          }
+          if (-not (Test-Path "builds\Tag-Server.exe")) { throw "Tag-Server.exe still missing after 3 attempts" }
 
       - name: Publish build as a release
         env:
