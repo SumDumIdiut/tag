@@ -127,7 +127,7 @@ func _on_match_state(_tick: int, states: Dictionary) -> void:
 		if peer_id == my_peer_id or not remote_avatars.has(peer_id):
 			continue
 		var s: Dictionary = states[peer_id]
-		remote_avatars[peer_id].set_state(s.pos, s.facing, s.is_dashing, s.is_it)
+		remote_avatars[peer_id].set_state(s.pos, s.vel, s.facing, s.is_dashing, s.is_it)
 
 func _on_disconnected() -> void:
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")
