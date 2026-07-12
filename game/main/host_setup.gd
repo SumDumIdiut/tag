@@ -7,7 +7,12 @@ extends Control
 @onready var status_label: Label = $VBox/StatusLabel
 
 const MAX_CONNECT_ATTEMPTS := 15
-const RETRY_INTERVAL_SEC := 0.5
+# The freshly-spawned Tag-Server.exe is a second full Godot process starting
+# up on the same machine (loading the engine, initializing autoloads,
+# connecting to the relay) -- it's briefly competing for CPU with this
+# client. Retrying too fast just adds more connection-attempt churn on top
+# of that contention instead of giving it room to finish starting.
+const RETRY_INTERVAL_SEC := 1.0
 
 var _child_pid := -1
 var _pending_port := -1
