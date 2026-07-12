@@ -13,16 +13,22 @@ var _had_a_player := false
 var _empty_since_sec := -1.0
 
 func _ready() -> void:
-	# This process has nothing to render for anyone -- vsync (Godot's
-	# default) throttles its whole process loop to display refresh timing
-	# for zero benefit here, and directly adds latency where it actually
-	# matters: RelayClient's bridging loop only forwards bytes sitting in
-	# the relay/local sockets once per _process() call, so a vsync-capped
-	# ~60fps loop means a relayed player's traffic can sit for up to ~16ms
-	# before even being picked up, on top of the real network RTT. Running
-	# uncapped lets it poll and forward as fast as the CPU allows instead.
+	# This process has nothing to render for anyone, so vsync (Godot's
+	# default) buys nothing -- it just ties this loop's pacing to display
+	# vertical-blank timing, which is real jitter for a process with no
+	# frames to actually show. Disabling it removes that jitter for free.
+	# Deliberately NOT uncapping max_fps to run flat-out, though: "Host
+	# Server" spawns this as a second full Godot process on the SAME
+	# machine as the player's own client (host_setup.gd), and letting it
+	# busy-loop at whatever rate the CPU allows was directly regressing
+	# that exact case -- competing hard enough for CPU against the client
+	# to make the client itself stutter/hang right when hosting starts, a
+	# worse version of the CPU-contention issue already mitigated once
+	# this session by slowing host_setup's own retry interval. 60 keeps
+	# this at the same footprint vsync would have given on a typical 60Hz
+	# display, just without vsync's own added jitter.
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
-	Engine.max_fps = 0
+	Engine.max_fps = 60
 
 	var port := NetworkManager.DEFAULT_PORT
 	var server_name := DEFAULT_SERVER_NAME
