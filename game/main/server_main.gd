@@ -13,6 +13,17 @@ var _had_a_player := false
 var _empty_since_sec := -1.0
 
 func _ready() -> void:
+	# This process has nothing to render for anyone -- vsync (Godot's
+	# default) throttles its whole process loop to display refresh timing
+	# for zero benefit here, and directly adds latency where it actually
+	# matters: RelayClient's bridging loop only forwards bytes sitting in
+	# the relay/local sockets once per _process() call, so a vsync-capped
+	# ~60fps loop means a relayed player's traffic can sit for up to ~16ms
+	# before even being picked up, on top of the real network RTT. Running
+	# uncapped lets it poll and forward as fast as the CPU allows instead.
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	Engine.max_fps = 0
+
 	var port := NetworkManager.DEFAULT_PORT
 	var server_name := DEFAULT_SERVER_NAME
 	var max_players := DEFAULT_MAX_PLAYERS
