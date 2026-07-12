@@ -123,6 +123,7 @@ function handleHostControl(ws) {
     try { msg = JSON.parse(raw.toString()); } catch { return; }
 
     if (msg.type === 'register') {
+      if (serverId) return; // already registered on this socket -- ignore repeats
       serverId = crypto.randomBytes(8).toString('hex');
       servers.set(serverId, {
         id: serverId,

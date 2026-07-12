@@ -28,6 +28,7 @@ var local_port: int
 
 var _control: WebSocketPeer = null
 var _server_id: String = ""
+var _register_sent := false
 var _heartbeat_timer: Timer
 var _reconnect_timer: Timer
 var _pairs: Array[_BridgePair] = []
@@ -79,7 +80,13 @@ func _poll_control() -> void:
 	_control.poll()
 	var state := _control.get_ready_state()
 	if state == WebSocketPeer.STATE_OPEN:
-		if _server_id.is_empty():
+		if _server_id.is_empty() and not _register_sent:
+			# Registering is a request/reply round-trip over a real network
+			# link, so several frames pass before "registered" comes back --
+			# without this flag, the is_empty() check alone re-fires on every
+			# one of those frames and the relay ends up with a pile of
+			# duplicate registrations for what's really one server.
+			_register_sent = true
 			_send_json(_control, {"type": "register", "name": server_name, "maxPlayers": max_players})
 		while _control.get_available_packet_count() > 0:
 			_handle_control_message(_control.get_packet())
@@ -90,6 +97,7 @@ func _poll_control() -> void:
 		if not _server_id.is_empty():
 			print("RelayClient: control channel closed -- reconnecting in %ds" % RECONNECT_DELAY_SEC)
 		_server_id = ""
+		_register_sent = false
 		_control = null
 		_heartbeat_timer.stop()
 		_reconnect_timer.start()
