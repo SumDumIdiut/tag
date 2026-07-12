@@ -15,15 +15,27 @@ const CUSTOM_SKIN_DIR := "user://custom_skins"
 const SETTINGS_PATH := "user://settings.cfg"
 
 const BUILTIN_SKINS := [
-	{"id": "red", "name": "Red", "color": Color(0.85, 0.2, 0.2)},
-	{"id": "blue", "name": "Blue", "color": Color(0.25, 0.45, 0.85)},
-	{"id": "green", "name": "Green", "color": Color(0.25, 0.75, 0.35)},
-	{"id": "yellow", "name": "Yellow", "color": Color(0.9, 0.8, 0.15)},
-	{"id": "purple", "name": "Purple", "color": Color(0.6, 0.3, 0.8)},
-	{"id": "orange", "name": "Orange", "color": Color(0.9, 0.5, 0.15)},
-	{"id": "teal", "name": "Teal", "color": Color(0.15, 0.75, 0.7)},
-	{"id": "pink", "name": "Pink", "color": Color(0.9, 0.45, 0.7)},
+	{"id": "red", "name": "Red", "color": Color(0.85, 0.2, 0.2), "rarity": "common"},
+	{"id": "blue", "name": "Blue", "color": Color(0.25, 0.45, 0.85), "rarity": "common"},
+	{"id": "green", "name": "Green", "color": Color(0.25, 0.75, 0.35), "rarity": "uncommon"},
+	{"id": "yellow", "name": "Yellow", "color": Color(0.9, 0.8, 0.15), "rarity": "uncommon"},
+	{"id": "purple", "name": "Purple", "color": Color(0.6, 0.3, 0.8), "rarity": "rare"},
+	{"id": "teal", "name": "Teal", "color": Color(0.15, 0.75, 0.7), "rarity": "rare"},
+	{"id": "orange", "name": "Orange", "color": Color(0.9, 0.5, 0.15), "rarity": "epic"},
+	{"id": "pink", "name": "Pink", "color": Color(0.9, 0.45, 0.7), "rarity": "legendary"},
 ]
+
+# Fortnite-style rarity color coding for the shop's card borders/banners --
+# purely a visual flourish, doesn't affect gameplay. Custom (player-uploaded)
+# skins always read as "custom" rather than any of these.
+const RARITY_COLORS := {
+	"common": Color(0.62, 0.65, 0.68),
+	"uncommon": Color(0.3, 0.82, 0.42),
+	"rare": Color(0.28, 0.56, 0.95),
+	"epic": Color(0.66, 0.32, 0.92),
+	"legendary": Color(0.95, 0.58, 0.12),
+	"custom": Color(0.15, 0.85, 0.85),
+}
 
 signal skin_selected(id: String)
 ## Emitted once a remote peer's custom skin image finishes arriving --
@@ -46,7 +58,7 @@ func get_all_skins() -> Array:
 	for s in BUILTIN_SKINS:
 		out.append(s)
 	for id in _custom_skins:
-		out.append({"id": id, "name": _custom_skins[id].name, "custom": true})
+		out.append({"id": id, "name": _custom_skins[id].name, "rarity": "custom", "custom": true})
 	return out
 
 func is_builtin(id: String) -> bool:
