@@ -9,15 +9,10 @@ class_name RemoteAvatar
 # responsiveness for input lag equal to round-trip time, in exchange for the
 # render never needing a correction/snap.
 
-@onready var visual: ColorRect = $Visual
+@onready var visual: Sprite2D = $Visual
 @onready var name_label: Label = $NameLabel
 @onready var camera: Camera2D = $Camera2D
 
-const REMOTE_COLOR := Color(0.25, 0.45, 0.85, 1.0)
-# Matches the color Player.tscn used back when the local player ran its own
-# predicted instance of Player -- kept distinct from REMOTE_COLOR so you can
-# still tell yourself apart from everyone else at a glance.
-const OWN_COLOR := Color(0.85, 0.2, 0.2, 1.0)
 const LERP_WEIGHT := 0.35
 # Dead-reckoning cap -- how far past the last known update we'll still trust
 # its velocity to extrapolate forward. Past this, a stale/no-longer-accurate
@@ -27,8 +22,7 @@ const LERP_WEIGHT := 0.35
 const MAX_EXTRAPOLATION_SEC := 0.15
 
 ## Set before _ready() (net_game.gd sets this right after instantiating) --
-## enables this instance's camera and switches its base color from
-## REMOTE_COLOR to OWN_COLOR.
+## enables this instance's camera.
 var is_local := false
 
 var display_name: String = "":
@@ -45,6 +39,10 @@ var _time_since_update := 0.0
 func _ready() -> void:
 	if name_label:
 		name_label.text = display_name
+	if visual:
+		# Sensible default until set_skin() overrides it with this peer's
+		# actual choice -- covers the brief window before it's known.
+		visual.texture = SkinCatalog.get_texture("red")
 	if is_local and camera:
 		camera.enabled = true
 		camera.make_current()
@@ -60,13 +58,22 @@ func _physics_process(delta: float) -> void:
 	var extrapolated := target_position + target_velocity * minf(_time_since_update, MAX_EXTRAPOLATION_SEC)
 	global_position = global_position.lerp(extrapolated, LERP_WEIGHT)
 
+## Sets which skin's texture this avatar displays -- called once by
+## net_game.gd when this peer's skin choice becomes known, not on every
+## state update below (skin choice doesn't change every tick).
+func set_skin(texture: Texture2D) -> void:
+	if visual and texture:
+		visual.texture = texture
+
 func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_it: bool) -> void:
 	target_position = pos
 	target_velocity = vel
 	target_facing = facing
 	_time_since_update = 0.0
 	if visual:
-		visual.color = Player.TAG_IT_COLOR if is_it else (OWN_COLOR if is_local else REMOTE_COLOR)
+		# Tints via modulate rather than swapping the texture, so this works
+		# the same for every skin, built-in or custom.
+		visual.modulate = Player.TAG_IT_COLOR if is_it else Color.WHITE
 		visual.scale = Vector2(1.5, 0.6) if is_dashing else Vector2.ONE
 		var flip := absf(visual.scale.x) * (1.0 if facing >= 0 else -1.0)
 		visual.scale.x = flip

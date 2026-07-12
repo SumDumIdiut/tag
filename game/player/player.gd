@@ -155,29 +155,36 @@ var stamina := STAMINA_MAX
 var is_climbing := false
 var climb_exhausted_timer := 0.0
 
-@onready var _visual: ColorRect = $Visual
+@onready var _visual: Sprite2D = $Visual
 
 var _was_on_floor_visual := false
-var _base_color: Color
-
-# Matches the Visual ColorRect's offsets in player.tscn (a 20x32 rect
-# centered on the player origin).
-const VISUAL_TOP_FULL := -16.0
-const VISUAL_BOTTOM := 16.0
 
 const TAG_IT_COLOR := Color(1.0, 0.85, 0.1, 1.0)
 
 func _ready() -> void:
 	if _visual:
-		_base_color = _visual.color
+		# Sensible default until set_skin() overrides it with a specific
+		# choice -- NPCs never get a skin selection of their own and just
+		# keep this, and it covers the brief window before a real player's
+		# chosen skin is known too.
+		_visual.texture = SkinCatalog.get_texture("red")
+
+## Sets which skin's texture this player/NPC actually displays -- called by
+## whoever knows which skin this instance should be (game.gd for the local
+## human player in AI mode, RemoteAvatar for a networked peer's own choice).
+func set_skin(texture: Texture2D) -> void:
+	if _visual and texture:
+		_visual.texture = texture
 
 ## Recolors this player/NPC to flag it as the current Tag "it", or back to
-## its own base color when it's no longer it -- lets TagMode mark whoever's
-## chasing without every participant needing to know its own color scheme.
+## its own normal look when it's no longer it -- lets TagMode mark whoever's
+## chasing without every participant needing to know its own skin. Tints via
+## modulate rather than replacing the texture outright so this works
+## uniformly for every skin, built-in or custom.
 func set_tagged_it(active: bool) -> void:
 	if not _visual:
 		return
-	_visual.color = TAG_IT_COLOR if active else _base_color
+	_visual.modulate = TAG_IT_COLOR if active else Color.WHITE
 
 ## Called by TagMode when this player's been in sustained physical contact
 ## with another participant for too long. Sets velocity straight away from
@@ -212,12 +219,6 @@ func _process(delta: float) -> void:
 		elif velocity.y > 40.0:
 			target_scale = Vector2(1.1, 0.9)
 	_visual.scale = _visual.scale.lerp(target_scale, clampf(delta * 12.0, 0.0, 1.0))
-
-	# Dashing shows only the bottom half of the body -- the top edge moves
-	# down to the vertical midpoint, bottom edge stays put.
-	_visual.offset_top = (VISUAL_TOP_FULL + VISUAL_BOTTOM) * 0.5 if is_dashing else VISUAL_TOP_FULL
-	_visual.offset_bottom = VISUAL_BOTTOM
-	_visual.pivot_offset = _visual.size * 0.5
 
 func apply_input(input: Dictionary, delta: float) -> void:
 	var move_dir: Vector2 = input.get("move_dir", Vector2.ZERO)

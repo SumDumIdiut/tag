@@ -17,6 +17,7 @@ const TICK_RATE := 1.0 / 60.0
 var lobby_id: int
 var _network_manager: Node
 var _usernames := {} # peer_id -> String
+var _skin_ids := {}  # peer_id -> String
 var _players := {}   # peer_id -> Player
 var _coalesced_input := {} # peer_id -> Dictionary, merged since the last tick
 var _tag_mode: TagMode
@@ -28,6 +29,7 @@ func _init(network_manager: Node, p_lobby_id: int, members: Dictionary) -> void:
 	lobby_id = p_lobby_id
 	for peer_id in members.keys():
 		_usernames[peer_id] = members[peer_id].username
+		_skin_ids[peer_id] = members[peer_id].get("skin_id", "red")
 
 func _ready() -> void:
 	_arena = ARENA_SCENE.instantiate()
@@ -49,7 +51,10 @@ func _ready() -> void:
 	add_child(_tag_mode)
 	_tag_mode.setup(participants, randi() % participants.size())
 
-	_network_manager.notify_match_started(lobby_id, _usernames)
+	var roster := {}
+	for peer_id in _usernames.keys():
+		roster[peer_id] = {"username": _usernames[peer_id], "skin_id": _skin_ids[peer_id]}
+	_network_manager.notify_match_started(lobby_id, roster)
 
 func receive_input(peer_id: int, input: Dictionary) -> void:
 	# Coalesce everything received since the last tick into one effective
@@ -92,6 +97,7 @@ func remove_peer(peer_id: int) -> void:
 	p.queue_free()
 	_players.erase(peer_id)
 	_usernames.erase(peer_id)
+	_skin_ids.erase(peer_id)
 	_coalesced_input.erase(peer_id)
 
 func _physics_process(delta: float) -> void:

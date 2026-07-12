@@ -14,6 +14,7 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 
 GameSettings="*res://main/game_settings.gd"
 NetworkManager="*res://net/network_manager.gd"
+SkinCatalog="*res://cosmetics/skin_catalog.gd"
 
 [input]
 

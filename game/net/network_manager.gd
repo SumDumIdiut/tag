@@ -27,6 +27,13 @@ var current_lobby: Dictionary = {}
 var _lobbies := {}       # lobby_id -> {id, name, host_peer, max_players, members: {peer_id: {username, ready}}, in_match}
 var _next_lobby_id := 1
 var _peer_username := {} # peer_id -> String
+var _peer_skin_id := {}  # peer_id -> String
+# Raw PNG bytes for any peer currently using a custom (non-built-in) skin --
+# only populated for peers who actually chose one. There's no server-side
+# asset hosting, so this is purely a relay cache: bytes a peer sent once at
+# connect time, held here just long enough to hand to every other peer
+# (present now or joining later) so they can render that skin too.
+var _peer_custom_skin_bytes := {} # peer_id -> PackedByteArray
 var _peer_lobby := {}    # peer_id -> lobby_id
 var _matches := {}       # lobby_id -> ServerMatch
 
@@ -99,7 +106,11 @@ func disconnect_from_server() -> void:
 
 func _on_connected_to_server() -> void:
 	my_peer_id = multiplayer.get_unique_id()
-	rpc_id(1, "_server_register_username", username)
+	var skin_id := SkinCatalog.selected_skin_id
+	var custom_bytes := PackedByteArray()
+	if not SkinCatalog.is_builtin(skin_id):
+		custom_bytes = SkinCatalog.get_custom_skin_bytes(skin_id)
+	rpc_id(1, "_server_register_player", username, skin_id, custom_bytes)
 	connected_to_server.emit()
 
 func _on_connection_failed() -> void:
@@ -112,6 +123,8 @@ func _on_peer_disconnected(id: int) -> void:
 	if not is_server:
 		return
 	_peer_username.erase(id)
+	_peer_skin_id.erase(id)
+	_peer_custom_skin_bytes.erase(id)
 	var lobby_id: int = _peer_lobby.get(id, -1)
 	if lobby_id != -1:
 		_remove_peer_from_lobby(id, lobby_id)
@@ -120,11 +133,28 @@ func _on_peer_disconnected(id: int) -> void:
 # ==================== Server-side RPC endpoints (client -> server) ====================
 
 @rpc("any_peer", "reliable")
-func _server_register_username(display_name: String) -> void:
+func _server_register_player(display_name: String, skin_id: String, custom_skin_bytes: PackedByteArray) -> void:
 	if not is_server:
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	_peer_username[sender] = _sanitize_username(display_name)
+	_peer_skin_id[sender] = skin_id
+
+	if not custom_skin_bytes.is_empty():
+		_peer_custom_skin_bytes[sender] = custom_skin_bytes
+		# Everyone already connected needs to see this new custom skin too --
+		# there's no server-side asset hosting, so this relay is the only
+		# way another peer ever gets it.
+		for other_peer in multiplayer.get_peers():
+			if other_peer != sender:
+				rpc_id(other_peer, "_client_receive_custom_skin", skin_id, custom_skin_bytes)
+	# Catch this new peer up on every custom skin already registered by
+	# someone else, so it can render them even though it joined after they
+	# did.
+	for other_peer in _peer_custom_skin_bytes.keys():
+		if other_peer != sender:
+			rpc_id(sender, "_client_receive_custom_skin", _peer_skin_id[other_peer], _peer_custom_skin_bytes[other_peer])
+
 	_send_lobby_list(sender)
 
 func _sanitize_username(raw: String) -> String:
@@ -227,7 +257,10 @@ func _server_start_match() -> void:
 		return
 	lobby.in_match = true
 	_broadcast_lobby_list()
-	var match_instance := ServerMatch.new(self, lobby_id, lobby.members.duplicate(true))
+	var members_with_skins: Dictionary = lobby.members.duplicate(true)
+	for peer_id in members_with_skins.keys():
+		members_with_skins[peer_id]["skin_id"] = _peer_skin_id.get(peer_id, "red")
+	var match_instance := ServerMatch.new(self, lobby_id, members_with_skins)
 	add_child(match_instance)
 	_matches[lobby_id] = match_instance
 
@@ -296,6 +329,13 @@ func _client_match_started(lobby_id: int, my_id: int, roster: Dictionary) -> voi
 @rpc("authority", "unreliable_ordered")
 func _client_receive_match_state(tick: int, states: Dictionary) -> void:
 	match_state_received.emit(tick, states)
+
+## Another peer's custom skin, relayed by the server (see
+## _server_register_player) -- there's no server-side asset hosting, so this
+## is the only way a custom skin ever reaches anyone but its own owner.
+@rpc("authority", "reliable")
+func _client_receive_custom_skin(skin_id: String, png_bytes: PackedByteArray) -> void:
+	SkinCatalog.register_remote_skin(skin_id, png_bytes)
 
 # ==================== Client-facing API (called by UI) ====================
 

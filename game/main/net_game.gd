@@ -6,7 +6,7 @@ const ARENA_SCENE := preload("res://levels/tag_arena.tscn")
 var arena: Node2D
 var avatars := {} # peer_id -> RemoteAvatar, including your own
 var my_peer_id := -1
-var roster := {}
+var roster := {} # peer_id -> {username, skin_id}
 var hud: Label
 
 func setup(p_my_peer_id: int, p_roster: Dictionary) -> void:
@@ -29,17 +29,38 @@ func _ready() -> void:
 
 	NetworkManager.match_state_received.connect(_on_match_state)
 	NetworkManager.disconnected_from_server.connect(_on_disconnected)
+	SkinCatalog.skin_received.connect(_on_skin_received)
 
 	# Every player, yours included, is a RemoteAvatar -- there's no local
 	# prediction anywhere anymore, so no reason for your own avatar to be
 	# built any differently from everyone else's. Only difference is which
-	# one owns the active camera and gets the "this is you" color.
+	# one owns the active camera.
 	for peer_id in roster.keys():
+		var info: Dictionary = roster[peer_id]
 		var avatar: RemoteAvatar = REMOTE_AVATAR_SCENE.instantiate()
 		avatar.is_local = (peer_id == my_peer_id)
 		add_child(avatar)
-		avatar.display_name = roster[peer_id]
+		avatar.display_name = info.username
 		avatars[peer_id] = avatar
+		_apply_skin(peer_id)
+
+## A custom skin's image can still be in flight (relayed from the server,
+## see NetworkManager) when a match starts -- SkinCatalog.get_texture()
+## just returns null for a not-yet-known custom id, so this no-ops and the
+## avatar keeps its default placeholder until _on_skin_received re-applies
+## it for real.
+func _apply_skin(peer_id: int) -> void:
+	if not avatars.has(peer_id) or not roster.has(peer_id):
+		return
+	var skin_id: String = roster[peer_id].get("skin_id", "red")
+	var tex := SkinCatalog.get_texture(skin_id)
+	if tex:
+		avatars[peer_id].set_skin(tex)
+
+func _on_skin_received(skin_id: String) -> void:
+	for peer_id in roster.keys():
+		if roster[peer_id].get("skin_id", "") == skin_id:
+			_apply_skin(peer_id)
 
 func _physics_process(_delta: float) -> void:
 	# No client-side prediction/reconciliation at all -- just capture and
