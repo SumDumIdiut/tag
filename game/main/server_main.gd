@@ -4,13 +4,9 @@ const DEFAULT_RELAY_URL := "wss://codecade.co.za/tag/relay/host"
 const DEFAULT_SERVER_NAME := "Someone's Server"
 const DEFAULT_MAX_PLAYERS := 16
 const EMPTY_CHECK_INTERVAL_SEC := 2.0
-# Tolerates a brief reconnect blip (network hiccup, scene transition) before
-# actually shutting down -- only the sustained empty case should quit.
-const EMPTY_GRACE_PERIOD_SEC := 15.0
 
 var _relay_client: RelayClient = null
 var _had_a_player := false
-var _empty_since_sec := -1.0
 
 func _ready() -> void:
 	# This process has nothing to render for anyone, so vsync (Godot's
@@ -85,17 +81,11 @@ func _check_empty() -> void:
 	var count := NetworkManager.get_player_count()
 	if count > 0:
 		_had_a_player = true
-		_empty_since_sec = -1.0
 		return
 	if not _had_a_player:
 		return # nobody has joined yet -- keep waiting, not "emptied out"
-	var now := Time.get_ticks_msec() / 1000.0
-	if _empty_since_sec < 0.0:
-		_empty_since_sec = now
-		return
-	if now - _empty_since_sec >= EMPTY_GRACE_PERIOD_SEC:
-		print("server_main: empty for %ds -- shutting down" % int(EMPTY_GRACE_PERIOD_SEC))
-		_graceful_quit()
+	print("server_main: empty -- shutting down")
+	_graceful_quit()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
