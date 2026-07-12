@@ -113,12 +113,20 @@ func _on_match_state(_tick: int, states: Dictionary) -> void:
 	for entry in _input_history:
 		local_player.apply_input(entry.input, entry.delta)
 
-	# Only break interpolation when the resync actually moved us somewhere
-	# meaningfully different from where prediction already had us -- doing
-	# this unconditionally at up to 60hz would fight physics_interpolation
-	# (on project-wide) and read as constant micro-jitter instead of smooth
-	# motion for the common, in-sync case.
-	if pre_snap_pos.distance_to(local_player.global_position) > 0.5:
+	# Only break interpolation for a correction big enough that it can only
+	# be a genuine desync/teleport (spawning, a real reconciliation miss),
+	# not everyday network jitter. physics_interpolation (on project-wide)
+	# exists specifically to visually smooth an instant transform change
+	# like this into the next rendered frame WITHOUT touching the actual
+	# gameplay-relevant transform at all -- it's a pure rendering concern,
+	# zero correctness cost. The previous 0.5px threshold defeated that on
+	# nearly every correction (virtually all of them exceed half a pixel),
+	# which is exactly backwards: that's the visible-snap case this exists
+	# to avoid. 200px is roughly 0.75s of running speed or ~0.2s of dash
+	# speed -- generous enough that routine relay-latency corrections glide
+	# instead of teleporting, while an actual spawn/big-miss still snaps.
+	const HARD_SNAP_THRESHOLD := 200.0
+	if pre_snap_pos.distance_to(local_player.global_position) > HARD_SNAP_THRESHOLD:
 		local_player.reset_physics_interpolation()
 
 	hud.text = "IT: %s" % ("you" if my_state.is_it else "someone else")
