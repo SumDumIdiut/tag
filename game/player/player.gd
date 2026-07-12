@@ -51,6 +51,13 @@ const JUMP_BUFFER_TIME := 0.1
 const WALL_JUMP_VELOCITY := Vector2(130.0 * SCALE, -105.0 * SCALE) # Celeste: WallJumpHSpeed, same vertical as a normal jump
 const SUPER_WALL_JUMP_VELOCITY := Vector2(170.0 * SCALE, -160.0 * SCALE) # Celeste: SuperWallJumpH / SuperWallJumpSpeed -- dashing into a wall then jumping off it
 const WALL_JUMP_LOCK_TIME := 0.16 # Celeste: WallJumpForceTime
+# Two players stuck in sustained physical contact (TagMode watches for this)
+# get shoved apart -- otherwise a chaser and their target can end up just
+# standing inside each other, and worse, it lets "it" ping-pong rapidly back
+# and forth between the same two players the instant each tag's immunity
+# window expires, since they never actually separated in the first place.
+const REPEL_SPEED := 300.0
+const REPEL_LOCK_TIME := 0.25
 # Wall-jump doesn't require actually pressing into the wall -- being
 # airborne and within this reach of one is enough (Celeste: WallJumpCheckDist
 # = 3px in its own scale), checked via a short raycast when not in contact.
@@ -121,6 +128,7 @@ var _corner_correction_timer := 0.0
 var coyote_timer := 0.0
 var jump_buffer_timer := 0.0
 var wall_jump_lock_timer := 0.0
+var repel_lock_timer := 0.0
 var var_jump_timer := 0.0
 var _held_jump_velocity_y := 0.0
 
@@ -170,6 +178,16 @@ func set_tagged_it(active: bool) -> void:
 	if not _visual:
 		return
 	_visual.color = TAG_IT_COLOR if active else _base_color
+
+## Called by TagMode when this player's been in sustained physical contact
+## with another participant for too long. Sets velocity straight away from
+## them and briefly locks out normal horizontal control (same mechanism as
+## a wall-jump's lock) so the push actually separates the two instead of
+## being immediately re-absorbed by whatever direction either is already
+## holding.
+func apply_repel(away_direction: Vector2) -> void:
+	velocity = away_direction * REPEL_SPEED
+	repel_lock_timer = REPEL_LOCK_TIME
 
 # Purely cosmetic squash/stretch, recomputed every rendered frame (not tied
 # to the fixed physics tick). Still runs client-side for local/AI play
@@ -283,6 +301,7 @@ func _tick_timers(delta: float) -> void:
 	coyote_timer = maxf(coyote_timer - delta, 0.0)
 	jump_buffer_timer = maxf(jump_buffer_timer - delta, 0.0)
 	wall_jump_lock_timer = maxf(wall_jump_lock_timer - delta, 0.0)
+	repel_lock_timer = maxf(repel_lock_timer - delta, 0.0)
 	var_jump_timer = maxf(var_jump_timer - delta, 0.0)
 	landed_grace_timer = maxf(landed_grace_timer - delta, 0.0)
 	dash_cooldown_timer = maxf(dash_cooldown_timer - delta, 0.0)
@@ -325,7 +344,7 @@ func _process_climb(move_dir: Vector2, delta: float) -> void:
 		velocity.y = CLIMB_SLIP_SPEED
 
 func _process_horizontal(move_dir: Vector2, delta: float, on_floor: bool) -> void:
-	if wall_jump_lock_timer > 0.0:
+	if wall_jump_lock_timer > 0.0 or repel_lock_timer > 0.0:
 		return
 	# Dash-jump speed boost: fully retained (no accel/friction at all) while
 	# airborne, and for a few frames after landing, before normal ground
