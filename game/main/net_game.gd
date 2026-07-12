@@ -93,16 +93,20 @@ func _on_match_state(_tick: int, states: Dictionary) -> void:
 	var pre_snap_pos := local_player.global_position
 
 	# Jump to the server's authoritative state for the tick it just
-	# acknowledged, then replay (apply_input only -- NOT submit_input, that
-	# would re-send everything we're just replaying locally) every input
-	# already predicted since. move_and_slide() displaces by
-	# get_physics_process_delta_time(), not the delta passed here, so this
-	# is only exactly correct because physics_ticks_per_second is fixed at
-	# 60 project-wide (project.godot) and nothing scales it at runtime --
-	# each replayed entry's recorded delta always matches the engine's
-	# actual physics delta. If that ever changes, this replay needs revisiting.
-	local_player.global_position = my_state.pos
-	local_player.velocity = my_state.vel
+	# acknowledged -- the FULL internal state (timers, dash/jump
+	# availability, etc.), not just position/velocity, or replaying a
+	# buffered edge-triggered input like a jump press below could re-trigger
+	# it instead of correctly continuing past it (see
+	# Player.restore_state_snapshot()) -- then replay (apply_input only --
+	# NOT submit_input, that would re-send everything we're just replaying
+	# locally) every input already predicted since. move_and_slide()
+	# displaces by get_physics_process_delta_time(), not the delta passed
+	# here, so this is only exactly correct because physics_ticks_per_second
+	# is fixed at 60 project-wide (project.godot) and nothing scales it at
+	# runtime -- each replayed entry's recorded delta always matches the
+	# engine's actual physics delta. If that ever changes, this replay needs
+	# revisiting.
+	local_player.restore_state_snapshot(my_state)
 
 	while not _input_history.is_empty() and _input_history[0].tick <= acked_tick:
 		_input_history.pop_front()

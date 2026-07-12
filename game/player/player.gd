@@ -171,6 +171,72 @@ func set_tagged_it(active: bool) -> void:
 		return
 	_visual.color = TAG_IT_COLOR if active else _base_color
 
+## Full internal simulation state, not just transform -- apply_input() reads
+## and mutates a lot more than position/velocity (jump buffering, coyote
+## time, dash availability/cooldowns, stamina, climb state, corner-
+## correction's own tween...). Reconciliation replay needs to restore ALL of
+## it before replaying buffered inputs, not just position/velocity -- doing
+## only the latter let an edge-triggered input (e.g. a jump press) that had
+## already fired get replayed against timers that hadn't caught up, re-
+## triggering it on every incoming snapshot instead of continuing past it.
+func get_state_snapshot() -> Dictionary:
+	return {
+		"position": global_position,
+		"velocity": velocity,
+		"facing": facing,
+		"double_jump_available": double_jump_available,
+		"corner_correction_active": _corner_correction_active,
+		"corner_correction_start": _corner_correction_start,
+		"corner_correction_target": _corner_correction_target,
+		"corner_correction_timer": _corner_correction_timer,
+		"coyote_timer": coyote_timer,
+		"jump_buffer_timer": jump_buffer_timer,
+		"wall_jump_lock_timer": wall_jump_lock_timer,
+		"var_jump_timer": var_jump_timer,
+		"held_jump_velocity_y": _held_jump_velocity_y,
+		"dash_timer": dash_timer,
+		"dash_cooldown_timer": dash_cooldown_timer,
+		"dash_jump_grace_timer": dash_jump_grace_timer,
+		"dash_available": dash_available,
+		"is_dashing": is_dashing,
+		"dash_direction": dash_direction,
+		"pre_dash_speed": _pre_dash_speed,
+		"speed_boost_active": speed_boost_active,
+		"landed_grace_timer": landed_grace_timer,
+		"was_on_floor_physics": _was_on_floor_physics,
+		"stamina": stamina,
+		"is_climbing": is_climbing,
+		"climb_exhausted_timer": climb_exhausted_timer,
+	}
+
+func restore_state_snapshot(snap: Dictionary) -> void:
+	global_position = snap.position
+	velocity = snap.velocity
+	facing = snap.facing
+	double_jump_available = snap.double_jump_available
+	_corner_correction_active = snap.corner_correction_active
+	_corner_correction_start = snap.corner_correction_start
+	_corner_correction_target = snap.corner_correction_target
+	_corner_correction_timer = snap.corner_correction_timer
+	coyote_timer = snap.coyote_timer
+	jump_buffer_timer = snap.jump_buffer_timer
+	wall_jump_lock_timer = snap.wall_jump_lock_timer
+	var_jump_timer = snap.var_jump_timer
+	_held_jump_velocity_y = snap.held_jump_velocity_y
+	dash_timer = snap.dash_timer
+	dash_cooldown_timer = snap.dash_cooldown_timer
+	dash_jump_grace_timer = snap.dash_jump_grace_timer
+	dash_available = snap.dash_available
+	is_dashing = snap.is_dashing
+	dash_direction = snap.dash_direction
+	_pre_dash_speed = snap.pre_dash_speed
+	speed_boost_active = snap.speed_boost_active
+	landed_grace_timer = snap.landed_grace_timer
+	_was_on_floor_physics = snap.was_on_floor_physics
+	stamina = snap.stamina
+	is_climbing = snap.is_climbing
+	climb_exhausted_timer = snap.climb_exhausted_timer
+
 # Purely cosmetic squash/stretch, recomputed every rendered frame (not tied
 # to the fixed physics tick) from state that's either authoritative or
 # locally predicted.

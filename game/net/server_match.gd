@@ -75,23 +75,37 @@ func _physics_process(delta: float) -> void:
 		var input: Dictionary = _pending_input.get(peer_id, {})
 		_players[peer_id].apply_input(input, delta)
 
-	var states := {}
+	# Lightweight state for rendering everyone else's avatar -- this is all
+	# remote_avatar.gd ever reads, no need to pay for the full snapshot below
+	# on every peer's view of every OTHER peer, just their own.
+	var light_states := {}
 	for peer_id in _players.keys():
 		var p: Player = _players[peer_id]
-		# input_tick lets each client know which of its own already-predicted
-		# inputs this state reflects, so it can discard everything up to that
-		# point and replay only what's newer instead of hard-snapping. 0 is a
-		# safe "nothing acked yet" sentinel -- client ticks start at 1.
-		states[peer_id] = {
+		light_states[peer_id] = {
 			"pos": p.global_position,
 			"vel": p.velocity,
 			"facing": p.facing,
 			"is_dashing": p.is_dashing,
 			"is_climbing": p.is_climbing,
 			"is_it": _tag_mode.is_it(p),
-			"input_tick": int(_pending_input.get(peer_id, {}).get("tick", 0)),
 		}
+
 	for peer_id in _players.keys():
+		# Each peer's OWN entry gets swapped for a full physics-state
+		# snapshot instead of the lightweight fields above, plus input_tick
+		# so the client knows which of its own already-predicted inputs this
+		# reflects and can replay just what's newer instead of hard-
+		# snapping. Reconciliation needs the complete internal state (see
+		# Player.get_state_snapshot()), not just position/velocity, or
+		# replaying an edge-triggered input like a jump press can re-trigger
+		# it instead of correctly continuing past it. 0 is a safe "nothing
+		# acked yet" sentinel -- client ticks start at 1.
+		var states := light_states.duplicate()
+		var p: Player = _players[peer_id]
+		var full: Dictionary = p.get_state_snapshot()
+		full["is_it"] = _tag_mode.is_it(p)
+		full["input_tick"] = int(_pending_input.get(peer_id, {}).get("tick", 0))
+		states[peer_id] = full
 		_network_manager.push_match_state(peer_id, _tick, states)
 
 func teardown() -> void:
