@@ -46,10 +46,18 @@ const BUILTIN_SKINS := [
 
 const HAT_API_BASE := "https://codecade.co.za/tag/api/hats"
 
-# Hats reuse the head part's own crop size (18x18) so a hat sprite lines up
-# exactly over the head without any extra offset math -- see player.tscn's
-# Hat node, a child of Head with the identical offset.
-const HAT_SIZE := 18
+# The head is a circle inscribed in its own 18x18 crop (touches all four
+# edges -- see _paint_character_image's head ellipse), so there's no real
+# headroom left *inside* that box for a hat to occupy without just sitting
+# on top of the face. Hats get their own, taller canvas instead: the bottom
+# HAT_OVERLAP rows deliberately overlap the head's own topmost rows (the
+# Hat node, a child of Head, is offset further up than Head's own offset --
+# see player.tscn) so a hat visually rests into the round top of the head,
+# while the rest of the canvas is free space for it to stick up above the
+# head's silhouette the way an actual hat does.
+const HAT_WIDTH := 18
+const HAT_HEIGHT := 16
+const HAT_OVERLAP := 6
 
 const BUILTIN_HATS := [
 	{"id": "cap", "name": "Cap", "shape": "cap", "color": Color(0.25, 0.45, 0.85)},
@@ -238,10 +246,11 @@ func _paint_character_image(color: Color) -> Image:
 
 	return img
 
-## Built-in hats, painted into the same 18x18 canvas the head crop uses (see
-## HAT_SIZE) so they line up over the head with zero extra offset math. Each
-## shape is a distinct silhouette occupying roughly the canvas's upper half,
-## leaving the rest transparent so the head shows through underneath.
+## Built-in hats, painted into the HAT_WIDTH x HAT_HEIGHT canvas (see the
+## comment above HAT_WIDTH for why it's taller than the head's own crop).
+## Each shape keeps its "resting" silhouette (brim/band/cuff) in the bottom
+## HAT_OVERLAP rows, which is what actually lands over the head, with the
+## rest of the shape free to rise above it.
 func _make_hat_texture(id: String) -> ImageTexture:
 	var def := {}
 	for h in BUILTIN_HATS:
@@ -251,31 +260,34 @@ func _make_hat_texture(id: String) -> ImageTexture:
 	return ImageTexture.create_from_image(_paint_hat_image(def.get("shape", "cap"), def.get("color", Color.WHITE)))
 
 func _paint_hat_image(shape: String, color: Color) -> Image:
-	var img := Image.create(HAT_SIZE, HAT_SIZE, false, Image.FORMAT_RGBA8)
+	var img := Image.create(HAT_WIDTH, HAT_HEIGHT, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	var shade := color.darkened(0.2)
 	var highlight := color.lightened(0.15)
 
 	match shape:
 		"cap":
-			# Dome plus a brim sticking out to one side -- the whole rig
-			# (including this hat) mirrors via the root Visual's scale.x sign
-			# when facing flips, so a one-sided brim automatically flips with it.
-			_fill_ellipse(img, 9.0, 7.0, 7.0, 5.5, color)
-			_fill_rect(img, 9, 7, 18, 10, shade)
+			# Rounded dome resting into the head, plus a brim sticking out to
+			# one side -- the whole rig (including this hat) mirrors via the
+			# root Visual's scale.x sign when facing flips, so a one-sided
+			# brim automatically flips with it.
+			_fill_ellipse(img, 9.0, 10.0, 6.5, 6.5, color)
+			_fill_rect(img, 9, 13, 17, 15, shade)
 		"beanie":
-			_fill_ellipse(img, 9.0, 6.0, 7.0, 6.5, color)
-			_fill_rect(img, 1, 8, 17, 11, shade) # folded cuff
+			# Snugger and pulled down further than the cap, with a folded
+			# cuff band spanning the full width near the bottom.
+			_fill_ellipse(img, 9.0, 10.0, 7.0, 7.0, color)
+			_fill_rect(img, 1, 12, 17, 15, shade)
 		"tophat":
-			_fill_rect(img, 5, 0, 13, 8, color) # crown/cylinder
-			_fill_rect(img, 5, 5, 13, 7, highlight) # ribbon band
-			_fill_rect(img, 1, 8, 17, 10, shade) # brim
+			_fill_rect(img, 5, 0, 13, 10, color) # crown/cylinder
+			_fill_rect(img, 5, 6, 13, 8, highlight) # ribbon band
+			_fill_rect(img, 1, 10, 17, 13, shade) # brim
 		"crown":
-			_fill_rect(img, 2, 7, 16, 11, color) # base band
-			_fill_rect(img, 3, 2, 6, 8, color) # left spike
-			_fill_rect(img, 8, 1, 11, 8, color) # center spike (tallest)
-			_fill_rect(img, 12, 2, 15, 8, color) # right spike
-			_fill_ellipse(img, 9.0, 3.0, 1.4, 1.4, Color(0.85, 0.2, 0.25)) # jewel
+			_fill_rect(img, 2, 10, 16, 14, color) # base band
+			_fill_rect(img, 3, 4, 7, 10, color) # left spike
+			_fill_rect(img, 8, 0, 11, 10, color) # center spike (tallest)
+			_fill_rect(img, 12, 4, 16, 10, color) # right spike
+			_fill_ellipse(img, 9.0, 3.0, 1.3, 1.3, Color(0.85, 0.2, 0.25)) # jewel
 
 	return img
 
