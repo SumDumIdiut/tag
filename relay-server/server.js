@@ -48,7 +48,7 @@ const CLIENT_ID_RE = /^[a-f0-9-]{8,64}$/i;
 // in sync by hand (same tradeoff already accepted for RANK_TIERS later).
 const PART_NAMES = ['head', 'torso', 'left_arm', 'right_arm', 'left_leg', 'right_leg'];
 const PART_DIMENSIONS = {
-  head: { width: 18, height: 18 },
+  head: { width: 24, height: 24 },
   torso: { width: 14, height: 21 },
   left_arm: { width: 6, height: 14 },
   right_arm: { width: 6, height: 14 },
@@ -56,7 +56,7 @@ const PART_DIMENSIONS = {
   right_leg: { width: 4, height: 11 },
 };
 // Taller than the head's own crop -- the head circle touches all four
-// edges of its 18x18 canvas, so a hat confined to that same box has no
+// edges of its own canvas, so a hat confined to that same box has no
 // actual headroom and just overlaps the face. The extra height lets a hat
 // stick up above the head's silhouette; only its bottom rows are meant to
 // overlap the head at all (see skin_catalog.gd's HAT_OVERLAP comment on

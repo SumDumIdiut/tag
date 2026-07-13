@@ -12,25 +12,33 @@ extends Node
 # here) used to remember your selections across sessions/machines.
 
 const VISUAL_WIDTH := 32
-const VISUAL_HEIGHT := 48
+# 10px taller than the original 48 -- headroom for the enlarged head circle
+# below to fit without its top clipping off-canvas. Torso/arms/legs are
+# unchanged in size, just shifted down by that same 10px so their geometry
+# and the rig's own pivot offsets (player.tscn et al) stay identical; only
+# head's rect/pivot below reflect real new geometry.
+const VISUAL_HEIGHT := 58
 const CLIENT_ID_PATH := "user://client_id.txt"
 const API_BASE := "https://codecade.co.za/tag/api/skins"
 
 const PART_NAMES := ["head", "torso", "left_arm", "right_arm", "left_leg", "right_leg"]
 
-# Canvas-space (32x48, same space the old single-texture painter used) rect +
+# Canvas-space (32x58, same space the old single-texture painter used) rect +
 # pivot per rig part. `rect` is the tight crop for that part's own texture;
 # `pivot` is the joint point the rig (player.tscn et al) positions/rotates
 # that part's node around -- torso's pivot is its neck attach point (torso is
 # the rig's parent node), each limb's pivot is where it actually attaches to
-# the torso, head's pivot is its own neck.
+# the torso, head's pivot is its own neck. Head's rect deliberately overlaps
+# torso's top 2 rows (pivot sits exactly on the circle's bottom edge) for a
+# seamless neck join, the same small overlap the original smaller head used
+# -- everything else (torso/arms/legs) only barely touches, same as before.
 const PART_DEFS := {
-	"torso": {"rect": Rect2i(9, 17, 14, 21), "pivot": Vector2(16, 17)},
-	"head": {"rect": Rect2i(7, 1, 18, 18), "pivot": Vector2(16, 19)},
-	"left_arm": {"rect": Rect2i(3, 19, 6, 14), "pivot": Vector2(9, 19)},
-	"right_arm": {"rect": Rect2i(23, 19, 6, 14), "pivot": Vector2(23, 19)},
-	"left_leg": {"rect": Rect2i(11, 36, 4, 11), "pivot": Vector2(13, 36)},
-	"right_leg": {"rect": Rect2i(17, 36, 4, 11), "pivot": Vector2(19, 36)},
+	"torso": {"rect": Rect2i(9, 27, 14, 21), "pivot": Vector2(16, 27)},
+	"head": {"rect": Rect2i(4, 5, 24, 24), "pivot": Vector2(16, 29)},
+	"left_arm": {"rect": Rect2i(3, 29, 6, 14), "pivot": Vector2(9, 29)},
+	"right_arm": {"rect": Rect2i(23, 29, 6, 14), "pivot": Vector2(23, 29)},
+	"left_leg": {"rect": Rect2i(11, 46, 4, 11), "pivot": Vector2(13, 46)},
+	"right_leg": {"rect": Rect2i(17, 46, 4, 11), "pivot": Vector2(19, 46)},
 }
 
 const BUILTIN_SKINS := [
@@ -46,7 +54,7 @@ const BUILTIN_SKINS := [
 
 const HAT_API_BASE := "https://codecade.co.za/tag/api/hats"
 
-# The head is a circle inscribed in its own 18x18 crop (touches all four
+# The head is a circle inscribed in its own crop (touches all four
 # edges -- see _paint_character_image's head ellipse), so there's no real
 # headroom left *inside* that box for a hat to occupy without just sitting
 # on top of the face. Hats get their own, taller canvas instead: the bottom
@@ -186,11 +194,18 @@ func get_part_textures(id: String) -> Dictionary:
 ## that resolves to) rather than a separate whole-image paint, so the flat
 ## preview thumbnail (shop cards, roster previews) always matches whatever
 ## the live rig actually renders.
+# Head drawn last (not PART_NAMES order) -- its crop is wide/tall enough to
+# overlap the top corners of both arms' rects, and painting arms afterward
+# would clip into the head's rounded silhouette in this flat thumbnail (the
+# live rig has no such conflict, each part is its own independently
+# positioned sprite there).
+const _COMPOSE_ORDER := ["torso", "left_arm", "right_arm", "left_leg", "right_leg", "head"]
+
 func _compose_whole_texture(id: String) -> ImageTexture:
 	var parts := get_part_textures(id)
 	var whole := Image.create(VISUAL_WIDTH, VISUAL_HEIGHT, false, Image.FORMAT_RGBA8)
 	whole.fill(Color(0, 0, 0, 0))
-	for part_name in PART_NAMES:
+	for part_name in _COMPOSE_ORDER:
 		if not parts.has(part_name):
 			continue
 		var rect: Rect2i = PART_DEFS[part_name].rect
@@ -287,19 +302,19 @@ func _paint_character_image(color: Color) -> Image:
 	var eye_color := Color(0.05, 0.05, 0.08)
 
 	# Legs
-	_fill_rect(img, 11, 36, 15, 47, shade)
-	_fill_rect(img, 17, 36, 21, 47, shade)
+	_fill_rect(img, 11, 46, 15, 57, shade)
+	_fill_rect(img, 17, 46, 21, 57, shade)
 	# Arms (drawn before the body so the body's edge overlaps the shoulder
 	# seam instead of leaving a gap)
-	_fill_rect(img, 3, 19, 9, 33, shade)
-	_fill_rect(img, 23, 19, 29, 33, shade)
+	_fill_rect(img, 3, 29, 9, 43, shade)
+	_fill_rect(img, 23, 29, 29, 43, shade)
 	# Body/torso
-	_fill_rect(img, 9, 17, 23, 38, color)
+	_fill_rect(img, 9, 27, 23, 48, color)
 	# Head
-	_fill_ellipse(img, 16.0, 10.0, 9.0, 9.0, highlight)
+	_fill_ellipse(img, 16.0, 17.0, 12.0, 12.0, highlight)
 	# Eyes
-	_fill_ellipse(img, 12.0, 9.0, 1.6, 1.6, eye_color)
-	_fill_ellipse(img, 20.0, 9.0, 1.6, 1.6, eye_color)
+	_fill_ellipse(img, 10.7, 15.7, 2.1, 2.1, eye_color)
+	_fill_ellipse(img, 21.3, 15.7, 2.1, 2.1, eye_color)
 
 	return img
 
@@ -316,14 +331,14 @@ func paint_character_template() -> Image:
 	img.fill(Color(0, 0, 0, 0))
 	var eye_color := Color(0.05, 0.05, 0.08)
 
-	_fill_rect(img, 11, 36, 15, 47, TEMPLATE_SHADE)
-	_fill_rect(img, 17, 36, 21, 47, TEMPLATE_SHADE)
-	_fill_rect(img, 3, 19, 9, 33, TEMPLATE_SHADE)
-	_fill_rect(img, 23, 19, 29, 33, TEMPLATE_SHADE)
-	_fill_rect(img, 9, 17, 23, 38, TEMPLATE_BASE)
-	_fill_ellipse(img, 16.0, 10.0, 9.0, 9.0, TEMPLATE_HIGHLIGHT)
-	_fill_ellipse(img, 12.0, 9.0, 1.6, 1.6, eye_color)
-	_fill_ellipse(img, 20.0, 9.0, 1.6, 1.6, eye_color)
+	_fill_rect(img, 11, 46, 15, 57, TEMPLATE_SHADE)
+	_fill_rect(img, 17, 46, 21, 57, TEMPLATE_SHADE)
+	_fill_rect(img, 3, 29, 9, 43, TEMPLATE_SHADE)
+	_fill_rect(img, 23, 29, 29, 43, TEMPLATE_SHADE)
+	_fill_rect(img, 9, 27, 23, 48, TEMPLATE_BASE)
+	_fill_ellipse(img, 16.0, 17.0, 12.0, 12.0, TEMPLATE_HIGHLIGHT)
+	_fill_ellipse(img, 10.7, 15.7, 2.1, 2.1, eye_color)
+	_fill_ellipse(img, 21.3, 15.7, 2.1, 2.1, eye_color)
 
 	return img
 
