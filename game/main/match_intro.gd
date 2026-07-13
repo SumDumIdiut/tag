@@ -37,7 +37,7 @@ func _build_row(peer_id: int, info: Dictionary) -> Control:
 	row.add_theme_constant_override("separation", 12)
 
 	var preview := TextureRect.new()
-	preview.custom_minimum_size = Vector2(32, 48)
+	preview.custom_minimum_size = Vector2(SkinCatalog.VISUAL_WIDTH, SkinCatalog.VISUAL_HEIGHT)
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	preview.texture = SkinCatalog.get_texture(info.get("skin_id", "red"))
 	row.add_child(preview)

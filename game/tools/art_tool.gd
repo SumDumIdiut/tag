@@ -525,10 +525,14 @@ func _safe_filename(display_name: String, fallback_id: String) -> String:
 ## in-game positions (see SkinCatalog.PART_DEFS) -- the exact format the
 ## game's existing admin ingestion tool (relay-server/add-skin.js) already
 ## expects, so a custom skin needs no new server-side code to go live.
+## Head is composited last (not PART_NAMES order): its crop overlaps the top
+## corners of both arms' rects, and painting arms afterward would clip arm
+## pixels into the exported head region -- this same image gets re-sliced
+## by PART_DEFS later, so that corruption would be permanent, not cosmetic.
 func _composite_whole_skin(parts: Dictionary) -> Image:
 	var whole := Image.create(SkinCatalog.VISUAL_WIDTH, SkinCatalog.VISUAL_HEIGHT, false, Image.FORMAT_RGBA8)
 	whole.fill(Color(0, 0, 0, 0))
-	for part_name in SkinCatalog.PART_NAMES:
+	for part_name in ["torso", "left_arm", "right_arm", "left_leg", "right_leg", "head"]:
 		if not parts.has(part_name):
 			continue
 		var rect: Rect2i = SkinCatalog.PART_DEFS[part_name].rect
