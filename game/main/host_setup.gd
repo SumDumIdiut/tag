@@ -59,6 +59,10 @@ func _on_back_pressed() -> void:
 	_cancelled = true
 	if NetworkManager.lobby_state_updated.is_connected(_on_lobby_created):
 		NetworkManager.lobby_state_updated.disconnect(_on_lobby_created)
-	_spawner.kill_child()
+	# Disconnect our own client connection BEFORE killing the server we
+	# spawned, not after -- closing a WebSocket peer tries a graceful close
+	# handshake, which can hang for a bit waiting on a reply from a server
+	# that's already dead if the kill happens first.
 	NetworkManager.disconnect_from_server()
+	_spawner.kill_child()
 	get_tree().change_scene_to_file("res://main/online_menu.tscn")

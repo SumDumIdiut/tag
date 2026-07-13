@@ -102,7 +102,7 @@ func _on_match_state(_tick: int, states: Dictionary) -> void:
 		if not avatars.has(peer_id):
 			continue
 		var s: Dictionary = states[peer_id]
-		avatars[peer_id].set_state(s.pos, s.vel, s.facing, s.is_dashing, s.get("is_climbing", false), s.get("on_floor", true), s.is_it)
+		avatars[peer_id].set_state(s.pos, s.vel, s.facing, s.is_dashing, s.get("is_climbing", false), s.get("on_floor", true), s.get("action", ""), s.get("action_id", 0), s.is_it)
 
 func _on_disconnected() -> void:
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")

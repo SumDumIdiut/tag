@@ -112,6 +112,17 @@ func _on_back_pressed() -> void:
 	_cancelled = true
 	if NetworkManager.lobby_state_updated.is_connected(_on_in_lobby):
 		NetworkManager.lobby_state_updated.disconnect(_on_in_lobby)
-	_spawner.kill_child()
+	# An in-flight HTTPRequest runs its actual I/O on a background thread;
+	# queue_free()ing the node (which change_scene_to_file below does to
+	# this whole screen) while a request is still pending makes the engine
+	# block waiting for that thread to wind down -- freezing the game for
+	# however long the request takes to time out. Cancelling first tells it
+	# to stop immediately instead.
+	_http.cancel_request()
+	# Disconnect our own client connection BEFORE killing any server we
+	# spawned, not after -- closing a WebSocket peer tries a graceful
+	# close handshake, which can hang for a bit waiting on a reply from a
+	# server that's already dead if the kill happens first.
 	NetworkManager.disconnect_from_server()
+	_spawner.kill_child()
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")
