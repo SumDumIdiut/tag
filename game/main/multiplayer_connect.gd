@@ -8,6 +8,12 @@ const UIStyle := preload("res://ui/ui_style.gd")
 @onready var back_button: Button = $VBox/BackButton
 @onready var status_label: Label = $VBox/StatusLabel
 
+# NetworkManager is an autoload -- its signals outlive this screen, so a late
+# lobby_state_updated (from the CONNECT_ONE_SHOT below) can still fire after
+# Back is pressed and pull the player into lobby_room anyway. See
+# quick_play.gd's _cancelled for the full explanation.
+var _cancelled := false
+
 func _ready() -> void:
 	UIStyle.add_background(self)
 	UIStyle.style_button(connect_button, UIStyle.COLOR_ONLINE)
@@ -33,11 +39,24 @@ func _on_connect_pressed() -> void:
 	NetworkManager.start_client(address, display_name)
 
 func _on_connected() -> void:
-	get_tree().change_scene_to_file("res://main/lobby_browser.tscn")
+	if _cancelled:
+		return
+	status_label.text = "Joining match..."
+	NetworkManager.lobby_state_updated.connect(_on_in_lobby, CONNECT_ONE_SHOT)
+	NetworkManager.quick_join_lobby()
+
+func _on_in_lobby(_lobby: Dictionary) -> void:
+	if _cancelled:
+		return
+	get_tree().change_scene_to_file("res://main/lobby_room.tscn")
 
 func _on_connection_failed() -> void:
 	status_label.text = "Couldn't connect. Check the address and try again."
 	connect_button.disabled = false
 
 func _on_back_pressed() -> void:
+	_cancelled = true
+	if NetworkManager.lobby_state_updated.is_connected(_on_in_lobby):
+		NetworkManager.lobby_state_updated.disconnect(_on_in_lobby)
+	NetworkManager.disconnect_from_server()
 	get_tree().change_scene_to_file("res://main/online_menu.tscn")

@@ -50,9 +50,8 @@ func _on_spawn_failed(reason: String) -> void:
 func _on_spawned_and_connected() -> void:
 	if _cancelled:
 		return
-	# Skip lobby_browser's manual create/browse step entirely -- as the host,
-	# there's nothing to browse for and re-typing the server name as a lobby
-	# name too would just be re-doing what this screen already collected.
+	# As the host, there's nothing to browse for -- re-typing the server name
+	# as a lobby name too would just be re-doing what this screen collected.
 	NetworkManager.lobby_state_updated.connect(_on_lobby_created, CONNECT_ONE_SHOT)
 	NetworkManager.create_lobby(_server_name, NetworkManager.MAX_LOBBY_PLAYERS)
 

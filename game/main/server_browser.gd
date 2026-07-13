@@ -16,6 +16,11 @@ var _servers: Array = []
 var _http: HTTPRequest
 var _refresh_timer: Timer
 var _request_in_flight := false
+# NetworkManager is an autoload -- its signals outlive this screen, so a late
+# lobby_state_updated (from the CONNECT_ONE_SHOT below) can still fire after
+# Back is pressed and pull the player into lobby_room anyway. See
+# quick_play.gd's _cancelled for the full explanation.
+var _cancelled := false
 
 func _ready() -> void:
 	UIStyle.add_background(self)
@@ -88,11 +93,25 @@ func _on_connect_pressed() -> void:
 	NetworkManager.start_client(RELAY_JOIN_BASE + str(server.id), username)
 
 func _on_connected() -> void:
-	get_tree().change_scene_to_file("res://main/lobby_browser.tscn")
+	if _cancelled:
+		return
+	status_label.text = "Joining match..."
+	NetworkManager.lobby_state_updated.connect(_on_in_lobby, CONNECT_ONE_SHOT)
+	NetworkManager.quick_join_lobby()
+
+func _on_in_lobby(_lobby: Dictionary) -> void:
+	if _cancelled:
+		return
+	get_tree().change_scene_to_file("res://main/lobby_room.tscn")
 
 func _on_connection_failed() -> void:
 	status_label.text = "Couldn't connect to that server -- it may have gone offline."
 	connect_button.disabled = false
 
 func _on_back_pressed() -> void:
+	_cancelled = true
+	if NetworkManager.lobby_state_updated.is_connected(_on_in_lobby):
+		NetworkManager.lobby_state_updated.disconnect(_on_in_lobby)
+	NetworkManager.disconnect_from_server()
+	_http.cancel_request()
 	get_tree().change_scene_to_file("res://main/online_menu.tscn")
