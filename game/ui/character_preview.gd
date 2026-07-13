@@ -52,3 +52,15 @@ func _ready() -> void:
 		_avatar.camera.global_position = AVATAR_OFFSET + Vector2(0, -20)
 		_avatar.camera.enabled = true
 		_avatar.camera.make_current()
+
+## Overrides one part's texture directly, bypassing SkinCatalog -- used by
+## the Art Tool to preview an in-progress edit live. Pass null to clear the
+## override and let set_skin's own cached texture show again.
+func set_part_override(part_name: String, tex: Texture2D) -> void:
+	if _avatar:
+		_avatar.set_part_texture_override(part_name, tex)
+
+## Same idea, for the hat slot.
+func set_hat_override(tex: Texture2D) -> void:
+	if _avatar:
+		_avatar.set_hat_texture_override(tex)

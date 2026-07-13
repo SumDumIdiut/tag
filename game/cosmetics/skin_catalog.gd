@@ -399,6 +399,45 @@ func paint_hat_template(shape: String) -> Image:
 
 	return img
 
+## Turns an edited template into a real, per-color image: marker regions
+## (base/shade/highlight) get the exact same transform the original
+## procedural painter used (color / darkened / lightened) for pixel-parity
+## with the pre-template look; anything else -- eyes, hat accents, or a
+## friend's own custom paint -- gets a generic multiply tint instead, which
+## keeps already-dark accent colors (eyes, the crown's jewel) visually close
+## to unchanged across every skin color while still giving a friend's own
+## additions a reasonable per-skin recolor rather than staying frozen in
+## whatever color they drew. Shared by tools/bake_character_art.gd (the CI
+## bake step) and the Art Tool's live preview panel, so both use identical
+## math.
+func tint_template(template: Image, color: Color, shade_amount: float, highlight_amount: float) -> Image:
+	var w := template.get_width()
+	var h := template.get_height()
+	var out := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	var shade := color.darkened(shade_amount)
+	var highlight := color.lightened(highlight_amount)
+	const TOLERANCE := 0.05
+	for y in h:
+		for x in w:
+			var px := template.get_pixel(x, y)
+			if px.a <= 0.001:
+				continue
+			var out_color: Color
+			if _color_close(px, TEMPLATE_BASE, TOLERANCE):
+				out_color = color
+			elif _color_close(px, TEMPLATE_SHADE, TOLERANCE):
+				out_color = shade
+			elif _color_close(px, TEMPLATE_HIGHLIGHT, TOLERANCE):
+				out_color = highlight
+			else:
+				out_color = Color(px.r * color.r, px.g * color.g, px.b * color.b, 1.0)
+			out_color.a = px.a
+			out.set_pixel(x, y, out_color)
+	return out
+
+func _color_close(a: Color, b: Color, tolerance: float) -> bool:
+	return absf(a.r - b.r) < tolerance and absf(a.g - b.g) < tolerance and absf(a.b - b.b) < tolerance
+
 func _fill_rect(img: Image, x0: int, y0: int, x1: int, y1: int, color: Color) -> void:
 	for y in range(maxi(y0, 0), mini(y1, img.get_height())):
 		for x in range(maxi(x0, 0), mini(x1, img.get_width())):

@@ -8,6 +8,7 @@
 # Godot's local import/cache metadata -- regenerated automatically, machine-
 # specific, not meant to be versioned.
 /game/.godot/
+*.import
 
 # relay-server's npm dependencies -- reinstalled by install.sh, not versioned.
 /relay-server/node_modules/
