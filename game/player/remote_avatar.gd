@@ -46,6 +46,10 @@ var target_velocity: Vector2 = Vector2.ZERO
 var target_facing: int = 1
 var _time_since_update := 0.0
 var _was_it := false
+# Mirrors Player.ONE_SHOT_ANIMS/_last_played_action_id -- see player.gd's
+# comment on current_action_id for why this compares ids, not strings.
+const ONE_SHOT_ANIMS := ["tag_reaction", "dash_jump", "wall_jump", "super_wall_jump", "diagonal_wall_jump"]
+var _last_played_action_id := 0
 
 func _ready() -> void:
 	if name_label:
@@ -95,7 +99,7 @@ func set_hat(hat_id: String) -> void:
 	if tex:
 		_hat.texture = tex
 
-func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_climbing: bool, on_floor: bool, is_it: bool) -> void:
+func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_climbing: bool, on_floor: bool, action: String, action_id: int, is_it: bool) -> void:
 	target_position = pos
 	target_velocity = vel
 	target_facing = facing
@@ -113,14 +117,25 @@ func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_cli
 	if is_it and not _was_it:
 		_play_anim("tag_reaction")
 	_was_it = is_it
-	_update_locomotion_anim(vel, is_dashing, is_climbing, on_floor)
+	_update_locomotion_anim(vel, is_dashing, is_climbing, on_floor, action, action_id)
 
-## Same idle/walk/jump/fall/dash/climb selection as
-## Player._update_locomotion_anim, but driven by the last reported network
-## state instead of local physics -- a RemoteAvatar never simulates
-## movement itself.
-func _update_locomotion_anim(vel: Vector2, is_dashing: bool, is_climbing: bool, on_floor: bool) -> void:
-	if not _anim_player or _anim_player.current_animation == "tag_reaction" and _anim_player.is_playing():
+## Same selection as Player._update_locomotion_anim, but driven by the last
+## reported network state instead of local physics -- a RemoteAvatar never
+## simulates movement itself. `action`/`action_id` are the wall-jump/
+## dash-jump one-shots (see player.gd) -- id comparison, not the "id != 0"
+## a rising-edge check might suggest, since action_id starts at 0 on a
+## freshly spawned Player and _last_played_action_id also starts at 0; the
+## first real trigger still correctly reads as "new" because it bumps the
+## id to 1 before this ever compares them.
+func _update_locomotion_anim(vel: Vector2, is_dashing: bool, is_climbing: bool, on_floor: bool, action: String, action_id: int) -> void:
+	if not _anim_player:
+		return
+	if _anim_player.is_playing() and _anim_player.current_animation in ONE_SHOT_ANIMS:
+		return
+	if action_id != _last_played_action_id:
+		_last_played_action_id = action_id
+		_anim_player.speed_scale = 1.0
+		_anim_player.play(action)
 		return
 	if is_dashing:
 		_anim_player.speed_scale = 1.0

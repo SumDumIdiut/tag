@@ -105,6 +105,12 @@ func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary) -> void:
 
 func _on_back_pressed() -> void:
 	_cancelled = true
-	_spawner.kill_child()
+	# See quick_play.gd's _on_back_pressed for why both of these matter:
+	# an in-flight HTTPRequest blocks the engine on its background I/O
+	# thread when freed mid-request, and disconnecting our own connection
+	# before (not after) killing any server we spawned avoids a graceful
+	# close handshake hanging against an already-dead server.
+	_http.cancel_request()
 	NetworkManager.disconnect_from_server()
+	_spawner.kill_child()
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")

@@ -55,6 +55,7 @@ offset = Vector2(-9, -18)
 libraries = {
 "": ExtResource("2")
 }
+playback_default_blend_time = 0.08
 
 [node name="Camera2D" type="Camera2D" parent="."]
 enabled = false

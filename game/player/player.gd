@@ -174,6 +174,27 @@ const TAG_IT_COLOR := Color(1.0, 0.85, 0.1, 1.0)
 const WALK_ANIM_MIN_SPEED_SCALE := 0.4
 const WALK_ANIM_MAX_SPEED_SCALE := 2.0
 
+# One-shot move animations, distinct from the continuous idle/walk/jump/
+# fall/dash/climb state loops -- these play once when a specific move tech
+# fires (a wall jump, a dash-jump cancel, ...) and don't loop. `current_action`
+# is never cleared back to "" -- it always holds the most recently triggered
+# action, and both the local playback below and RemoteAvatar (over the
+# network, see server_match.gd's state dict) detect a fresh trigger by
+# comparing `current_action_id` against the last id they actually played,
+# not by string content. That makes this robust to the SAME action firing
+# twice in a row (e.g. rapid wall-jumping) and to state updates arriving over
+# an unreliable channel -- any later update still carries the correct
+# not-yet-consumed id, so a dropped packet just delays the animation instead
+# of losing the trigger entirely.
+const ONE_SHOT_ANIMS := ["tag_reaction", "dash_jump", "wall_jump", "super_wall_jump", "diagonal_wall_jump"]
+var current_action := ""
+var current_action_id := 0
+var _last_played_action_id := 0
+
+func _trigger_action(action_name: String) -> void:
+	current_action = action_name
+	current_action_id += 1
+
 func _ready() -> void:
 	if _visual:
 		# Sensible default until set_skin() overrides it with a specific
@@ -261,15 +282,22 @@ func _process(delta: float) -> void:
 
 	_update_locomotion_anim(on_floor_now)
 
-## Picks among every movement animation -- dash and climb take priority
-## (they're deliberate player actions), then airborne jump/fall (split by
-## vertical velocity sign), then grounded walk/idle. speed_scale on walk
-## ties the cycle's cadence to actual run speed instead of a fixed loop, so
-## sprinting doesn't look like a slow moonwalk. Doesn't touch tag_reaction,
-## a one-shot triggered separately by set_tagged_it -- if it's still playing
-## this just leaves it alone rather than stomping it every frame.
+## Picks among every movement animation. A freshly-triggered one-shot move
+## (wall jump, dash jump, ...) takes top priority and plays once; while one
+## of those (or tag_reaction) is still playing, nothing here overrides it.
+## Otherwise: dash and climb (deliberate player actions), then airborne
+## jump/fall (split by vertical velocity sign), then grounded walk/idle.
+## speed_scale on walk ties the cycle's cadence to actual run speed instead
+## of a fixed loop, so sprinting doesn't look like a slow moonwalk.
 func _update_locomotion_anim(on_floor_now: bool) -> void:
-	if not _anim_player or _anim_player.current_animation == "tag_reaction" and _anim_player.is_playing():
+	if not _anim_player:
+		return
+	if _anim_player.is_playing() and _anim_player.current_animation in ONE_SHOT_ANIMS:
+		return
+	if current_action_id != _last_played_action_id:
+		_last_played_action_id = current_action_id
+		_anim_player.speed_scale = 1.0
+		_anim_player.play(current_action)
 		return
 	if is_dashing:
 		_anim_player.speed_scale = 1.0
@@ -455,11 +483,14 @@ func _process_jump(on_floor: bool, wall_jump_normal: Vector2, move_dir: Vector2)
 		# deliberate redirect off a surface, so overriding prior momentum is
 		# correct there.)
 		var kick := WALL_JUMP_VELOCITY
+		var action := "wall_jump"
 		if dash_jump_grace_timer > 0.0:
 			kick = _dash_wall_jump_kick()
+			action = _dash_wall_kick_action()
 			_carry_pre_dash_speed()
 		dash_jump_grace_timer = 0.0
 		_wall_jump(wall_jump_normal.x, kick)
+		_trigger_action(action)
 		jump_buffer_timer = 0.0
 	elif double_jump_available:
 		# Deliberately does NOT touch speed_boost_active/landed_grace_timer --
@@ -624,6 +655,7 @@ func _try_dash_jump_boost() -> void:
 		# on top of it either.
 		velocity.x = _speed_floor(velocity.x, signf(dash_direction.x), DASH_JUMP_SPEED)
 		speed_boost_active = true
+	_trigger_action("dash_jump")
 
 ## Jump pressed WHILE still dashing: cuts the dash short right there and
 ## converts it straight into a jump, boosting horizontal speed up to
@@ -652,9 +684,12 @@ func _dash_jump_cancel(wall_jump_normal: Vector2) -> void:
 		velocity.y = JUMP_VELOCITY
 		_start_jump_hold(JUMP_VELOCITY)
 		coyote_timer = 0.0
+		_trigger_action("dash_jump")
 	elif wall_jump_normal != Vector2.ZERO:
 		_carry_pre_dash_speed()
+		var action := _dash_wall_kick_action()
 		_wall_jump(wall_jump_normal.x, _dash_wall_jump_kick())
+		_trigger_action(action)
 
 ## Shared by both dash-jump trigger paths (mid-dash-cancel and post-dash
 ## grace window) for the wall case, based on how steep the dash was:
@@ -678,6 +713,18 @@ func _dash_wall_jump_kick() -> Vector2:
 	if dash_direction.y < DIAGONAL_DASH_Y_THRESHOLD:
 		return Vector2(absf(dash_direction.x) * DASH_SPEED, dash_direction.y * DASH_SPEED)
 	return SUPER_WALL_JUMP_VELOCITY
+
+## Which one-shot animation a dash-derived wall kick should play -- mirrors
+## _dash_wall_jump_kick()'s own branching one-for-one, just mapped to a name
+## instead of a velocity. The steep/up-dash case reads as "diagonal" too
+## (both are a reflected/redirected kick, not the full straight-on boost the
+## flat case gets), matching the 3 named wall-jump types (regular, super,
+## diagonal) instead of a 4th rare variant nobody would tell apart at a
+## glance.
+func _dash_wall_kick_action() -> String:
+	if dash_direction.y < DIAGONAL_DASH_Y_THRESHOLD:
+		return "diagonal_wall_jump"
+	return "super_wall_jump"
 
 func _start_dash(move_dir: Vector2) -> void:
 	var dir := move_dir
