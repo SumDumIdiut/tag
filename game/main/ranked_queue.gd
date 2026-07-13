@@ -16,6 +16,12 @@ const RELAY_JOIN_BASE := "wss://codecade.co.za/tag/relay/join/"
 var _http: HTTPRequest
 var _spawner: LocalServerSpawner
 var _username := ""
+# NetworkManager is an autoload -- its signals outlive this screen, so a
+# match_started (or a late directory/connect response) can still fire after
+# Cancel is pressed and yank the player into a match anyway. Every async
+# callback below checks this first. See quick_play.gd's _cancelled for the
+# full explanation (same bug class, found and fixed there first).
+var _cancelled := false
 
 func _ready() -> void:
 	back_button.pressed.connect(_on_back_pressed)
@@ -42,6 +48,8 @@ func _ready() -> void:
 		_host_new_ranked_server()
 
 func _on_directory_response(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if _cancelled:
+		return
 	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
 		_host_new_ranked_server()
 		return
@@ -65,20 +73,30 @@ func _on_directory_response(result: int, response_code: int, _headers: PackedStr
 	NetworkManager.start_client(RELAY_JOIN_BASE + str(best.id), _username)
 
 func _on_join_existing_failed() -> void:
+	if _cancelled:
+		return
 	status_label.text = "That server just went offline -- hosting a new one instead..."
 	_host_new_ranked_server()
 
 func _host_new_ranked_server() -> void:
+	if _cancelled:
+		return
 	status_label.text = "No open ranked matches -- starting one..."
 	_spawner.spawn("%s's Ranked Match" % _username, _username, ["--ranked"])
 
 func _on_spawn_failed(reason: String) -> void:
+	if _cancelled:
+		return
 	status_label.text = reason
 
 func _on_connected() -> void:
+	if _cancelled:
+		return
 	status_label.text = "Waiting for more players..."
 
 func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary) -> void:
+	if _cancelled:
+		return
 	var scene := MATCH_INTRO_SCENE.instantiate()
 	scene.setup(my_id, roster)
 	get_tree().root.add_child(scene)
@@ -86,5 +104,7 @@ func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary) -> void:
 	get_tree().current_scene = scene
 
 func _on_back_pressed() -> void:
+	_cancelled = true
 	_spawner.kill_child()
+	NetworkManager.disconnect_from_server()
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")

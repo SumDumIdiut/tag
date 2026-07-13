@@ -16,6 +16,15 @@ const RELAY_JOIN_BASE := "wss://codecade.co.za/tag/relay/join/"
 var _http: HTTPRequest
 var _spawner: LocalServerSpawner
 var _username := ""
+# NetworkManager is an autoload -- its signals outlive this screen. A
+# CONNECT_ONE_SHOT hookup made right before an RPC round-trip (see
+# _on_connected) can still be pending when Cancel is pressed; if the
+# server's reply arrives in that window, the callback fires anyway and
+# calls change_scene_to_file to lobby_room, stomping the "back to main
+# menu" change Cancel just queued (the outgoing scene isn't actually freed
+# until end-of-frame, so it's still very much alive to receive that late
+# signal). Every async callback below checks this first.
+var _cancelled := false
 
 func _ready() -> void:
 	back_button.pressed.connect(_on_back_pressed)
@@ -39,6 +48,8 @@ func _ready() -> void:
 		_host_new_match()
 
 func _on_directory_response(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if _cancelled:
+		return
 	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
 		_host_new_match()
 		return
@@ -60,31 +71,47 @@ func _on_directory_response(result: int, response_code: int, _headers: PackedStr
 	NetworkManager.start_client(RELAY_JOIN_BASE + str(best.id), _username)
 
 func _on_join_existing_failed() -> void:
+	if _cancelled:
+		return
 	# Only relevant while we're mid quick-play attempt -- once safely into a
 	# lobby this screen is gone and no longer listening.
 	status_label.text = "That server just went offline -- hosting a new one instead..."
 	_host_new_match()
 
 func _on_connected_to_existing_server() -> void:
+	if _cancelled:
+		return
 	status_label.text = "Joining match..."
 	NetworkManager.lobby_state_updated.connect(_on_in_lobby, CONNECT_ONE_SHOT)
 	NetworkManager.quick_join_lobby()
 
 func _host_new_match() -> void:
+	if _cancelled:
+		return
 	status_label.text = "No open servers -- starting one..."
 	_spawner.spawn("%s's Match" % _username, _username)
 
 func _on_spawn_failed(reason: String) -> void:
+	if _cancelled:
+		return
 	status_label.text = reason
 
 func _on_connected_to_own_host() -> void:
+	if _cancelled:
+		return
 	status_label.text = "Waiting for players..."
 	NetworkManager.lobby_state_updated.connect(_on_in_lobby, CONNECT_ONE_SHOT)
 	NetworkManager.quick_join_lobby()
 
 func _on_in_lobby(_lobby: Dictionary) -> void:
+	if _cancelled:
+		return
 	get_tree().change_scene_to_file("res://main/lobby_room.tscn")
 
 func _on_back_pressed() -> void:
+	_cancelled = true
+	if NetworkManager.lobby_state_updated.is_connected(_on_in_lobby):
+		NetworkManager.lobby_state_updated.disconnect(_on_in_lobby)
 	_spawner.kill_child()
+	NetworkManager.disconnect_from_server()
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")

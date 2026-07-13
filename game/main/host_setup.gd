@@ -8,6 +8,11 @@ extends Control
 
 var _spawner: LocalServerSpawner
 var _server_name := "Someone's Server"
+# NetworkManager is an autoload -- its signals outlive this screen, so a
+# late lobby_state_updated (from the CONNECT_ONE_SHOT below) can still fire
+# after Back is pressed and pull the player into lobby_room anyway. See
+# quick_play.gd's _cancelled for the full explanation.
+var _cancelled := false
 
 func _ready() -> void:
 	username_edit.text = GameSettings.saved_username
@@ -31,10 +36,14 @@ func _on_host_pressed() -> void:
 	_spawner.spawn(_server_name, username)
 
 func _on_spawn_failed(reason: String) -> void:
+	if _cancelled:
+		return
 	status_label.text = reason
 	host_button.disabled = false
 
 func _on_spawned_and_connected() -> void:
+	if _cancelled:
+		return
 	# Skip lobby_browser's manual create/browse step entirely -- as the host,
 	# there's nothing to browse for and re-typing the server name as a lobby
 	# name too would just be re-doing what this screen already collected.
@@ -42,8 +51,14 @@ func _on_spawned_and_connected() -> void:
 	NetworkManager.create_lobby(_server_name, NetworkManager.MAX_LOBBY_PLAYERS)
 
 func _on_lobby_created(_lobby: Dictionary) -> void:
+	if _cancelled:
+		return
 	get_tree().change_scene_to_file("res://main/lobby_room.tscn")
 
 func _on_back_pressed() -> void:
+	_cancelled = true
+	if NetworkManager.lobby_state_updated.is_connected(_on_lobby_created):
+		NetworkManager.lobby_state_updated.disconnect(_on_lobby_created)
 	_spawner.kill_child()
+	NetworkManager.disconnect_from_server()
 	get_tree().change_scene_to_file("res://main/online_menu.tscn")
