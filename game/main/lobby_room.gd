@@ -54,7 +54,8 @@ func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary) -> void:
 
 func _on_leave_pressed() -> void:
 	NetworkManager.leave_lobby()
-	get_tree().change_scene_to_file("res://main/lobby_browser.tscn")
+	NetworkManager.disconnect_from_server()
+	get_tree().change_scene_to_file("res://main/online_menu.tscn")
 
 func _on_disconnected() -> void:
 	get_tree().change_scene_to_file("res://main/online_menu.tscn")
