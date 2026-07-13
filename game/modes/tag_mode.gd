@@ -11,19 +11,40 @@ const TAG_DISTANCE := 40.0
 # tag's immunity window expires, since they never actually separated.
 const REPEL_CONTACT_THRESHOLD_SEC := 3.0
 
+const DEFAULT_ROUND_DURATION_SEC := 180.0
+
 signal it_changed(new_it: Node)
+## Fires once, when a ranked round's timer runs out -- never fires for a
+## casual (non-ranked) match, which stays the endless hot-potato it's always
+## been. server_match.gd uses this as the hook to rank participants and
+## report a result.
+signal round_ended
 
 var participants: Array = []
 var it_index: int = -1
 var immunity_timer := 0.0
 var _contact_timers := {} # "instance_id_a_instance_id_b" (a < b) -> seconds in continuous contact
 
-func setup(all_participants: Array, initial_it_index: int) -> void:
+var ranked := false
+var round_timer := 0.0
+var it_time := {} # participant instance_id -> accumulated seconds spent as "it"
+var _round_over := false
+
+func setup(all_participants: Array, initial_it_index: int, p_ranked: bool = false, p_round_duration: float = DEFAULT_ROUND_DURATION_SEC) -> void:
 	participants = all_participants
 	it_index = initial_it_index
 	immunity_timer = IMMUNITY_TIME
+	ranked = p_ranked
+	round_timer = p_round_duration
+	for p in participants:
+		it_time[p.get_instance_id()] = 0.0
 	_apply_it_color()
 	it_changed.emit(get_it())
+
+## Total time this participant has spent as "it" so far this round -- what a
+## ranked round's end-of-match placement is sorted by (least = best).
+func get_it_time(p: Node) -> float:
+	return it_time.get(p.get_instance_id(), 0.0)
 
 func get_it() -> Node:
 	if it_index < 0 or it_index >= participants.size():
@@ -46,6 +67,7 @@ func remove_participant(p: Node) -> void:
 	for key in _contact_timers.keys().duplicate():
 		if str(removed_id) in String(key).split("_"):
 			_contact_timers.erase(key)
+	it_time.erase(removed_id)
 	if participants.is_empty():
 		it_index = -1
 		return
@@ -77,6 +99,13 @@ func _physics_process(delta: float) -> void:
 	immunity_timer = maxf(immunity_timer - delta, 0.0)
 	_update_contact_repel(delta)
 	var it := get_it()
+	if it:
+		it_time[it.get_instance_id()] = it_time.get(it.get_instance_id(), 0.0) + delta
+	if ranked and not _round_over:
+		round_timer = maxf(round_timer - delta, 0.0)
+		if round_timer <= 0.0:
+			_round_over = true
+			round_ended.emit()
 	if it == null or immunity_timer > 0.0:
 		return
 	for i in participants.size():

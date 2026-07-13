@@ -11,24 +11,32 @@ signal lobby_list_updated(lobbies: Array)
 signal lobby_state_updated(lobby: Dictionary)
 signal match_started(lobby_id: int, my_peer_id: int, roster: Dictionary)
 signal match_state_received(tick: int, states: Dictionary)
+## Fires once on every peer when a ranked round's timer runs out. `ranking`
+## is [{peer_id, username, it_time, place}], sorted best (place 1) first.
+signal match_ended(ranking: Array)
 signal connected_to_server
 signal connection_failed
 signal disconnected_from_server
 
 const DEFAULT_PORT := 9000
 const MAX_LOBBY_PLAYERS := 8
+const MIN_RANKED_PLAYERS := 2
+const RANKED_REPORT_URL := "https://codecade.co.za/tag/api/ranked/report-result"
 
 var is_server := false
+var is_ranked_server := false # set by server_main.gd from --ranked; auto-lobbies/starts ranked rounds instead of waiting for manual create/join/Start
 var username := "Player"
 var my_peer_id := -1
 var current_lobby: Dictionary = {}
 
 # ---- Server-side state only ----
-var _lobbies := {}       # lobby_id -> {id, name, host_peer, max_players, members: {peer_id: {username, ready}}, in_match}
+var _lobbies := {}       # lobby_id -> {id, name, host_peer, max_players, members: {peer_id: {username, ready}}, in_match, ranked}
 var _next_lobby_id := 1
+var _ranked_lobby_id := -1 # the single reserved lobby a ranked server auto-fills, recreated after each round
 var _peer_username := {} # peer_id -> String
 var _peer_skin_id := {}  # peer_id -> String
 var _peer_hat_id := {}   # peer_id -> String, "" means no hat
+var _peer_client_id := {} # peer_id -> String, the anonymous cosmetics/ranked identity -- server-side only, never broadcast to other clients
 var _peer_lobby := {}    # peer_id -> lobby_id
 var _matches := {}       # lobby_id -> ServerMatch
 
@@ -101,7 +109,7 @@ func disconnect_from_server() -> void:
 
 func _on_connected_to_server() -> void:
 	my_peer_id = multiplayer.get_unique_id()
-	rpc_id(1, "_server_register_player", username, SkinCatalog.selected_skin_id, SkinCatalog.selected_hat_id)
+	rpc_id(1, "_server_register_player", username, SkinCatalog.selected_skin_id, SkinCatalog.selected_hat_id, SkinCatalog.client_id)
 	connected_to_server.emit()
 
 func _on_connection_failed() -> void:
@@ -116,6 +124,7 @@ func _on_peer_disconnected(id: int) -> void:
 	_peer_username.erase(id)
 	_peer_skin_id.erase(id)
 	_peer_hat_id.erase(id)
+	_peer_client_id.erase(id)
 	var lobby_id: int = _peer_lobby.get(id, -1)
 	if lobby_id != -1:
 		_remove_peer_from_lobby(id, lobby_id)
@@ -124,7 +133,7 @@ func _on_peer_disconnected(id: int) -> void:
 # ==================== Server-side RPC endpoints (client -> server) ====================
 
 @rpc("any_peer", "reliable")
-func _server_register_player(display_name: String, skin_id: String, hat_id: String = "") -> void:
+func _server_register_player(display_name: String, skin_id: String, hat_id: String = "", client_id: String = "") -> void:
 	if not is_server:
 		return
 	var sender := multiplayer.get_remote_sender_id()
@@ -136,7 +145,11 @@ func _server_register_player(display_name: String, skin_id: String, hat_id: Stri
 	# peer-to-peer relay.
 	_peer_skin_id[sender] = skin_id
 	_peer_hat_id[sender] = hat_id
-	_send_lobby_list(sender)
+	_peer_client_id[sender] = client_id
+	if is_ranked_server:
+		_join_ranked_lobby(sender)
+	else:
+		_send_lobby_list(sender)
 
 func _sanitize_username(raw: String) -> String:
 	var trimmed := raw.strip_edges()
@@ -262,13 +275,40 @@ func _server_start_match() -> void:
 	var lobby: Dictionary = _lobbies[lobby_id]
 	if lobby.host_peer != sender or lobby.in_match or lobby.members.is_empty():
 		return
+	_start_match_for_lobby(lobby_id, false)
+
+## A ranked server has no manual lobby-naming/browsing/Ready/Start step --
+## everyone who connects is auto-added to the one reserved ranked lobby
+## (recreated fresh after each round, see notify_match_ended), and the round
+## auto-starts as soon as MIN_RANKED_PLAYERS are in it.
+func _join_ranked_lobby(sender: int) -> void:
+	if _ranked_lobby_id == -1 or not _lobbies.has(_ranked_lobby_id) or _lobbies[_ranked_lobby_id].in_match:
+		_ranked_lobby_id = _next_lobby_id
+		_next_lobby_id += 1
+		_lobbies[_ranked_lobby_id] = {
+			"id": _ranked_lobby_id, "name": "Ranked Match", "host_peer": sender,
+			"max_players": MAX_LOBBY_PLAYERS, "members": {}, "in_match": false, "ranked": true,
+		}
+	var lobby: Dictionary = _lobbies[_ranked_lobby_id]
+	if lobby.members.size() >= lobby.max_players:
+		return # full -- rare, the directory listing should already hide a full ranked server from new searches
+	lobby.members[sender] = {"username": _peer_username.get(sender, "Player"), "ready": true}
+	_peer_lobby[sender] = _ranked_lobby_id
+	_broadcast_lobby_list()
+	_send_lobby_state(_ranked_lobby_id)
+	if lobby.members.size() >= MIN_RANKED_PLAYERS:
+		_start_match_for_lobby(_ranked_lobby_id, true)
+
+func _start_match_for_lobby(lobby_id: int, ranked: bool) -> void:
+	var lobby: Dictionary = _lobbies[lobby_id]
 	lobby.in_match = true
 	_broadcast_lobby_list()
-	var members_with_skins: Dictionary = lobby.members.duplicate(true)
-	for peer_id in members_with_skins.keys():
-		members_with_skins[peer_id]["skin_id"] = _peer_skin_id.get(peer_id, "red")
-		members_with_skins[peer_id]["hat_id"] = _peer_hat_id.get(peer_id, "")
-	var match_instance := ServerMatch.new(self, lobby_id, members_with_skins)
+	var members_with_extras: Dictionary = lobby.members.duplicate(true)
+	for peer_id in members_with_extras.keys():
+		members_with_extras[peer_id]["skin_id"] = _peer_skin_id.get(peer_id, "red")
+		members_with_extras[peer_id]["hat_id"] = _peer_hat_id.get(peer_id, "")
+		members_with_extras[peer_id]["client_id"] = _peer_client_id.get(peer_id, "")
+	var match_instance := ServerMatch.new(self, lobby_id, members_with_extras, ranked)
 	add_child(match_instance)
 	_matches[lobby_id] = match_instance
 
@@ -318,6 +358,40 @@ func notify_match_started(lobby_id: int, roster: Dictionary) -> void:
 func push_match_state(peer_id: int, tick: int, states: Dictionary) -> void:
 	rpc_id(peer_id, "_client_receive_match_state", tick, states)
 
+## Called by ServerMatch once a ranked round's timer runs out. A ranked
+## round is a one-shot -- there's no "return to the same lobby for another
+## round" the way casual play works, so this tears the match/lobby down
+## the same way a fully-emptied one would, after fanning the result out and
+## reporting it to the relay for ELO.
+func notify_match_ended(lobby_id: int, ranking: Array) -> void:
+	for entry in ranking:
+		rpc_id(entry.peer_id, "_client_match_ended", ranking)
+		_peer_lobby.erase(entry.peer_id)
+	_report_ranked_result(ranking)
+	if _matches.has(lobby_id):
+		_matches[lobby_id].teardown()
+		_matches.erase(lobby_id)
+	if _lobbies.has(lobby_id):
+		_lobbies.erase(lobby_id)
+	if lobby_id == _ranked_lobby_id:
+		_ranked_lobby_id = -1
+	_broadcast_lobby_list()
+
+func _report_ranked_result(ranking: Array) -> void:
+	var results := []
+	for entry in ranking:
+		var client_id: String = entry.get("client_id", "")
+		if client_id.is_empty():
+			continue # no persistent identity to credit -- shouldn't happen for a real client, but don't let one bad entry crash the report
+		results.append({"clientId": client_id, "itTime": entry.it_time, "place": entry.place})
+	if results.is_empty():
+		return
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(_r, _c, _h, _b): req.queue_free())
+	var body := JSON.stringify({"results": results})
+	req.request(RANKED_REPORT_URL, ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
+
 # ==================== Client-side RPC endpoints (server -> client) ====================
 
 @rpc("authority", "reliable")
@@ -337,6 +411,10 @@ func _client_match_started(lobby_id: int, my_id: int, roster: Dictionary) -> voi
 @rpc("authority", "unreliable_ordered")
 func _client_receive_match_state(tick: int, states: Dictionary) -> void:
 	match_state_received.emit(tick, states)
+
+@rpc("authority", "reliable")
+func _client_match_ended(ranking: Array) -> void:
+	match_ended.emit(ranking)
 
 # ==================== Client-facing API (called by UI) ====================
 
