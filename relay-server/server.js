@@ -55,10 +55,13 @@ const PART_DIMENSIONS = {
   left_leg: { width: 4, height: 11 },
   right_leg: { width: 4, height: 11 },
 };
-// Hats reuse the head canvas's dimensions -- keeps the drawing tool's tile
-// size uniform across all 7 paintable slots instead of introducing a
-// one-off size nobody else uses.
-const HAT_DIMENSIONS = PART_DIMENSIONS.head;
+// Taller than the head's own crop -- the head circle touches all four
+// edges of its 18x18 canvas, so a hat confined to that same box has no
+// actual headroom and just overlaps the face. The extra height lets a hat
+// stick up above the head's silhouette; only its bottom rows are meant to
+// overlap the head at all (see skin_catalog.gd's HAT_OVERLAP comment on
+// the client, which this must stay in sync with).
+const HAT_DIMENSIONS = { width: 18, height: 16 };
 const MAX_CUSTOM_SKINS_PER_CLIENT = 5;
 const MAX_HATS_PER_CLIENT = 5;
 const MAX_UPLOAD_BYTES = 100 * 1024; // generous over what a handful of tiny PNGs actually need -- just an abuse backstop

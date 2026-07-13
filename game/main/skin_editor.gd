@@ -57,7 +57,7 @@ func _ready() -> void:
 		name_edit.text = "My Skin"
 		upload_button.text = "Upload Skin"
 	else:
-		_images["hat"] = _blank_image(SkinCatalog.PART_DEFS["head"].rect.size)
+		_images["hat"] = _blank_image(Vector2i(SkinCatalog.HAT_WIDTH, SkinCatalog.HAT_HEIGHT))
 		part_tabs.visible = false
 		_show_part("hat")
 		name_edit.text = "My Hat"
