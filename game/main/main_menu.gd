@@ -3,6 +3,8 @@ extends Control
 const ModeIconScene := preload("res://ui/mode_icon.gd")
 const CharacterPreviewScene := preload("res://ui/character_preview.gd")
 const UIStyle := preload("res://ui/ui_style.gd")
+const UpdateCheckerScript := preload("res://net/update_checker.gd")
+const UpdatePromptScene := preload("res://ui/update_prompt.gd")
 
 # Three top-level destinations, each fanning out to its own related
 # sub-screens instead of a flat list of five unrelated modes: ONLINE now
@@ -28,6 +30,20 @@ func _ready() -> void:
 	for mode in MODES:
 		mode_bar.add_child(_build_bar(mode))
 	_build_shop_button()
+	_check_for_update()
+
+func _check_for_update() -> void:
+	var checker := UpdateCheckerScript.new("Tag.exe")
+	add_child(checker)
+	checker.check_completed.connect(_on_update_check_completed)
+	checker.check()
+
+func _on_update_check_completed(result: Dictionary) -> void:
+	if not result.get("available", false):
+		return
+	var prompt := UpdatePromptScene.new()
+	add_child(prompt)
+	prompt.setup(result.version, result.download_url)
 
 func _build_bar(mode: Dictionary) -> Button:
 	var color: Color = mode["color"]

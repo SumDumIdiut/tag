@@ -44,6 +44,16 @@ jobs:
         shell: pwsh
         run: .\godot.exe --headless --path game res://tools/bake_character_art.tscn
 
+      # Stamps this run's number into build_version.gd (committed as 0, i.e.
+      # "dev build") -- UpdateChecker compares a running client's own
+      # BUILD_NUMBER against the numeric suffix of the latest GitHub Release
+      # tag ("build-<run number>", set below in "Publish build as a
+      # release"), so the two need to always match up.
+      - name: Stamp build version
+        shell: pwsh
+        run: |
+          (Get-Content game\build_version.gd) -replace 'const BUILD_NUMBER := 0', "const BUILD_NUMBER := $($env:GITHUB_RUN_NUMBER)" | Set-Content game\build_version.gd
+
       - name: Create builds directory
         shell: pwsh
         run: New-Item -ItemType Directory -Force -Path builds
