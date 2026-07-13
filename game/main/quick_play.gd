@@ -134,7 +134,7 @@ func _on_back_pressed() -> void:
 	# server that's already dead if the kill happens first.
 	NetworkManager.disconnect_from_server()
 	_spawner.kill_child()
-	get_tree().change_scene_to_file("res://main/main_menu.tscn")
+	get_tree().change_scene_to_file("res://main/online_menu.tscn")
 
 ## A small pulsing bolt icon over the status text -- makes the wait feel
 ## alive instead of a static label, matching the Quick Play bar's own icon

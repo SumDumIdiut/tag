@@ -122,7 +122,7 @@ func _on_back_pressed() -> void:
 	_http.cancel_request()
 	NetworkManager.disconnect_from_server()
 	_spawner.kill_child()
-	get_tree().change_scene_to_file("res://main/main_menu.tscn")
+	get_tree().change_scene_to_file("res://main/online_menu.tscn")
 
 ## A small pulsing star icon over the status text, matching the Ranked
 ## bar's own icon/color from the main menu.

@@ -57,4 +57,4 @@ func _on_leave_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/lobby_browser.tscn")
 
 func _on_disconnected() -> void:
-	get_tree().change_scene_to_file("res://main/main_menu.tscn")
+	get_tree().change_scene_to_file("res://main/online_menu.tscn")

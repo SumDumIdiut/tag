@@ -57,5 +57,27 @@ func _draw() -> void:
 				pts[i] = pts[i] * s
 			draw_colored_polygon(pts, icon_color)
 			draw_circle(Vector2(0.5, 0.34) * s, s.x * 0.07, icon_color.darkened(0.6))
+		"box":
+			# An isometric crate -- three shaded quads (top/left/right faces)
+			# read as a single 3D box at a glance, standing in for "a place
+			# to play around/test things" the way a physical sandbox would.
+			var top := PackedVector2Array([
+				Vector2(0.5, 0.05), Vector2(0.85, 0.25), Vector2(0.5, 0.45), Vector2(0.15, 0.25),
+			])
+			var left := PackedVector2Array([
+				Vector2(0.15, 0.25), Vector2(0.5, 0.45), Vector2(0.5, 0.92), Vector2(0.15, 0.72),
+			])
+			var right := PackedVector2Array([
+				Vector2(0.85, 0.25), Vector2(0.5, 0.45), Vector2(0.5, 0.92), Vector2(0.85, 0.72),
+			])
+			for i in top.size():
+				top[i] *= s
+			for i in left.size():
+				left[i] *= s
+			for i in right.size():
+				right[i] *= s
+			draw_colored_polygon(top, icon_color.lightened(0.25))
+			draw_colored_polygon(left, icon_color.darkened(0.15))
+			draw_colored_polygon(right, icon_color.darkened(0.35))
 		_:
 			draw_circle(c, s.x * 0.4, icon_color)
