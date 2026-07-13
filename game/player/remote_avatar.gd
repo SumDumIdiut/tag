@@ -108,6 +108,18 @@ func set_hat(hat_id: String) -> void:
 	if tex:
 		_hat.texture = tex
 
+## Directly overrides one part's texture, bypassing SkinCatalog entirely --
+## used by the Art Tool (tools/art_tool.gd) to preview an in-progress edit
+## that hasn't been baked/uploaded anywhere yet. No-ops for an unknown part.
+func set_part_texture_override(part_name: String, tex: Texture2D) -> void:
+	if _parts.has(part_name):
+		_parts[part_name].texture = tex
+
+## Same idea as set_part_texture_override, for the hat slot.
+func set_hat_texture_override(tex: Texture2D) -> void:
+	if _hat:
+		_hat.texture = tex
+
 func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_climbing: bool, on_floor: bool, action: String, action_id: int, is_it: bool) -> void:
 	target_position = pos
 	target_velocity = vel
