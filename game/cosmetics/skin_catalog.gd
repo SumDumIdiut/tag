@@ -340,63 +340,23 @@ func _make_hat_texture(id: String) -> ImageTexture:
 			break
 	return ImageTexture.create_from_image(_paint_hat_image(def.get("shape", "cap"), def.get("color", Color.WHITE)))
 
-func _paint_hat_image(shape: String, color: Color) -> Image:
+## Hats no longer ship with a pre-designed silhouette -- every shape starts
+## as just a plain square outline marking the paintable bounds, and the
+## actual design is entirely up to whoever draws it (see the Art Tool,
+## tools/art_tool.gd). `shape` is kept as a parameter for API stability
+## (BUILTIN_HATS still names 4 independent hat slots to draw into) even
+## though the outline itself doesn't vary by shape.
+func _paint_hat_image(_shape: String, color: Color) -> Image:
 	var img := Image.create(HAT_WIDTH, HAT_HEIGHT, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var shade := color.darkened(HAT_SHADE_AMOUNT)
-	var highlight := color.lightened(HAT_HIGHLIGHT_AMOUNT)
-
-	match shape:
-		"cap":
-			# Rounded dome resting into the head, plus a brim sticking out to
-			# one side -- the whole rig (including this hat) mirrors via the
-			# root Visual's scale.x sign when facing flips, so a one-sided
-			# brim automatically flips with it.
-			_fill_ellipse(img, 9.0, 10.0, 6.5, 6.5, color)
-			_fill_rect(img, 9, 13, 17, 15, shade)
-		"beanie":
-			# Snugger and pulled down further than the cap, with a folded
-			# cuff band spanning the full width near the bottom.
-			_fill_ellipse(img, 9.0, 10.0, 7.0, 7.0, color)
-			_fill_rect(img, 1, 12, 17, 15, shade)
-		"tophat":
-			_fill_rect(img, 5, 0, 13, 10, color) # crown/cylinder
-			_fill_rect(img, 5, 6, 13, 8, highlight) # ribbon band
-			_fill_rect(img, 1, 10, 17, 13, shade) # brim
-		"crown":
-			_fill_rect(img, 2, 10, 16, 14, color) # base band
-			_fill_rect(img, 3, 4, 7, 10, color) # left spike
-			_fill_rect(img, 8, 0, 11, 10, color) # center spike (tallest)
-			_fill_rect(img, 12, 4, 16, 10, color) # right spike
-			_fill_ellipse(img, 9.0, 3.0, 1.3, 1.3, Color(0.85, 0.2, 0.25)) # jewel
-
+	_stroke_rect(img, 0, 0, HAT_WIDTH, HAT_HEIGHT, color)
 	return img
 
-## Same shapes as _paint_hat_image, marker-substituted the same way as
-## paint_character_template -- the crown's jewel keeps its real fixed color
-## since it's never tinted by the hat's own color either (see _paint_hat_image).
-func paint_hat_template(shape: String) -> Image:
+## Same idea, marker-substituted the same way as paint_character_template.
+func paint_hat_template(_shape: String) -> Image:
 	var img := Image.create(HAT_WIDTH, HAT_HEIGHT, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-
-	match shape:
-		"cap":
-			_fill_ellipse(img, 9.0, 10.0, 6.5, 6.5, TEMPLATE_BASE)
-			_fill_rect(img, 9, 13, 17, 15, TEMPLATE_SHADE)
-		"beanie":
-			_fill_ellipse(img, 9.0, 10.0, 7.0, 7.0, TEMPLATE_BASE)
-			_fill_rect(img, 1, 12, 17, 15, TEMPLATE_SHADE)
-		"tophat":
-			_fill_rect(img, 5, 0, 13, 10, TEMPLATE_BASE)
-			_fill_rect(img, 5, 6, 13, 8, TEMPLATE_HIGHLIGHT)
-			_fill_rect(img, 1, 10, 17, 13, TEMPLATE_SHADE)
-		"crown":
-			_fill_rect(img, 2, 10, 16, 14, TEMPLATE_BASE)
-			_fill_rect(img, 3, 4, 7, 10, TEMPLATE_BASE)
-			_fill_rect(img, 8, 0, 11, 10, TEMPLATE_BASE)
-			_fill_rect(img, 12, 4, 16, 10, TEMPLATE_BASE)
-			_fill_ellipse(img, 9.0, 3.0, 1.3, 1.3, Color(0.85, 0.2, 0.25))
-
+	_stroke_rect(img, 0, 0, HAT_WIDTH, HAT_HEIGHT, TEMPLATE_BASE)
 	return img
 
 ## Turns an edited template into a real, per-color image: marker regions
@@ -442,6 +402,15 @@ func _fill_rect(img: Image, x0: int, y0: int, x1: int, y1: int, color: Color) ->
 	for y in range(maxi(y0, 0), mini(y1, img.get_height())):
 		for x in range(maxi(x0, 0), mini(x1, img.get_width())):
 			img.set_pixel(x, y, color)
+
+## A 1px rectangular border (not filled) -- used for the hat templates,
+## which mark their paintable bounds as an outline for a friend to draw
+## into rather than a pre-made silhouette.
+func _stroke_rect(img: Image, x0: int, y0: int, x1: int, y1: int, color: Color, thickness: int = 1) -> void:
+	_fill_rect(img, x0, y0, x1, y0 + thickness, color)
+	_fill_rect(img, x0, y1 - thickness, x1, y1, color)
+	_fill_rect(img, x0, y0, x0 + thickness, y1, color)
+	_fill_rect(img, x1 - thickness, y0, x1, y1, color)
 
 func _fill_ellipse(img: Image, cx: float, cy: float, rx: float, ry: float, color: Color) -> void:
 	var x0 := maxi(int(cx - rx - 1.0), 0)
