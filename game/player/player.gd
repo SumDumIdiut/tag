@@ -156,6 +156,7 @@ var is_climbing := false
 var climb_exhausted_timer := 0.0
 
 @onready var _visual: Node2D = $Visual
+@onready var _anim_player: AnimationPlayer = $Visual/AnimationPlayer
 @onready var _parts: Dictionary = {
 	"head": $Visual/Torso/Head,
 	"torso": $Visual/Torso,
@@ -166,8 +167,11 @@ var climb_exhausted_timer := 0.0
 }
 
 var _was_on_floor_visual := false
+var _was_tagged_it := false
 
 const TAG_IT_COLOR := Color(1.0, 0.85, 0.1, 1.0)
+const WALK_ANIM_MIN_SPEED_SCALE := 0.4
+const WALK_ANIM_MAX_SPEED_SCALE := 2.0
 
 func _ready() -> void:
 	if _visual:
@@ -200,6 +204,12 @@ func set_tagged_it(active: bool) -> void:
 	if not _visual:
 		return
 	_visual.modulate = TAG_IT_COLOR if active else Color.WHITE
+	# Only on the rising edge -- TagMode's it_changed (and this call) only
+	# fires when the status actually flips, but guard anyway so a caller
+	# re-asserting "still it" doesn't restart the flinch mid-playback.
+	if active and not _was_tagged_it:
+		_play_anim("tag_reaction")
+	_was_tagged_it = active
 
 ## Called by TagMode when this player's been in sustained physical contact
 ## with another participant for too long. Sets velocity straight away from
@@ -234,6 +244,28 @@ func _process(delta: float) -> void:
 		elif velocity.y > 40.0:
 			target_scale = Vector2(1.1, 0.9)
 	_visual.scale = _visual.scale.lerp(target_scale, clampf(delta * 12.0, 0.0, 1.0))
+
+	_update_locomotion_anim(on_floor_now)
+
+## Idle when grounded and roughly still, walk otherwise -- speed_scale ties
+## the walk cycle's cadence to actual run speed instead of a fixed loop, so
+## sprinting doesn't look like a slow moonwalk. Doesn't touch tag_reaction,
+## a one-shot triggered separately by set_tagged_it -- if it's still playing
+## this just leaves it alone rather than stomping it every frame.
+func _update_locomotion_anim(on_floor_now: bool) -> void:
+	if not _anim_player or _anim_player.current_animation == "tag_reaction" and _anim_player.is_playing():
+		return
+	if on_floor_now and absf(velocity.x) > 5.0:
+		_anim_player.speed_scale = clampf(absf(velocity.x) / MOVE_SPEED, WALK_ANIM_MIN_SPEED_SCALE, WALK_ANIM_MAX_SPEED_SCALE)
+		_play_anim("walk")
+	else:
+		_anim_player.speed_scale = 1.0
+		_play_anim("idle")
+
+func _play_anim(name: String) -> void:
+	if not _anim_player or _anim_player.current_animation == name:
+		return
+	_anim_player.play(name)
 
 func apply_input(input: Dictionary, delta: float) -> void:
 	var move_dir: Vector2 = input.get("move_dir", Vector2.ZERO)

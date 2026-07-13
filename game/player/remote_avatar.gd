@@ -12,6 +12,7 @@ class_name RemoteAvatar
 @onready var visual: Node2D = $Visual
 @onready var name_label: Label = $NameLabel
 @onready var camera: Camera2D = $Camera2D
+@onready var _anim_player: AnimationPlayer = $Visual/AnimationPlayer
 @onready var _parts: Dictionary = {
 	"head": $Visual/Torso/Head,
 	"torso": $Visual/Torso,
@@ -43,6 +44,7 @@ var target_position: Vector2 = Vector2.ZERO
 var target_velocity: Vector2 = Vector2.ZERO
 var target_facing: int = 1
 var _time_since_update := 0.0
+var _was_it := false
 
 func _ready() -> void:
 	if name_label:
@@ -91,3 +93,28 @@ func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_it:
 		visual.scale = Vector2(1.5, 0.6) if is_dashing else Vector2.ONE
 		var flip := absf(visual.scale.x) * (1.0 if facing >= 0 else -1.0)
 		visual.scale.x = flip
+	# Rising edge only -- state updates arrive every network tick, so without
+	# this a still-"it" peer would restart the flinch clip on every single
+	# update instead of playing it once when tag actually happens.
+	if is_it and not _was_it:
+		_play_anim("tag_reaction")
+	_was_it = is_it
+	_update_locomotion_anim(vel)
+
+## Same idle/walk selection as Player._update_locomotion_anim, but driven by
+## the last reported network velocity instead of local physics -- a
+## RemoteAvatar never simulates movement itself.
+func _update_locomotion_anim(vel: Vector2) -> void:
+	if not _anim_player or _anim_player.current_animation == "tag_reaction" and _anim_player.is_playing():
+		return
+	if absf(vel.x) > 5.0:
+		_anim_player.speed_scale = clampf(absf(vel.x) / Player.MOVE_SPEED, 0.4, 2.0)
+		_play_anim("walk")
+	else:
+		_anim_player.speed_scale = 1.0
+		_play_anim("idle")
+
+func _play_anim(name: String) -> void:
+	if not _anim_player or _anim_player.current_animation == name:
+		return
+	_anim_player.play(name)

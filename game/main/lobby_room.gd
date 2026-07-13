@@ -1,6 +1,6 @@
 extends Control
 
-const NET_GAME_SCENE := preload("res://main/net_game.tscn")
+const MATCH_INTRO_SCENE := preload("res://main/match_intro.tscn")
 
 @onready var lobby_name_label: Label = $VBox/LobbyNameLabel
 @onready var roster_list: ItemList = $VBox/RosterList
@@ -40,7 +40,7 @@ func _on_start_pressed() -> void:
 	NetworkManager.start_match()
 
 func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary) -> void:
-	var scene := NET_GAME_SCENE.instantiate()
+	var scene := MATCH_INTRO_SCENE.instantiate()
 	scene.setup(my_id, roster)
 	get_tree().root.add_child(scene)
 	get_tree().current_scene.queue_free()
