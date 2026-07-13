@@ -226,6 +226,12 @@ func _build_skin_entry(id: String) -> Control:
 		_rebuild_custom_skins_list()
 	)
 	header.add_child(expand_btn)
+	var publish_btn := Button.new()
+	publish_btn.text = "Publish"
+	publish_btn.custom_minimum_size = Vector2(72, 0)
+	UIStyle.style_button(publish_btn, UIStyle.COLOR_ONLINE, 8)
+	publish_btn.pressed.connect(_on_publish_skin_pressed.bind(id, publish_btn))
+	header.add_child(publish_btn)
 	header.add_child(_delete_button(func():
 		_custom_skins.erase(id)
 		_skin_names.erase(id)
@@ -283,6 +289,12 @@ func _build_hat_entry(id: String) -> Control:
 	UIStyle.style_button(select_btn, UIStyle.COLOR_SANDBOX, 8)
 	select_btn.pressed.connect(_show_part.bind(_custom_hats[id], "design", "hat", id))
 	header.add_child(select_btn)
+	var publish_btn := Button.new()
+	publish_btn.text = "Publish"
+	publish_btn.custom_minimum_size = Vector2(72, 0)
+	UIStyle.style_button(publish_btn, UIStyle.COLOR_ONLINE, 8)
+	publish_btn.pressed.connect(_on_publish_hat_pressed.bind(id, publish_btn))
+	header.add_child(publish_btn)
 	header.add_child(_delete_button(func():
 		_custom_hats.erase(id)
 		_hat_names.erase(id)
@@ -312,6 +324,44 @@ func _delete_button(on_delete: Callable) -> Button:
 	UIStyle.style_button(btn, UIStyle.COLOR_RANKED, 8)
 	btn.pressed.connect(on_delete)
 	return btn
+
+## Uploads straight to the shared catalog via the same endpoint the in-game
+## drawing tool already uses (SkinCatalog.add_drawn_skin) -- no server
+## changes, no admin step, live for every player as soon as this returns.
+## `btn` is re-enabled on both success and failure so publishing again (e.g.
+## after touching the art up further) doesn't need a full list rebuild;
+## is_instance_valid guards against the entry having been deleted or the
+## list rebuilt (renamed) while the upload was in flight.
+func _on_publish_skin_pressed(id: String, btn: Button) -> void:
+	if not _custom_skins.has(id):
+		return
+	var skin_name: String = _skin_names[id]
+	btn.disabled = true
+	status_label.text = "Publishing \"%s\"..." % skin_name
+	var server_id: String = await SkinCatalog.add_drawn_skin(_custom_skins[id], skin_name)
+	if not is_instance_valid(btn):
+		return
+	btn.disabled = false
+	if server_id.is_empty():
+		status_label.text = "Publish failed for \"%s\" -- check your connection." % skin_name
+	else:
+		status_label.text = "Published \"%s\" -- live for everyone now." % skin_name
+
+## Same idea as _on_publish_skin_pressed, for hats.
+func _on_publish_hat_pressed(id: String, btn: Button) -> void:
+	if not _custom_hats.has(id):
+		return
+	var hat_name: String = _hat_names[id]
+	btn.disabled = true
+	status_label.text = "Publishing \"%s\"..." % hat_name
+	var server_id: String = await SkinCatalog.add_drawn_hat(_custom_hats[id]["design"], hat_name)
+	if not is_instance_valid(btn):
+		return
+	btn.disabled = false
+	if server_id.is_empty():
+		status_label.text = "Publish failed for \"%s\" -- check your connection." % hat_name
+	else:
+		status_label.text = "Published \"%s\" -- live for everyone now." % hat_name
 
 ## `images` is whichever part-dict is being edited; `context` is "skin" or
 ## "hat" (drives the big preview's tinting-free rendering); `id` is the

@@ -46,6 +46,11 @@ func _ready() -> void:
 	SkinCatalog.hat_received.connect(func(_id): _refresh_grid())
 	status_label.text = "Loading..."
 	_refresh_grid()
+	# Re-fetch every time the shop opens (not just once at game startup) so a
+	# skin/hat someone else just published via the Art Tool's Publish button
+	# actually shows up here without needing a restart -- catalog_loaded
+	# above already re-renders the grid once this lands.
+	SkinCatalog.refresh_catalog()
 
 func _set_mode(mode: String) -> void:
 	_mode = mode
