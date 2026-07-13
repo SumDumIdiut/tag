@@ -21,26 +21,61 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 5;
 
 // ─── Skins (server-side cosmetic storage) ────────────────────────────────────
-// The skin catalog (built-in colors are client-side; custom image skins live
-// here) is entirely server-curated -- there is deliberately no HTTP endpoint
-// that lets a client add or remove a custom skin. New custom skins can only
-// be added by someone with direct access to this machine, via add-skin.js
-// run locally (see that file). Clients may only fetch the catalog and pick
-// (select) among the skins already in it.
+// The skin/hat catalog (built-in colors are client-side; custom images live
+// here) is server-curated in two different ways at once: add-skin.js (local
+// to this machine, no HTTP exposure) can add anything, and clients can ALSO
+// draw and upload their own skins/hats through a narrowly scoped endpoint
+// (POST .../upload below) -- fixed-size canvas strokes per rig part only,
+// not arbitrary file upload, with rate-limit/size/per-client-count caps.
 //
-// catalog.json and selections.json are deliberately separate files owned by
-// different writers: add-skin.js writes catalog.json directly on disk while
-// this server may be running, so catalog reads always re-read it fresh
-// (cheap -- it's tiny) rather than caching it in memory. Caching it would
-// mean the next client selection's save silently clobbered whatever
-// add-skin.js had just written. Selections are still cached in memory since
-// this server is their only writer.
+// catalog.json is deliberately not cached in memory: add-skin.js writes it
+// directly on disk while this server may be running, so every read re-reads
+// it fresh from disk (cheap -- it's tiny). Caching it would mean the next
+// write from this server (an upload, or a client's selection save under the
+// old combined-file scheme) could silently clobber whatever add-skin.js had
+// just written. Selections ARE cached in memory, since this server is their
+// only writer.
 const DATA_DIR = path.join(__dirname, 'data');
 const SKIN_IMAGE_DIR = path.join(DATA_DIR, 'skin_images');
 const CATALOG_JSON_PATH = path.join(DATA_DIR, 'catalog.json');
 const SELECTIONS_JSON_PATH = path.join(DATA_DIR, 'selections.json');
+const HAT_SELECTIONS_JSON_PATH = path.join(DATA_DIR, 'hat_selections.json');
 const LEGACY_SKINS_JSON_PATH = path.join(DATA_DIR, 'skins.json');
 const CLIENT_ID_RE = /^[a-f0-9-]{8,64}$/i;
+
+// Mirrors SkinCatalog.PART_DEFS in game/cosmetics/skin_catalog.gd -- the
+// per-part canvas dimensions a drawn skin's upload must exactly match, kept
+// in sync by hand (same tradeoff already accepted for RANK_TIERS later).
+const PART_NAMES = ['head', 'torso', 'left_arm', 'right_arm', 'left_leg', 'right_leg'];
+const PART_DIMENSIONS = {
+  head: { width: 18, height: 18 },
+  torso: { width: 14, height: 21 },
+  left_arm: { width: 6, height: 14 },
+  right_arm: { width: 6, height: 14 },
+  left_leg: { width: 4, height: 11 },
+  right_leg: { width: 4, height: 11 },
+};
+// Hats reuse the head canvas's dimensions -- keeps the drawing tool's tile
+// size uniform across all 7 paintable slots instead of introducing a
+// one-off size nobody else uses.
+const HAT_DIMENSIONS = PART_DIMENSIONS.head;
+const MAX_CUSTOM_SKINS_PER_CLIENT = 5;
+const MAX_HATS_PER_CLIENT = 5;
+const MAX_UPLOAD_BYTES = 100 * 1024; // generous over what a handful of tiny PNGs actually need -- just an abuse backstop
+
+// Reads a PNG's declared width/height straight from its IHDR chunk (always
+// the first chunk, always 8-byte signature + 4-byte length + 4-byte "IHDR"
+// + data) rather than pulling in an image-decoding dependency -- this trusts
+// the declared header, not actual decoded pixels, so a deliberately
+// malformed file could lie about its own size. Godot's own PNG loader fails
+// safely on a genuinely corrupt file either way; if stricter validation is
+// ever needed, a pure-JS decoder like pngjs is the natural upgrade.
+function pngDimensions(buf) {
+  if (buf.length < 24) return null;
+  if (buf[0] !== 0x89 || buf.toString('ascii', 1, 4) !== 'PNG') return null;
+  if (buf.toString('ascii', 12, 16) !== 'IHDR') return null;
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
 
 fs.mkdirSync(SKIN_IMAGE_DIR, { recursive: true });
 
@@ -85,6 +120,16 @@ function saveSelections() {
   fs.writeFileSync(SELECTIONS_JSON_PATH, JSON.stringify(selections));
 }
 
+function loadHatSelections() {
+  try { return JSON.parse(fs.readFileSync(HAT_SELECTIONS_JSON_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+let hatSelections = loadHatSelections(); // clientId -> hatId, absent means no hat equipped
+
+function saveHatSelections() {
+  fs.writeFileSync(HAT_SELECTIONS_JSON_PATH, JSON.stringify(hatSelections));
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 const servers = new Map();       // serverId -> { id, name, maxPlayers, playerCount, createdAt, lastHeartbeat, controlSocket }
 const pendingTokens = new Map(); // token -> { playerSocket, timer }
@@ -122,10 +167,11 @@ app.get('/api/servers', (req, res) => {
 // ─── HTTP: skins ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '256kb' }));
 
-// The shared catalog of server-curated custom skins -- every client sees the
-// same list, since there's no more per-client uploading.
+// The shared catalog of server-curated + player-drawn custom skins -- every
+// client sees the same list. Hats live in the same catalog.json (see
+// readCatalog()) but are filtered out here; use /api/hats/catalog for those.
 app.get('/api/skins/catalog', (req, res) => {
-  res.json(readCatalog());
+  res.json(readCatalog().filter(e => e.type !== 'hat'));
 });
 
 app.get('/api/skins/:clientId', (req, res) => {
@@ -142,6 +188,56 @@ app.post('/api/skins/:clientId/select', (req, res) => {
   res.json({ ok: true });
 });
 
+// The one deliberately re-opened client-write path: a player draws a skin
+// (one small canvas per rig part, see PART_DIMENSIONS) in-app and it's
+// uploaded and visible to everyone immediately, same as any catalog skin --
+// no admin approval step. Scoped narrowly to exact-size canvas strokes
+// (not arbitrary file upload) with the same class of abuse mitigations the
+// original, since-removed whole-image upload endpoint had: a per-IP rate
+// limit, a per-client count cap, and a payload size cap.
+app.post('/api/skins/:clientId/upload', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+
+  const clientId = req.params.clientId;
+  const existingCount = readCatalog().filter(e => e.createdBy === clientId && e.type === 'skin').length;
+  if (existingCount >= MAX_CUSTOM_SKINS_PER_CLIENT) {
+    return res.status(400).json({ error: `max ${MAX_CUSTOM_SKINS_PER_CLIENT} drawn skins per client` });
+  }
+
+  const name = sanitizeName(req.body.name);
+  const parts = req.body.parts;
+  if (!parts || typeof parts !== 'object') return res.status(400).json({ error: 'parts required' });
+
+  const decoded = {};
+  let totalBytes = 0;
+  for (const partName of PART_NAMES) {
+    const b64 = parts[partName];
+    if (typeof b64 !== 'string' || !b64) return res.status(400).json({ error: `missing part: ${partName}` });
+    let bytes;
+    try { bytes = Buffer.from(b64, 'base64'); } catch { return res.status(400).json({ error: 'bad image data' }); }
+    totalBytes += bytes.length;
+    if (totalBytes > MAX_UPLOAD_BYTES) return res.status(400).json({ error: 'upload too large' });
+    const dims = pngDimensions(bytes);
+    const expected = PART_DIMENSIONS[partName];
+    if (!dims || dims.width !== expected.width || dims.height !== expected.height) {
+      return res.status(400).json({ error: `${partName} must be exactly ${expected.width}x${expected.height}` });
+    }
+    decoded[partName] = bytes;
+  }
+
+  const id = 'part_' + crypto.randomBytes(8).toString('hex');
+  const dir = path.join(SKIN_IMAGE_DIR, id);
+  fs.mkdirSync(dir, { recursive: true });
+  for (const partName of PART_NAMES) {
+    fs.writeFileSync(path.join(dir, partName + '.png'), decoded[partName]);
+  }
+  const catalog = readCatalog();
+  catalog.push({ id, name, type: 'skin', createdBy: clientId, createdAt: Date.now() });
+  fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
+  res.json({ id });
+});
+
 // Any client (not just the owner) can fetch a custom skin's image by id --
 // this is what lets other players in a match actually see it, since the id
 // alone (already broadcast as part of match state) is enough to look it up
@@ -150,6 +246,83 @@ app.get('/api/skins/image/:skinId', (req, res) => {
   const skinId = req.params.skinId;
   if (!/^custom_[a-f0-9]{16}$/.test(skinId)) return res.status(400).end();
   const imgPath = path.join(SKIN_IMAGE_DIR, skinId + '.png');
+  if (!fs.existsSync(imgPath)) return res.status(404).end();
+  res.set('Content-Type', 'image/png');
+  res.set('Cache-Control', 'public, max-age=86400');
+  fs.createReadStream(imgPath).pipe(res);
+});
+
+// Per-part image fetch for drawn (part_*) skins -- the legacy whole-image
+// route above stays untouched for custom_* ids.
+app.get('/api/skins/image/:skinId/:part', (req, res) => {
+  const skinId = req.params.skinId;
+  const part = req.params.part;
+  if (!/^part_[a-f0-9]{16}$/.test(skinId)) return res.status(400).end();
+  if (!PART_NAMES.includes(part)) return res.status(400).end();
+  const imgPath = path.join(SKIN_IMAGE_DIR, skinId, part + '.png');
+  if (!fs.existsSync(imgPath)) return res.status(404).end();
+  res.set('Content-Type', 'image/png');
+  res.set('Cache-Control', 'public, max-age=86400');
+  fs.createReadStream(imgPath).pipe(res);
+});
+
+// ─── HTTP: hats ───────────────────────────────────────────────────────────────
+// A second, independent cosmetic slot alongside skins -- same catalog.json
+// (filtered by type), same client-drawn-and-uploaded model, same
+// mitigations. A hat is a single image (no rig parts), rendered as a child
+// of the rig's Head node client-side.
+app.get('/api/hats/catalog', (req, res) => {
+  res.json(readCatalog().filter(e => e.type === 'hat'));
+});
+
+app.get('/api/hats/:clientId', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  res.json({ selected: hatSelections[req.params.clientId] || null });
+});
+
+app.post('/api/hats/:clientId/select', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  const hatId = req.body.hatId ? String(req.body.hatId) : null;
+  if (hatId) {
+    hatSelections[req.params.clientId] = hatId;
+  } else {
+    delete hatSelections[req.params.clientId]; // null/empty means "no hat"
+  }
+  saveHatSelections();
+  res.json({ ok: true });
+});
+
+app.post('/api/hats/:clientId/upload', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+
+  const clientId = req.params.clientId;
+  const existingCount = readCatalog().filter(e => e.createdBy === clientId && e.type === 'hat').length;
+  if (existingCount >= MAX_HATS_PER_CLIENT) {
+    return res.status(400).json({ error: `max ${MAX_HATS_PER_CLIENT} drawn hats per client` });
+  }
+
+  const name = sanitizeName(req.body.name);
+  let bytes;
+  try { bytes = Buffer.from(String(req.body.imageBase64 || ''), 'base64'); } catch { return res.status(400).json({ error: 'bad image data' }); }
+  if (bytes.length === 0 || bytes.length > MAX_UPLOAD_BYTES) return res.status(400).json({ error: 'image too large or empty' });
+  const dims = pngDimensions(bytes);
+  if (!dims || dims.width !== HAT_DIMENSIONS.width || dims.height !== HAT_DIMENSIONS.height) {
+    return res.status(400).json({ error: `hat image must be exactly ${HAT_DIMENSIONS.width}x${HAT_DIMENSIONS.height}` });
+  }
+
+  const id = 'hat_' + crypto.randomBytes(8).toString('hex');
+  fs.writeFileSync(path.join(SKIN_IMAGE_DIR, id + '.png'), bytes);
+  const catalog = readCatalog();
+  catalog.push({ id, name, type: 'hat', createdBy: clientId, createdAt: Date.now() });
+  fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
+  res.json({ id });
+});
+
+app.get('/api/hats/image/:hatId', (req, res) => {
+  const hatId = req.params.hatId;
+  if (!/^hat_[a-f0-9]{16}$/.test(hatId)) return res.status(400).end();
+  const imgPath = path.join(SKIN_IMAGE_DIR, hatId + '.png');
   if (!fs.existsSync(imgPath)) return res.status(404).end();
   res.set('Content-Type', 'image/png');
   res.set('Cache-Control', 'public, max-age=86400');

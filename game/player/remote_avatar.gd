@@ -13,6 +13,7 @@ class_name RemoteAvatar
 @onready var name_label: Label = $NameLabel
 @onready var camera: Camera2D = $Camera2D
 @onready var _anim_player: AnimationPlayer = $Visual/AnimationPlayer
+@onready var _hat: Sprite2D = $Visual/Torso/Head/Hat
 @onready var _parts: Dictionary = {
 	"head": $Visual/Torso/Head,
 	"torso": $Visual/Torso,
@@ -80,6 +81,19 @@ func set_skin(skin_id: String) -> void:
 	for part_name in parts:
 		if _parts.has(part_name):
 			_parts[part_name].texture = parts[part_name]
+
+## Sets the equipped hat, by id -- "" clears it. No-ops (keeps showing
+## nothing, not stale art) if a non-empty id's texture isn't ready yet; the
+## caller's own hat_received retry re-calls this once it lands.
+func set_hat(hat_id: String) -> void:
+	if not _hat:
+		return
+	if hat_id.is_empty():
+		_hat.texture = null
+		return
+	var tex := SkinCatalog.get_hat_texture(hat_id)
+	if tex:
+		_hat.texture = tex
 
 func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_it: bool) -> void:
 	target_position = pos

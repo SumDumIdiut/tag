@@ -1,14 +1,15 @@
 extends Node
 
-# Built-in cosmetic skins (solid colors, shipped with the game) plus a
-# shared catalog of custom image skins that lives entirely on the server --
-# clients can only fetch the catalog and select from it, never add to it.
-# New custom skins can only be added directly on the server (see
-# relay-server/add-skin.js), not through any in-game action, so nobody can
-# push arbitrary images into the game just by playing it. The only thing
-# that ever lives locally is an anonymous client id (there's no
-# account/login system here) used to remember your selection across
-# sessions/machines.
+# Built-in cosmetic skins (solid colors, shipped with the game) plus two
+# shared catalogs -- skins and hats -- of custom images that live entirely
+# on the server. New entries can arrive two ways: an admin running
+# relay-server/add-skin.js directly on the machine (no HTTP exposure at
+# all), or any player painting one with the in-shop drawing tool, which
+# uploads it and makes it visible to everyone immediately (see
+# add_drawn_skin/add_drawn_hat) -- deliberately scoped to fixed-size canvas
+# strokes per rig part, not arbitrary file upload. The only thing that ever
+# lives locally is an anonymous client id (there's no account/login system
+# here) used to remember your selections across sessions/machines.
 
 const VISUAL_WIDTH := 32
 const VISUAL_HEIGHT := 48
@@ -33,40 +34,35 @@ const PART_DEFS := {
 }
 
 const BUILTIN_SKINS := [
-	{"id": "red", "name": "Red", "color": Color(0.85, 0.2, 0.2), "rarity": "common"},
-	{"id": "blue", "name": "Blue", "color": Color(0.25, 0.45, 0.85), "rarity": "common"},
-	{"id": "green", "name": "Green", "color": Color(0.25, 0.75, 0.35), "rarity": "uncommon"},
-	{"id": "yellow", "name": "Yellow", "color": Color(0.9, 0.8, 0.15), "rarity": "uncommon"},
-	{"id": "purple", "name": "Purple", "color": Color(0.6, 0.3, 0.8), "rarity": "rare"},
-	{"id": "teal", "name": "Teal", "color": Color(0.15, 0.75, 0.7), "rarity": "rare"},
-	{"id": "orange", "name": "Orange", "color": Color(0.9, 0.5, 0.15), "rarity": "epic"},
-	{"id": "pink", "name": "Pink", "color": Color(0.9, 0.45, 0.7), "rarity": "legendary"},
+	{"id": "red", "name": "Red", "color": Color(0.85, 0.2, 0.2)},
+	{"id": "blue", "name": "Blue", "color": Color(0.25, 0.45, 0.85)},
+	{"id": "green", "name": "Green", "color": Color(0.25, 0.75, 0.35)},
+	{"id": "yellow", "name": "Yellow", "color": Color(0.9, 0.8, 0.15)},
+	{"id": "purple", "name": "Purple", "color": Color(0.6, 0.3, 0.8)},
+	{"id": "teal", "name": "Teal", "color": Color(0.15, 0.75, 0.7)},
+	{"id": "orange", "name": "Orange", "color": Color(0.9, 0.5, 0.15)},
+	{"id": "pink", "name": "Pink", "color": Color(0.9, 0.45, 0.7)},
 ]
 
-# Fortnite-style rarity color coding for the shop's card borders/banners --
-# purely a visual flourish, doesn't affect gameplay. Custom (player-uploaded)
-# skins always read as their own distinct "custom" tier.
-const RARITY_COLORS := {
-	"common": Color(0.62, 0.65, 0.68),
-	"uncommon": Color(0.3, 0.82, 0.42),
-	"rare": Color(0.28, 0.56, 0.95),
-	"epic": Color(0.66, 0.32, 0.92),
-	"legendary": Color(0.95, 0.58, 0.12),
-	"custom": Color(0.15, 0.85, 0.85),
-}
+const HAT_API_BASE := "https://codecade.co.za/tag/api/hats"
 
 signal skin_selected(id: String)
-## Emitted once a custom skin's texture finishes arriving from the server --
-## listeners re-resolve anything they'd shown a placeholder for.
+signal hat_selected(id: String)
+## Emitted once a custom skin's or hat's texture finishes arriving from the
+## server -- listeners re-resolve anything they'd shown a placeholder for.
 signal skin_received(id: String)
-## Emitted once the initial fetch of the shared catalog + your own selection
-## completes -- the shop UI waits for this before its first real render,
-## since get_all_skins()/selected_skin_id are unreliable before it fires.
+signal hat_received(id: String)
+## Emitted once the initial fetch of the shared catalogs + your own
+## selections completes -- the shop UI waits for this before its first real
+## render, since get_all_skins()/selected_skin_id etc are unreliable before
+## it fires.
 signal catalog_loaded
 
 var client_id := ""
 var selected_skin_id := "red"
-var _catalog_custom_skins := [] # [{id, name}], the server's shared custom-skin catalog
+var selected_hat_id := "" # "" means no hat equipped
+var _catalog_custom_skins := [] # [{id, name, ...}], the server's shared custom-skin catalog
+var _catalog_hats := [] # [{id, name, ...}], the server's shared hat catalog
 var _texture_cache := {} # id -> Texture2D
 var _fetch_in_flight := {} # id -> true, de-dupes concurrent image fetches
 
@@ -83,7 +79,16 @@ func get_all_skins() -> Array:
 	for s in BUILTIN_SKINS:
 		out.append(s)
 	for s in _catalog_custom_skins:
-		out.append({"id": s.id, "name": s.name, "rarity": "custom", "custom": true})
+		out.append({"id": s.id, "name": s.name, "custom": true})
+	return out
+
+## The server's shared hat catalog, in the same shape get_all_skins() uses.
+## There's no built-in "none" entry here -- the shop represents "no hat" as
+## its own explicit unequip action, not a catalog item.
+func get_all_hats() -> Array:
+	var out := []
+	for h in _catalog_hats:
+		out.append({"id": h.id, "name": h.name, "custom": true})
 	return out
 
 func is_builtin(id: String) -> bool:
@@ -134,6 +139,26 @@ func select_skin(id: String) -> void:
 	selected_skin_id = id
 	skin_selected.emit(id)
 	_post_selection(id)
+
+## A hat is a second, independent cosmetic slot -- id == "" unequips it
+## without touching the current skin selection.
+func select_hat(id: String) -> void:
+	selected_hat_id = id
+	hat_selected.emit(id)
+	_post_hat_selection(id)
+
+## Returns the cached hat texture if we already have it, kicking off an
+## async fetch (skin_received-style, see hat_received) otherwise. Empty id
+## means "no hat" and always returns null -- callers should treat that as
+## "don't render a hat sprite", not an error.
+func get_hat_texture(id: String) -> Texture2D:
+	if id.is_empty():
+		return null
+	var cache_key := "hat:" + id
+	if _texture_cache.has(cache_key):
+		return _texture_cache[cache_key]
+	_fetch_hat_texture(id)
+	return null
 
 func _builtin_color(id: String) -> Color:
 	for s in BUILTIN_SKINS:
@@ -222,14 +247,32 @@ func _fetch_custom_texture(id: String) -> void:
 	)
 	req.request("%s/image/%s" % [API_BASE, id])
 
-# Two independent fetches -- the shared custom-skin catalog, and this
-# client's own current selection -- that both have to land before
-# catalog_loaded fires. `pending` is a single-element array (not a plain
-# int) so both request callbacks can share and mutate the same counter --
-# GDScript lambdas capture locals by value, so a plain int wouldn't be
-# shared between the two closures below.
+func _fetch_hat_texture(id: String) -> void:
+	var cache_key := "hat:" + id
+	if _fetch_in_flight.has(cache_key):
+		return
+	_fetch_in_flight[cache_key] = true
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+		req.queue_free()
+		_fetch_in_flight.erase(cache_key)
+		if response_code == 200 and body.size() > 0:
+			var img := Image.new()
+			if img.load_png_from_buffer(body) == OK:
+				_texture_cache[cache_key] = ImageTexture.create_from_image(img)
+				hat_received.emit(id)
+	)
+	req.request("%s/image/%s" % [HAT_API_BASE, id])
+
+# Four independent fetches -- the shared skin catalog, the shared hat
+# catalog, and this client's own current skin + hat selections -- that all
+# have to land before catalog_loaded fires. `pending` is a single-element
+# array (not a plain int) so every request callback can share and mutate the
+# same counter -- GDScript lambdas capture locals by value, so a plain int
+# wouldn't be shared between separate closures.
 func _fetch_catalog() -> void:
-	var pending := [2]
+	var pending := [4]
 	var on_one_done := func():
 		pending[0] -= 1
 		if pending[0] == 0:
@@ -259,12 +302,110 @@ func _fetch_catalog() -> void:
 	)
 	selection_req.request("%s/%s" % [API_BASE, client_id])
 
+	var hat_catalog_req := HTTPRequest.new()
+	add_child(hat_catalog_req)
+	hat_catalog_req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+		hat_catalog_req.queue_free()
+		if response_code == 200:
+			var parsed = JSON.parse_string(body.get_string_from_utf8())
+			if typeof(parsed) == TYPE_ARRAY:
+				_catalog_hats = parsed
+		on_one_done.call()
+	)
+	hat_catalog_req.request("%s/catalog" % HAT_API_BASE)
+
+	var hat_selection_req := HTTPRequest.new()
+	add_child(hat_selection_req)
+	hat_selection_req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+		hat_selection_req.queue_free()
+		if response_code == 200:
+			var parsed = JSON.parse_string(body.get_string_from_utf8())
+			if typeof(parsed) == TYPE_DICTIONARY:
+				selected_hat_id = str(parsed.get("selected", "") if parsed.get("selected") != null else "")
+		on_one_done.call()
+	)
+	hat_selection_req.request("%s/%s" % [HAT_API_BASE, client_id])
+
+## Re-runs the catalog + selection fetches and emits catalog_loaded again
+## once they land -- used by the drawing tool so a freshly-uploaded skin/hat
+## shows up in the shop immediately, without needing an app restart.
+func refresh_catalog() -> void:
+	_fetch_catalog()
+
 func _post_selection(id: String) -> void:
 	var req := HTTPRequest.new()
 	add_child(req)
 	req.request_completed.connect(func(_r, _c, _h, _b): req.queue_free())
 	var body := JSON.stringify({"skinId": id})
 	req.request("%s/%s/select" % [API_BASE, client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
+
+func _post_hat_selection(id: String) -> void:
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(_r, _c, _h, _b): req.queue_free())
+	var body := JSON.stringify({"hatId": id if not id.is_empty() else null})
+	req.request("%s/%s/select" % [HAT_API_BASE, client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
+
+## Uploads a freshly-drawn skin -- one small Image per rig part (see
+## PART_DEFS), already painted by the drawing tool. Async, callers need
+## `await`. Returns the new skin's server-assigned id, or "" on failure.
+func add_drawn_skin(part_images: Dictionary, skin_name: String) -> String:
+	var parts_json := {}
+	for part_name in PART_NAMES:
+		if not part_images.has(part_name):
+			return ""
+		parts_json[part_name] = Marshalls.raw_to_base64(part_images[part_name].save_png_to_buffer())
+
+	var req := HTTPRequest.new()
+	add_child(req)
+	var body := JSON.stringify({"name": skin_name, "parts": parts_json})
+	var err := req.request(
+		"%s/%s/upload" % [API_BASE, client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body
+	)
+	if err != OK:
+		req.queue_free()
+		return ""
+	var response: Array = await req.request_completed
+	req.queue_free()
+	if response[1] != 200:
+		return ""
+	var parsed = JSON.parse_string(response[3].get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY or not parsed.has("id"):
+		return ""
+	var id: String = parsed.id
+	# Already have the painted parts in hand locally -- no need to
+	# immediately re-fetch what was just uploaded.
+	var cached_parts := {}
+	for part_name in PART_NAMES:
+		cached_parts[part_name] = ImageTexture.create_from_image(part_images[part_name])
+	_texture_cache["parts:" + id] = cached_parts
+	_catalog_custom_skins.append({"id": id, "name": skin_name})
+	return id
+
+## Uploads a freshly-drawn hat -- a single small Image (see HAT dimensions,
+## same size as the head part). Async, callers need `await`. Returns the
+## new hat's server-assigned id, or "" on failure.
+func add_drawn_hat(hat_image: Image, hat_name: String) -> String:
+	var req := HTTPRequest.new()
+	add_child(req)
+	var body := JSON.stringify({"name": hat_name, "imageBase64": Marshalls.raw_to_base64(hat_image.save_png_to_buffer())})
+	var err := req.request(
+		"%s/%s/upload" % [HAT_API_BASE, client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body
+	)
+	if err != OK:
+		req.queue_free()
+		return ""
+	var response: Array = await req.request_completed
+	req.queue_free()
+	if response[1] != 200:
+		return ""
+	var parsed = JSON.parse_string(response[3].get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY or not parsed.has("id"):
+		return ""
+	var id: String = parsed.id
+	_texture_cache["hat:" + id] = ImageTexture.create_from_image(hat_image)
+	_catalog_hats.append({"id": id, "name": hat_name})
+	return id
 
 func _load_or_create_client_id() -> String:
 	if FileAccess.file_exists(CLIENT_ID_PATH):

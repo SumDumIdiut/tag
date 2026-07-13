@@ -157,6 +157,7 @@ var climb_exhausted_timer := 0.0
 
 @onready var _visual: Node2D = $Visual
 @onready var _anim_player: AnimationPlayer = $Visual/AnimationPlayer
+@onready var _hat: Sprite2D = $Visual/Torso/Head/Hat
 @onready var _parts: Dictionary = {
 	"head": $Visual/Torso/Head,
 	"torso": $Visual/Torso,
@@ -194,6 +195,19 @@ func set_skin(skin_id: String) -> void:
 	for part_name in parts:
 		if _parts.has(part_name):
 			_parts[part_name].texture = parts[part_name]
+
+## Sets the equipped hat, by id -- "" clears it. No-ops (keeps showing
+## nothing, not stale art) if a non-empty id's texture isn't ready yet; the
+## caller's own hat_received retry re-calls this once it lands.
+func set_hat(hat_id: String) -> void:
+	if not _hat:
+		return
+	if hat_id.is_empty():
+		_hat.texture = null
+		return
+	var tex := SkinCatalog.get_hat_texture(hat_id)
+	if tex:
+		_hat.texture = tex
 
 ## Recolors this player/NPC to flag it as the current Tag "it", or back to
 ## its own normal look when it's no longer it -- lets TagMode mark whoever's

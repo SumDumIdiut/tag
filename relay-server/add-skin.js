@@ -34,7 +34,7 @@ try {
 const imageBytes = fs.readFileSync(imagePath);
 const id = 'custom_' + crypto.randomBytes(8).toString('hex');
 fs.writeFileSync(path.join(SKIN_IMAGE_DIR, id + '.png'), imageBytes);
-catalog.push({ id, name: String(name).slice(0, 40) });
+catalog.push({ id, name: String(name).slice(0, 40), type: 'skin', createdBy: null, createdAt: Date.now() });
 fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
 
 // No server restart needed -- the catalog endpoint re-reads this file fresh

@@ -28,6 +28,7 @@ var _lobbies := {}       # lobby_id -> {id, name, host_peer, max_players, member
 var _next_lobby_id := 1
 var _peer_username := {} # peer_id -> String
 var _peer_skin_id := {}  # peer_id -> String
+var _peer_hat_id := {}   # peer_id -> String, "" means no hat
 var _peer_lobby := {}    # peer_id -> lobby_id
 var _matches := {}       # lobby_id -> ServerMatch
 
@@ -100,7 +101,7 @@ func disconnect_from_server() -> void:
 
 func _on_connected_to_server() -> void:
 	my_peer_id = multiplayer.get_unique_id()
-	rpc_id(1, "_server_register_player", username, SkinCatalog.selected_skin_id)
+	rpc_id(1, "_server_register_player", username, SkinCatalog.selected_skin_id, SkinCatalog.selected_hat_id)
 	connected_to_server.emit()
 
 func _on_connection_failed() -> void:
@@ -114,6 +115,7 @@ func _on_peer_disconnected(id: int) -> void:
 		return
 	_peer_username.erase(id)
 	_peer_skin_id.erase(id)
+	_peer_hat_id.erase(id)
 	var lobby_id: int = _peer_lobby.get(id, -1)
 	if lobby_id != -1:
 		_remove_peer_from_lobby(id, lobby_id)
@@ -122,16 +124,18 @@ func _on_peer_disconnected(id: int) -> void:
 # ==================== Server-side RPC endpoints (client -> server) ====================
 
 @rpc("any_peer", "reliable")
-func _server_register_player(display_name: String, skin_id: String) -> void:
+func _server_register_player(display_name: String, skin_id: String, hat_id: String = "") -> void:
 	if not is_server:
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	_peer_username[sender] = _sanitize_username(display_name)
-	# Just the id -- a custom skin's actual image lives on the skins service
-	# (codecade.co.za/tag/api/skins), not here, so any client that needs to
-	# render it (see roster's skin_id in match state) fetches it directly
-	# from there itself instead of relying on peer-to-peer relay.
+	# Just the ids -- a custom skin/hat's actual image lives on the cosmetics
+	# service (codecade.co.za/tag/api/skins, /api/hats), not here, so any
+	# client that needs to render it (see roster's skin_id/hat_id in match
+	# state) fetches it directly from there itself instead of relying on
+	# peer-to-peer relay.
 	_peer_skin_id[sender] = skin_id
+	_peer_hat_id[sender] = hat_id
 	_send_lobby_list(sender)
 
 func _sanitize_username(raw: String) -> String:
@@ -263,6 +267,7 @@ func _server_start_match() -> void:
 	var members_with_skins: Dictionary = lobby.members.duplicate(true)
 	for peer_id in members_with_skins.keys():
 		members_with_skins[peer_id]["skin_id"] = _peer_skin_id.get(peer_id, "red")
+		members_with_skins[peer_id]["hat_id"] = _peer_hat_id.get(peer_id, "")
 	var match_instance := ServerMatch.new(self, lobby_id, members_with_skins)
 	add_child(match_instance)
 	_matches[lobby_id] = match_instance
