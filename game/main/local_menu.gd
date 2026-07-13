@@ -7,14 +7,12 @@ const UIStyle := preload("res://ui/ui_style.gd")
 @onready var skill_slider: HSlider = $VBox/SettingsPanel/SettingsBox/SkillRow/SkillSlider
 @onready var skill_value: Label = $VBox/SettingsPanel/SettingsBox/SkillRow/SkillValue
 @onready var start_button: Button = $VBox/StartButton
-@onready var sandbox_button: Button = $VBox/SandboxButton
 @onready var back_button: Button = $VBox/BackButton
 
 func _ready() -> void:
 	UIStyle.add_background(self)
 	$VBox/SettingsPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_LOCAL))
 	UIStyle.style_button(start_button, UIStyle.COLOR_LOCAL)
-	UIStyle.style_button(sandbox_button, UIStyle.COLOR_NEUTRAL)
 	UIStyle.style_back_button(back_button)
 
 	npc_count_slider.value = GameSettings.npc_count
@@ -25,7 +23,6 @@ func _ready() -> void:
 	npc_count_slider.value_changed.connect(_update_npc_count_label)
 	skill_slider.value_changed.connect(_update_skill_label)
 	start_button.pressed.connect(_on_start_pressed)
-	sandbox_button.pressed.connect(_on_sandbox_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 
 func _update_npc_count_label(value: float) -> void:
@@ -38,9 +35,6 @@ func _on_start_pressed() -> void:
 	GameSettings.npc_count = int(npc_count_slider.value)
 	GameSettings.npc_skill = int(skill_slider.value)
 	get_tree().change_scene_to_file("res://main/game.tscn")
-
-func _on_sandbox_pressed() -> void:
-	get_tree().change_scene_to_file("res://main/movement_test.tscn")
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")

@@ -16,6 +16,7 @@ const COLOR_RANKED := Color(0.91, 0.29, 0.35)
 const COLOR_LOCAL := Color(0.35, 0.78, 0.98)
 const COLOR_ONLINE := Color(0.42, 0.85, 0.55)
 const COLOR_SHOP := Color(0.65, 0.48, 0.98)
+const COLOR_SANDBOX := Color(0.15, 0.75, 0.7)
 const COLOR_NEUTRAL := Color(0.6, 0.63, 0.72)
 
 const BG_TOP := Color(0.106, 0.11, 0.157)

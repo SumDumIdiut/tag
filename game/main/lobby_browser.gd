@@ -46,7 +46,7 @@ func _on_lobby_state_updated(_lobby: Dictionary) -> void:
 
 func _on_disconnect_pressed() -> void:
 	NetworkManager.disconnect_from_server()
-	get_tree().change_scene_to_file("res://main/main_menu.tscn")
+	get_tree().change_scene_to_file("res://main/online_menu.tscn")
 
 func _on_disconnected() -> void:
-	get_tree().change_scene_to_file("res://main/main_menu.tscn")
+	get_tree().change_scene_to_file("res://main/online_menu.tscn")
