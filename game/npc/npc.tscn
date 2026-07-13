@@ -47,6 +47,10 @@ position = Vector2(0, 2)
 centered = false
 offset = Vector2(-9, -18)
 
+[node name="Hat" type="Sprite2D" parent="Visual/Torso/Head"]
+centered = false
+offset = Vector2(-9, -18)
+
 [node name="AnimationPlayer" type="AnimationPlayer" parent="Visual"]
 libraries = {
 "": ExtResource("2")

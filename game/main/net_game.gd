@@ -30,6 +30,7 @@ func _ready() -> void:
 	NetworkManager.match_state_received.connect(_on_match_state)
 	NetworkManager.disconnected_from_server.connect(_on_disconnected)
 	SkinCatalog.skin_received.connect(_on_skin_received)
+	SkinCatalog.hat_received.connect(_on_hat_received)
 
 	# Every player, yours included, is a RemoteAvatar -- there's no local
 	# prediction anywhere anymore, so no reason for your own avatar to be
@@ -43,6 +44,7 @@ func _ready() -> void:
 		avatar.display_name = info.username
 		avatars[peer_id] = avatar
 		_apply_skin(peer_id)
+		_apply_hat(peer_id)
 
 ## A custom skin's image can still be in flight (relayed from the server,
 ## see NetworkManager) when a match starts -- SkinCatalog.get_part_textures()
@@ -55,10 +57,21 @@ func _apply_skin(peer_id: int) -> void:
 	var skin_id: String = roster[peer_id].get("skin_id", "red")
 	avatars[peer_id].set_skin(skin_id)
 
+func _apply_hat(peer_id: int) -> void:
+	if not avatars.has(peer_id) or not roster.has(peer_id):
+		return
+	var hat_id: String = roster[peer_id].get("hat_id", "")
+	avatars[peer_id].set_hat(hat_id)
+
 func _on_skin_received(skin_id: String) -> void:
 	for peer_id in roster.keys():
 		if roster[peer_id].get("skin_id", "") == skin_id:
 			_apply_skin(peer_id)
+
+func _on_hat_received(hat_id: String) -> void:
+	for peer_id in roster.keys():
+		if roster[peer_id].get("hat_id", "") == hat_id:
+			_apply_hat(peer_id)
 
 func _physics_process(_delta: float) -> void:
 	# No client-side prediction/reconciliation at all -- just capture and
