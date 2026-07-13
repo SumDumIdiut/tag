@@ -95,7 +95,7 @@ func set_hat(hat_id: String) -> void:
 	if tex:
 		_hat.texture = tex
 
-func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_it: bool) -> void:
+func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_climbing: bool, on_floor: bool, is_it: bool) -> void:
 	target_position = pos
 	target_velocity = vel
 	target_facing = facing
@@ -113,15 +113,25 @@ func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_it:
 	if is_it and not _was_it:
 		_play_anim("tag_reaction")
 	_was_it = is_it
-	_update_locomotion_anim(vel)
+	_update_locomotion_anim(vel, is_dashing, is_climbing, on_floor)
 
-## Same idle/walk selection as Player._update_locomotion_anim, but driven by
-## the last reported network velocity instead of local physics -- a
-## RemoteAvatar never simulates movement itself.
-func _update_locomotion_anim(vel: Vector2) -> void:
+## Same idle/walk/jump/fall/dash/climb selection as
+## Player._update_locomotion_anim, but driven by the last reported network
+## state instead of local physics -- a RemoteAvatar never simulates
+## movement itself.
+func _update_locomotion_anim(vel: Vector2, is_dashing: bool, is_climbing: bool, on_floor: bool) -> void:
 	if not _anim_player or _anim_player.current_animation == "tag_reaction" and _anim_player.is_playing():
 		return
-	if absf(vel.x) > 5.0:
+	if is_dashing:
+		_anim_player.speed_scale = 1.0
+		_play_anim("dash")
+	elif is_climbing:
+		_anim_player.speed_scale = 1.0
+		_play_anim("climb")
+	elif not on_floor:
+		_anim_player.speed_scale = 1.0
+		_play_anim("jump" if vel.y < 0.0 else "fall")
+	elif absf(vel.x) > 5.0:
 		_anim_player.speed_scale = clampf(absf(vel.x) / Player.MOVE_SPEED, 0.4, 2.0)
 		_play_anim("walk")
 	else:

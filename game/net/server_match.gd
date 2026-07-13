@@ -167,6 +167,7 @@ func _physics_process(delta: float) -> void:
 			"facing": p.facing,
 			"is_dashing": p.is_dashing,
 			"is_climbing": p.is_climbing,
+			"on_floor": p.is_on_floor(),
 			"is_it": _tag_mode.is_it(p),
 		}
 	for peer_id in _players.keys():

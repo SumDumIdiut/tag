@@ -261,15 +261,26 @@ func _process(delta: float) -> void:
 
 	_update_locomotion_anim(on_floor_now)
 
-## Idle when grounded and roughly still, walk otherwise -- speed_scale ties
-## the walk cycle's cadence to actual run speed instead of a fixed loop, so
+## Picks among every movement animation -- dash and climb take priority
+## (they're deliberate player actions), then airborne jump/fall (split by
+## vertical velocity sign), then grounded walk/idle. speed_scale on walk
+## ties the cycle's cadence to actual run speed instead of a fixed loop, so
 ## sprinting doesn't look like a slow moonwalk. Doesn't touch tag_reaction,
 ## a one-shot triggered separately by set_tagged_it -- if it's still playing
 ## this just leaves it alone rather than stomping it every frame.
 func _update_locomotion_anim(on_floor_now: bool) -> void:
 	if not _anim_player or _anim_player.current_animation == "tag_reaction" and _anim_player.is_playing():
 		return
-	if on_floor_now and absf(velocity.x) > 5.0:
+	if is_dashing:
+		_anim_player.speed_scale = 1.0
+		_play_anim("dash")
+	elif is_climbing:
+		_anim_player.speed_scale = 1.0
+		_play_anim("climb")
+	elif not on_floor_now:
+		_anim_player.speed_scale = 1.0
+		_play_anim("jump" if velocity.y < 0.0 else "fall")
+	elif absf(velocity.x) > 5.0:
 		_anim_player.speed_scale = clampf(absf(velocity.x) / MOVE_SPEED, WALK_ANIM_MIN_SPEED_SCALE, WALK_ANIM_MAX_SPEED_SCALE)
 		_play_anim("walk")
 	else:
