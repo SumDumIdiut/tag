@@ -6,84 +6,35 @@ extends Control
 @onready var back_button: Button = $VBox/BackButton
 @onready var status_label: Label = $VBox/StatusLabel
 
-const MAX_CONNECT_ATTEMPTS := 15
-# The freshly-spawned Tag-Server.exe is a second full Godot process starting
-# up on the same machine (loading the engine, initializing autoloads,
-# connecting to the relay) -- it's briefly competing for CPU with this
-# client. Retrying too fast just adds more connection-attempt churn on top
-# of that contention instead of giving it room to finish starting.
-const RETRY_INTERVAL_SEC := 1.0
-
-var _child_pid := -1
-var _pending_port := -1
-var _attempts := 0
-var _username := "Player"
+var _spawner: LocalServerSpawner
 var _server_name := "Someone's Server"
-var _retry_timer: Timer
 
 func _ready() -> void:
+	username_edit.text = GameSettings.saved_username
 	host_button.pressed.connect(_on_host_pressed)
 	back_button.pressed.connect(_on_back_pressed)
-	NetworkManager.connected_to_server.connect(_on_connected)
-	NetworkManager.connection_failed.connect(_on_connect_attempt_failed)
 
-	_retry_timer = Timer.new()
-	_retry_timer.wait_time = RETRY_INTERVAL_SEC
-	_retry_timer.one_shot = true
-	_retry_timer.timeout.connect(_try_connect)
-	add_child(_retry_timer)
+	_spawner = LocalServerSpawner.new()
+	add_child(_spawner)
+	_spawner.connected.connect(_on_spawned_and_connected)
+	_spawner.failed.connect(_on_spawn_failed)
 
 func _on_host_pressed() -> void:
-	var exe_dir := OS.get_executable_path().get_base_dir()
-	var server_exe := exe_dir.path_join("Tag-Server.exe")
-	if not FileAccess.file_exists(server_exe):
-		status_label.text = "Tag-Server.exe not found next to this client -- can't host."
-		return
-
-	var port := _find_free_port()
-	if port == -1:
-		status_label.text = "Couldn't find a free local port."
-		return
-
 	_server_name = server_name_edit.text.strip_edges()
 	if _server_name.is_empty():
 		_server_name = "Someone's Server"
 
-	var args := PackedStringArray([
-		"--port=%d" % port,
-		"--name=%s" % _server_name,
-		"--quit-when-empty",
-	])
-	_child_pid = OS.create_process(server_exe, args)
-	if _child_pid == -1:
-		status_label.text = "Failed to launch Tag-Server.exe."
-		return
-
-	_username = username_edit.text
-	_pending_port = port
-	_attempts = 0
+	var username := username_edit.text
+	GameSettings.save_username(username)
 	host_button.disabled = true
 	status_label.text = "Starting server..."
-	_retry_timer.start()
+	_spawner.spawn(_server_name, username)
 
-func _try_connect() -> void:
-	_attempts += 1
-	if _attempts > MAX_CONNECT_ATTEMPTS:
-		status_label.text = "Server didn't come up in time."
-		host_button.disabled = false
-		_pending_port = -1
-		return
-	NetworkManager.set_username(_username)
-	NetworkManager.start_client("127.0.0.1:%d" % _pending_port, _username)
+func _on_spawn_failed(reason: String) -> void:
+	status_label.text = reason
+	host_button.disabled = false
 
-func _on_connect_attempt_failed() -> void:
-	if _pending_port == -1:
-		return # not from our own host-spawn attempt (e.g. a stray signal)
-	_retry_timer.start()
-
-func _on_connected() -> void:
-	if _pending_port == -1:
-		return
+func _on_spawned_and_connected() -> void:
 	# Skip lobby_browser's manual create/browse step entirely -- as the host,
 	# there's nothing to browse for and re-typing the server name as a lobby
 	# name too would just be re-doing what this screen already collected.
@@ -94,17 +45,5 @@ func _on_lobby_created(_lobby: Dictionary) -> void:
 	get_tree().change_scene_to_file("res://main/lobby_room.tscn")
 
 func _on_back_pressed() -> void:
-	if _child_pid != -1:
-		OS.kill(_child_pid)
+	_spawner.kill_child()
 	get_tree().change_scene_to_file("res://main/online_menu.tscn")
-
-## Bind to port 0 so the OS assigns a free one, read it back, then release --
-## there's a small window before Tag-Server.exe binds it where another
-## process could grab it, but that's the standard tradeoff for this idiom.
-func _find_free_port() -> int:
-	var probe := TCPServer.new()
-	if probe.listen(0) != OK:
-		return -1
-	var port := probe.get_local_port()
-	probe.stop()
-	return port

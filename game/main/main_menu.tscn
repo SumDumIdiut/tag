@@ -32,6 +32,11 @@ theme_override_font_sizes/font_size = 40
 horizontal_alignment = 1
 text = "TAG"
 
+[node name="QuickPlayButton" type="Button" parent="VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 44)
+text = "Quick Play"
+
 [node name="LocalButton" type="Button" parent="VBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 44)
