@@ -7,6 +7,7 @@ extends Control
 @onready var status_label: Label = $VBox/StatusLabel
 
 func _ready() -> void:
+	username_edit.text = GameSettings.saved_username
 	connect_button.pressed.connect(_on_connect_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 	NetworkManager.connected_to_server.connect(_on_connected)
@@ -21,6 +22,7 @@ func _on_connect_pressed() -> void:
 
 	status_label.text = "Connecting..."
 	connect_button.disabled = true
+	GameSettings.save_username(display_name)
 	NetworkManager.set_username(display_name)
 	NetworkManager.start_client(address, display_name)
 

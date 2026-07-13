@@ -155,7 +155,15 @@ var stamina := STAMINA_MAX
 var is_climbing := false
 var climb_exhausted_timer := 0.0
 
-@onready var _visual: Sprite2D = $Visual
+@onready var _visual: Node2D = $Visual
+@onready var _parts: Dictionary = {
+	"head": $Visual/Torso/Head,
+	"torso": $Visual/Torso,
+	"left_arm": $Visual/Torso/LeftArm,
+	"right_arm": $Visual/Torso/RightArm,
+	"left_leg": $Visual/Torso/LeftLeg,
+	"right_leg": $Visual/Torso/RightLeg,
+}
 
 var _was_on_floor_visual := false
 
@@ -167,14 +175,21 @@ func _ready() -> void:
 		# choice -- NPCs never get a skin selection of their own and just
 		# keep this, and it covers the brief window before a real player's
 		# chosen skin is known too.
-		_visual.texture = SkinCatalog.get_texture("red")
+		set_skin("red")
 
-## Sets which skin's texture this player/NPC actually displays -- called by
+## Sets which skin this player/NPC actually displays, by id -- called by
 ## whoever knows which skin this instance should be (game.gd for the local
 ## human player in AI mode, RemoteAvatar for a networked peer's own choice).
-func set_skin(texture: Texture2D) -> void:
-	if _visual and texture:
-		_visual.texture = texture
+## No-ops if that skin's per-part textures aren't ready yet (an unfetched
+## custom skin) -- the caller's own skin_received retry (see net_game.gd)
+## re-calls this once they land.
+func set_skin(skin_id: String) -> void:
+	var parts := SkinCatalog.get_part_textures(skin_id)
+	if parts.is_empty():
+		return
+	for part_name in parts:
+		if _parts.has(part_name):
+			_parts[part_name].texture = parts[part_name]
 
 ## Recolors this player/NPC to flag it as the current Tag "it", or back to
 ## its own normal look when it's no longer it -- lets TagMode mark whoever's

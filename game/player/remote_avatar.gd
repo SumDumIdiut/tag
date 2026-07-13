@@ -9,9 +9,17 @@ class_name RemoteAvatar
 # responsiveness for input lag equal to round-trip time, in exchange for the
 # render never needing a correction/snap.
 
-@onready var visual: Sprite2D = $Visual
+@onready var visual: Node2D = $Visual
 @onready var name_label: Label = $NameLabel
 @onready var camera: Camera2D = $Camera2D
+@onready var _parts: Dictionary = {
+	"head": $Visual/Torso/Head,
+	"torso": $Visual/Torso,
+	"left_arm": $Visual/Torso/LeftArm,
+	"right_arm": $Visual/Torso/RightArm,
+	"left_leg": $Visual/Torso/LeftLeg,
+	"right_leg": $Visual/Torso/RightLeg,
+}
 
 const LERP_WEIGHT := 0.35
 # Dead-reckoning cap -- how far past the last known update we'll still trust
@@ -42,7 +50,7 @@ func _ready() -> void:
 	if visual:
 		# Sensible default until set_skin() overrides it with this peer's
 		# actual choice -- covers the brief window before it's known.
-		visual.texture = SkinCatalog.get_texture("red")
+		set_skin("red")
 	if is_local and camera:
 		camera.enabled = true
 		camera.make_current()
@@ -58,12 +66,18 @@ func _physics_process(delta: float) -> void:
 	var extrapolated := target_position + target_velocity * minf(_time_since_update, MAX_EXTRAPOLATION_SEC)
 	global_position = global_position.lerp(extrapolated, LERP_WEIGHT)
 
-## Sets which skin's texture this avatar displays -- called once by
-## net_game.gd when this peer's skin choice becomes known, not on every
-## state update below (skin choice doesn't change every tick).
-func set_skin(texture: Texture2D) -> void:
-	if visual and texture:
-		visual.texture = texture
+## Sets which skin this avatar displays, by id -- called once by net_game.gd
+## when this peer's skin choice becomes known, not on every state update
+## below (skin choice doesn't change every tick). No-ops if that skin's
+## per-part textures aren't ready yet (an unfetched custom skin) -- the
+## caller's own skin_received retry re-calls this once they land.
+func set_skin(skin_id: String) -> void:
+	var parts := SkinCatalog.get_part_textures(skin_id)
+	if parts.is_empty():
+		return
+	for part_name in parts:
+		if _parts.has(part_name):
+			_parts[part_name].texture = parts[part_name]
 
 func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_it: bool) -> void:
 	target_position = pos

@@ -147,6 +147,36 @@ func _server_create_lobby(lobby_name: String, max_players: int) -> void:
 	var sender := multiplayer.get_remote_sender_id()
 	if _peer_lobby.has(sender):
 		return # already in a lobby
+	_create_lobby_internal(sender, lobby_name, max_players)
+
+@rpc("any_peer", "reliable")
+func _server_join_lobby(lobby_id: int) -> void:
+	if not is_server:
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if _peer_lobby.has(sender):
+		return
+	_join_lobby_internal(sender, lobby_id)
+
+## One-click matchmaking: joins the first open (not-in-match, not-full)
+## lobby, or creates a fresh "Quick Match" one if none exists -- reuses the
+## exact same internal helpers _server_create_lobby/_server_join_lobby call,
+## so quick-joined and manually-joined lobbies behave identically once in
+## lobby_room.
+@rpc("any_peer", "reliable")
+func _server_quick_join_lobby() -> void:
+	if not is_server:
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if _peer_lobby.has(sender):
+		return
+	for lobby in _lobbies.values():
+		if not lobby.in_match and lobby.members.size() < lobby.max_players:
+			_join_lobby_internal(sender, lobby.id)
+			return
+	_create_lobby_internal(sender, "Quick Match", MAX_LOBBY_PLAYERS)
+
+func _create_lobby_internal(sender: int, lobby_name: String, max_players: int) -> void:
 	var id := _next_lobby_id
 	_next_lobby_id += 1
 	var clean_name := lobby_name.strip_edges().substr(0, 24)
@@ -164,12 +194,8 @@ func _server_create_lobby(lobby_name: String, max_players: int) -> void:
 	_broadcast_lobby_list()
 	_send_lobby_state(id)
 
-@rpc("any_peer", "reliable")
-func _server_join_lobby(lobby_id: int) -> void:
-	if not is_server:
-		return
-	var sender := multiplayer.get_remote_sender_id()
-	if _peer_lobby.has(sender) or not _lobbies.has(lobby_id):
+func _join_lobby_internal(sender: int, lobby_id: int) -> void:
+	if not _lobbies.has(lobby_id):
 		return
 	var lobby: Dictionary = _lobbies[lobby_id]
 	if lobby.in_match or lobby.members.size() >= lobby.max_players:
@@ -317,6 +343,9 @@ func create_lobby(lobby_name: String, max_players: int) -> void:
 
 func join_lobby(lobby_id: int) -> void:
 	rpc_id(1, "_server_join_lobby", lobby_id)
+
+func quick_join_lobby() -> void:
+	rpc_id(1, "_server_quick_join_lobby")
 
 func leave_lobby() -> void:
 	rpc_id(1, "_server_leave_lobby")

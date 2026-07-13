@@ -16,6 +16,7 @@ var _refresh_timer: Timer
 var _request_in_flight := false
 
 func _ready() -> void:
+	username_edit.text = GameSettings.saved_username
 	connect_button.pressed.connect(_on_connect_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 	server_list.item_activated.connect(func(_idx): _on_connect_pressed())
@@ -74,6 +75,7 @@ func _on_connect_pressed() -> void:
 		return
 	var server: Dictionary = _servers[selected[0]]
 	var username := username_edit.text
+	GameSettings.save_username(username)
 	NetworkManager.set_username(username)
 	connect_button.disabled = true
 	status_label.text = "Connecting..."

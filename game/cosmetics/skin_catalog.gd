@@ -15,6 +15,23 @@ const VISUAL_HEIGHT := 48
 const CLIENT_ID_PATH := "user://client_id.txt"
 const API_BASE := "https://codecade.co.za/tag/api/skins"
 
+const PART_NAMES := ["head", "torso", "left_arm", "right_arm", "left_leg", "right_leg"]
+
+# Canvas-space (32x48, same space the old single-texture painter used) rect +
+# pivot per rig part. `rect` is the tight crop for that part's own texture;
+# `pivot` is the joint point the rig (player.tscn et al) positions/rotates
+# that part's node around -- torso's pivot is its neck attach point (torso is
+# the rig's parent node), each limb's pivot is where it actually attaches to
+# the torso, head's pivot is its own neck.
+const PART_DEFS := {
+	"torso": {"rect": Rect2i(9, 17, 14, 21), "pivot": Vector2(16, 17)},
+	"head": {"rect": Rect2i(7, 1, 18, 18), "pivot": Vector2(16, 19)},
+	"left_arm": {"rect": Rect2i(3, 19, 6, 14), "pivot": Vector2(9, 19)},
+	"right_arm": {"rect": Rect2i(23, 19, 6, 14), "pivot": Vector2(23, 19)},
+	"left_leg": {"rect": Rect2i(11, 36, 4, 11), "pivot": Vector2(13, 36)},
+	"right_leg": {"rect": Rect2i(17, 36, 4, 11), "pivot": Vector2(19, 36)},
+}
+
 const BUILTIN_SKINS := [
 	{"id": "red", "name": "Red", "color": Color(0.85, 0.2, 0.2), "rarity": "common"},
 	{"id": "blue", "name": "Blue", "color": Color(0.25, 0.45, 0.85), "rarity": "common"},
@@ -90,6 +107,29 @@ func get_texture(id: String) -> Texture2D:
 	_fetch_custom_texture(id)
 	return null
 
+## Per-rig-part version of get_texture() -- {part_name -> Texture2D}, empty
+## if a custom skin's image hasn't finished fetching yet (same async-fetch/
+## skin_received pattern as get_texture: treat {} as "show a placeholder,
+## try again on skin_received", not a real failure). Built-in skins are
+## painted directly into parts and cached per-part; a fetched custom
+## (whole-image) skin is sliced into the same PART_DEFS regions on first
+## request, so older whole-image custom skins render correctly on the
+## per-part rig with no server-side changes needed.
+func get_part_textures(id: String) -> Dictionary:
+	var cache_key := "parts:" + id
+	if _texture_cache.has(cache_key):
+		return _texture_cache[cache_key]
+	if is_builtin(id):
+		var parts := _make_character_parts(_builtin_color(id))
+		_texture_cache[cache_key] = parts
+		return parts
+	if _texture_cache.has(id):
+		var parts := _slice_whole_image(_texture_cache[id])
+		_texture_cache[cache_key] = parts
+		return parts
+	_fetch_custom_texture(id) # de-duped internally; emits skin_received once the whole image lands
+	return {}
+
 func select_skin(id: String) -> void:
 	selected_skin_id = id
 	skin_selected.emit(id)
@@ -102,13 +142,29 @@ func _builtin_color(id: String) -> Color:
 	return Color.WHITE
 
 ## A simple procedural humanoid -- head, body, arms, legs, eyes -- rather
-## than a flat color block. Only built-in skins get this treatment; a
-## custom (uploaded) skin keeps showing the player's own image as-is rather
-## than forcing it into a silhouette they didn't choose.
+## than a flat color block. Used for the shop's flat preview thumbnail; the
+## in-game rig uses _make_character_parts (below) instead, cropped from this
+## same painted image so both stay visually identical.
 func _make_character_texture(color: Color) -> ImageTexture:
-	var w := VISUAL_WIDTH
-	var h := VISUAL_HEIGHT
-	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	return ImageTexture.create_from_image(_paint_character_image(color))
+
+## Same painted humanoid as above, but returned as {part_name -> Texture2D}
+## (see PART_DEFS) instead of one whole-body texture -- the rig
+## (player.tscn et al) needs each part as its own Sprite2D so it can be
+## posed/animated independently.
+func _make_character_parts(color: Color) -> Dictionary:
+	return _slice_whole_image(ImageTexture.create_from_image(_paint_character_image(color)))
+
+func _slice_whole_image(whole: Texture2D) -> Dictionary:
+	var img := whole.get_image()
+	var parts := {}
+	for part_name in PART_NAMES:
+		var rect: Rect2i = PART_DEFS[part_name].rect
+		parts[part_name] = ImageTexture.create_from_image(img.get_region(rect))
+	return parts
+
+func _paint_character_image(color: Color) -> Image:
+	var img := Image.create(VISUAL_WIDTH, VISUAL_HEIGHT, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 
 	var shade := color.darkened(0.18)
@@ -130,7 +186,7 @@ func _make_character_texture(color: Color) -> ImageTexture:
 	_fill_ellipse(img, 12.0, 9.0, 1.6, 1.6, eye_color)
 	_fill_ellipse(img, 20.0, 9.0, 1.6, 1.6, eye_color)
 
-	return ImageTexture.create_from_image(img)
+	return img
 
 func _fill_rect(img: Image, x0: int, y0: int, x1: int, y1: int, color: Color) -> void:
 	for y in range(maxi(y0, 0), mini(y1, img.get_height())):

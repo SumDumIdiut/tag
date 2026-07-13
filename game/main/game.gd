@@ -26,7 +26,7 @@ func _ready() -> void:
 	player.global_position = spawn_points[0].global_position
 	player.get_node("Camera2D").enabled = true
 	player.get_node("Camera2D").make_current()
-	player.set_skin(SkinCatalog.get_texture(SkinCatalog.selected_skin_id))
+	player.set_skin(SkinCatalog.selected_skin_id)
 	participants.append(player)
 
 	var npc_count: int = clampi(GameSettings.npc_count, 0, 7)

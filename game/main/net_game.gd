@@ -45,17 +45,15 @@ func _ready() -> void:
 		_apply_skin(peer_id)
 
 ## A custom skin's image can still be in flight (relayed from the server,
-## see NetworkManager) when a match starts -- SkinCatalog.get_texture()
-## just returns null for a not-yet-known custom id, so this no-ops and the
-## avatar keeps its default placeholder until _on_skin_received re-applies
-## it for real.
+## see NetworkManager) when a match starts -- SkinCatalog.get_part_textures()
+## just returns {} for a not-yet-known custom id, so avatar.set_skin() no-ops
+## and the avatar keeps its default placeholder until _on_skin_received
+## re-applies it for real.
 func _apply_skin(peer_id: int) -> void:
 	if not avatars.has(peer_id) or not roster.has(peer_id):
 		return
 	var skin_id: String = roster[peer_id].get("skin_id", "red")
-	var tex := SkinCatalog.get_texture(skin_id)
-	if tex:
-		avatars[peer_id].set_skin(tex)
+	avatars[peer_id].set_skin(skin_id)
 
 func _on_skin_received(skin_id: String) -> void:
 	for peer_id in roster.keys():
