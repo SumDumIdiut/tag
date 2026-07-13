@@ -46,6 +46,18 @@ const BUILTIN_SKINS := [
 
 const HAT_API_BASE := "https://codecade.co.za/tag/api/hats"
 
+# Hats reuse the head part's own crop size (18x18) so a hat sprite lines up
+# exactly over the head without any extra offset math -- see player.tscn's
+# Hat node, a child of Head with the identical offset.
+const HAT_SIZE := 18
+
+const BUILTIN_HATS := [
+	{"id": "cap", "name": "Cap", "shape": "cap", "color": Color(0.25, 0.45, 0.85)},
+	{"id": "beanie", "name": "Beanie", "shape": "beanie", "color": Color(0.85, 0.2, 0.3)},
+	{"id": "tophat", "name": "Top Hat", "shape": "tophat", "color": Color(0.32, 0.24, 0.42)},
+	{"id": "crown", "name": "Crown", "shape": "crown", "color": Color(0.95, 0.8, 0.25)},
+]
+
 signal skin_selected(id: String)
 signal hat_selected(id: String)
 ## Emitted once a custom skin's or hat's texture finishes arriving from the
@@ -82,11 +94,14 @@ func get_all_skins() -> Array:
 		out.append({"id": s.id, "name": s.name, "custom": true})
 	return out
 
-## The server's shared hat catalog, in the same shape get_all_skins() uses.
-## There's no built-in "none" entry here -- the shop represents "no hat" as
-## its own explicit unequip action, not a catalog item.
+## Built-in hats plus every custom hat in the server's shared catalog, same
+## shape as get_all_skins(). There's no built-in "none" entry here -- the
+## shop represents "no hat" as its own explicit unequip action, not a
+## catalog item.
 func get_all_hats() -> Array:
 	var out := []
+	for h in BUILTIN_HATS:
+		out.append(h)
 	for h in _catalog_hats:
 		out.append({"id": h.id, "name": h.name, "custom": true})
 	return out
@@ -94,6 +109,12 @@ func get_all_hats() -> Array:
 func is_builtin(id: String) -> bool:
 	for s in BUILTIN_SKINS:
 		if s.id == id:
+			return true
+	return false
+
+func is_builtin_hat(id: String) -> bool:
+	for h in BUILTIN_HATS:
+		if h.id == id:
 			return true
 	return false
 
@@ -157,6 +178,10 @@ func get_hat_texture(id: String) -> Texture2D:
 	var cache_key := "hat:" + id
 	if _texture_cache.has(cache_key):
 		return _texture_cache[cache_key]
+	if is_builtin_hat(id):
+		var tex := _make_hat_texture(id)
+		_texture_cache[cache_key] = tex
+		return tex
 	_fetch_hat_texture(id)
 	return null
 
@@ -210,6 +235,47 @@ func _paint_character_image(color: Color) -> Image:
 	# Eyes
 	_fill_ellipse(img, 12.0, 9.0, 1.6, 1.6, eye_color)
 	_fill_ellipse(img, 20.0, 9.0, 1.6, 1.6, eye_color)
+
+	return img
+
+## Built-in hats, painted into the same 18x18 canvas the head crop uses (see
+## HAT_SIZE) so they line up over the head with zero extra offset math. Each
+## shape is a distinct silhouette occupying roughly the canvas's upper half,
+## leaving the rest transparent so the head shows through underneath.
+func _make_hat_texture(id: String) -> ImageTexture:
+	var def := {}
+	for h in BUILTIN_HATS:
+		if h.id == id:
+			def = h
+			break
+	return ImageTexture.create_from_image(_paint_hat_image(def.get("shape", "cap"), def.get("color", Color.WHITE)))
+
+func _paint_hat_image(shape: String, color: Color) -> Image:
+	var img := Image.create(HAT_SIZE, HAT_SIZE, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var shade := color.darkened(0.2)
+	var highlight := color.lightened(0.15)
+
+	match shape:
+		"cap":
+			# Dome plus a brim sticking out to one side -- the whole rig
+			# (including this hat) mirrors via the root Visual's scale.x sign
+			# when facing flips, so a one-sided brim automatically flips with it.
+			_fill_ellipse(img, 9.0, 7.0, 7.0, 5.5, color)
+			_fill_rect(img, 9, 7, 18, 10, shade)
+		"beanie":
+			_fill_ellipse(img, 9.0, 6.0, 7.0, 6.5, color)
+			_fill_rect(img, 1, 8, 17, 11, shade) # folded cuff
+		"tophat":
+			_fill_rect(img, 5, 0, 13, 8, color) # crown/cylinder
+			_fill_rect(img, 5, 5, 13, 7, highlight) # ribbon band
+			_fill_rect(img, 1, 8, 17, 10, shade) # brim
+		"crown":
+			_fill_rect(img, 2, 7, 16, 11, color) # base band
+			_fill_rect(img, 3, 2, 6, 8, color) # left spike
+			_fill_rect(img, 8, 1, 11, 8, color) # center spike (tallest)
+			_fill_rect(img, 12, 2, 15, 8, color) # right spike
+			_fill_ellipse(img, 9.0, 3.0, 1.4, 1.4, Color(0.85, 0.2, 0.25)) # jewel
 
 	return img
 
