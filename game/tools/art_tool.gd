@@ -14,6 +14,8 @@ extends Control
 const UIStyle := preload("res://ui/ui_style.gd")
 const CharacterPreviewScene := preload("res://ui/character_preview.gd")
 const PixelCanvasScene := preload("res://main/pixel_canvas.gd")
+const UpdateCheckerScript := preload("res://net/update_checker.gd")
+const UpdatePromptScene := preload("res://ui/update_prompt.gd")
 
 const ZOOM := 18
 
@@ -99,6 +101,20 @@ func _ready() -> void:
 	_build_big_preview()
 	canvas_holder.visible = false
 	empty_state_label.visible = true
+	_check_for_update()
+
+func _check_for_update() -> void:
+	var checker := UpdateCheckerScript.new("TagArtTool.exe")
+	add_child(checker)
+	checker.check_completed.connect(_on_update_check_completed)
+	checker.check()
+
+func _on_update_check_completed(result: Dictionary) -> void:
+	if not result.get("available", false):
+		return
+	var prompt := UpdatePromptScene.new()
+	add_child(prompt)
+	prompt.setup(result.version, result.download_url)
 
 func _setup_page_tabs() -> void:
 	var tab_group := ButtonGroup.new()
