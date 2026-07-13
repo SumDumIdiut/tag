@@ -14,22 +14,28 @@ const PLAYER_SCENE := preload("res://player/player.tscn")
 const ARENA_SCENE := preload("res://levels/tag_arena.tscn")
 const TICK_RATE := 1.0 / 60.0
 
+const ROUND_DURATION_SEC := 180.0
+
 var lobby_id: int
+var ranked := false
 var _network_manager: Node
 var _usernames := {} # peer_id -> String
 var _skin_ids := {}  # peer_id -> String
+var _client_ids := {} # peer_id -> String, server-side only -- never sent to clients
 var _players := {}   # peer_id -> Player
 var _coalesced_input := {} # peer_id -> Dictionary, merged since the last tick
 var _tag_mode: TagMode
 var _arena: Node2D
 var _tick := 0
 
-func _init(network_manager: Node, p_lobby_id: int, members: Dictionary) -> void:
+func _init(network_manager: Node, p_lobby_id: int, members: Dictionary, p_ranked: bool = false) -> void:
 	_network_manager = network_manager
 	lobby_id = p_lobby_id
+	ranked = p_ranked
 	for peer_id in members.keys():
 		_usernames[peer_id] = members[peer_id].username
 		_skin_ids[peer_id] = members[peer_id].get("skin_id", "red")
+		_client_ids[peer_id] = members[peer_id].get("client_id", "")
 
 func _ready() -> void:
 	_arena = ARENA_SCENE.instantiate()
@@ -49,12 +55,39 @@ func _ready() -> void:
 
 	_tag_mode = TagMode.new()
 	add_child(_tag_mode)
-	_tag_mode.setup(participants, randi() % participants.size())
+	_tag_mode.setup(participants, randi() % participants.size(), ranked, ROUND_DURATION_SEC)
+	if ranked:
+		_tag_mode.round_ended.connect(_on_round_ended)
 
 	var roster := {}
 	for peer_id in _usernames.keys():
 		roster[peer_id] = {"username": _usernames[peer_id], "skin_id": _skin_ids[peer_id]}
 	_network_manager.notify_match_started(lobby_id, roster)
+
+## Fires once when a ranked round's timer runs out. Ranks every participant
+## still in the match by least time spent as "it" (ascending -- lowest is
+## best) and hands the result to NetworkManager, which reports it to the
+## relay for ELO and tells every client the match is over.
+func _on_round_ended() -> void:
+	var ranking := []
+	for peer_id in _players.keys():
+		var p: Player = _players[peer_id]
+		ranking.append({
+			"peer_id": peer_id,
+			"client_id": _client_ids.get(peer_id, ""),
+			"username": _usernames.get(peer_id, "Player"),
+			"it_time": _tag_mode.get_it_time(p),
+		})
+	# Ascending by it_time (least = best); peer_id as a deterministic
+	# tiebreak for the vanishingly rare exact-float tie.
+	ranking.sort_custom(func(a, b):
+		if a.it_time == b.it_time:
+			return a.peer_id < b.peer_id
+		return a.it_time < b.it_time
+	)
+	for i in ranking.size():
+		ranking[i]["place"] = i + 1
+	_network_manager.notify_match_ended(lobby_id, ranking)
 
 func receive_input(peer_id: int, input: Dictionary) -> void:
 	# Coalesce everything received since the last tick into one effective

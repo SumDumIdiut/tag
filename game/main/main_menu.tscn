@@ -21,9 +21,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -140.0
-offset_top = -120.0
+offset_top = -150.0
 offset_right = 140.0
-offset_bottom = 120.0
+offset_bottom = 150.0
 theme_override_constants/separation = 16
 
 [node name="Title" type="Label" parent="VBox"]
@@ -36,6 +36,11 @@ text = "TAG"
 layout_mode = 2
 custom_minimum_size = Vector2(0, 44)
 text = "Quick Play"
+
+[node name="RankedButton" type="Button" parent="VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 44)
+text = "Ranked"
 
 [node name="LocalButton" type="Button" parent="VBox"]
 layout_mode = 2

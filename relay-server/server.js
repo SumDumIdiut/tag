@@ -130,6 +130,80 @@ function saveHatSelections() {
   fs.writeFileSync(HAT_SELECTIONS_JSON_PATH, JSON.stringify(hatSelections));
 }
 
+// ─── Ranked (ELO, ranks, matchmaking) ──────────────────────────────────────────
+// Ranked matches are hosted by whichever player's client happened to open
+// one (see game/net/network_manager.gd's is_ranked_server auto-lobby) --
+// the same trust model casual play already uses, explicitly accepted for
+// now rather than standing up dedicated always-on ranked infrastructure.
+// That host can misreport *facts* (who placed where), but never mints
+// rating points directly: this relay is the sole place ELO math happens and
+// the sole writer of ranks.json, so a rigged host is bounded by the same
+// formula everyone else is.
+const RANKS_JSON_PATH = path.join(DATA_DIR, 'ranks.json');
+const ELO_K = 28;
+const STARTING_ELO = 1000;
+const RANK_TIERS = [
+  { name: 'Bronze', minElo: 0 },
+  { name: 'Silver', minElo: 1100 },
+  { name: 'Gold', minElo: 1300 },
+  { name: 'Platinum', minElo: 1550 },
+  { name: 'Diamond', minElo: 1850 },
+];
+
+function tierForElo(elo) {
+  let tier = RANK_TIERS[0].name;
+  for (const t of RANK_TIERS) {
+    if (elo >= t.minElo) tier = t.name;
+  }
+  return tier;
+}
+
+function loadRanks() {
+  try { return JSON.parse(fs.readFileSync(RANKS_JSON_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+let ranks = loadRanks(); // clientId -> { elo, wins, losses, matchesPlayed, lastPlayed }
+
+function saveRanks() {
+  fs.writeFileSync(RANKS_JSON_PATH, JSON.stringify(ranks));
+}
+
+function getRankEntry(clientId) {
+  if (!ranks[clientId]) ranks[clientId] = { elo: STARTING_ELO, wins: 0, losses: 0, matchesPlayed: 0, lastPlayed: 0 };
+  return ranks[clientId];
+}
+
+// Standard FFA/multiplayer Elo extension: every pair (i, j) in the lobby is
+// treated as an independent virtual 1v1 where whoever placed better is the
+// "winner" of that pair, then each player's total delta is averaged over
+// their N-1 opponents so total rating movement stays comparable regardless
+// of how many people were in the round (an 8-player lobby shouldn't swing
+// ratings 7x harder than a 2-player one).
+function applyEloUpdates(results) {
+  // results: [{clientId, itTime, place}], already sorted/placed by the caller
+  const n = results.length;
+  if (n < 2) return; // nothing to compare a lone result against
+  const before = results.map(r => getRankEntry(r.clientId).elo);
+  const deltas = results.map(() => 0);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i === j) continue;
+      const expected = 1 / (1 + Math.pow(10, (before[j] - before[i]) / 400));
+      const actualScore = results[i].place < results[j].place ? 1 : 0; // lower place number = better = "won" this pair
+      deltas[i] += (actualScore - expected);
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const entry = getRankEntry(results[i].clientId);
+    entry.elo = Math.round(entry.elo + ELO_K * (deltas[i] / (n - 1)));
+    entry.matchesPlayed += 1;
+    entry.lastPlayed = Date.now();
+    if (results[i].place === 1) entry.wins += 1;
+    else if (results[i].place === n) entry.losses += 1;
+  }
+  saveRanks();
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 const servers = new Map();       // serverId -> { id, name, maxPlayers, playerCount, createdAt, lastHeartbeat, controlSocket }
 const pendingTokens = new Map(); // token -> { playerSocket, timer }
@@ -160,7 +234,7 @@ setInterval(() => {
 // ─── HTTP: directory + website panel ─────────────────────────────────────────
 app.get('/api/servers', (req, res) => {
   res.json([...servers.values()].map(s => ({
-    id: s.id, name: s.name, playerCount: s.playerCount, maxPlayers: s.maxPlayers, createdAt: s.createdAt,
+    id: s.id, name: s.name, playerCount: s.playerCount, maxPlayers: s.maxPlayers, createdAt: s.createdAt, ranked: !!s.ranked,
   })));
 });
 
@@ -329,6 +403,35 @@ app.get('/api/hats/image/:hatId', (req, res) => {
   fs.createReadStream(imgPath).pipe(res);
 });
 
+// ─── HTTP: ranked ─────────────────────────────────────────────────────────────
+app.get('/api/ranked/:clientId', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  const entry = getRankEntry(req.params.clientId);
+  saveRanks(); // getRankEntry may have just created a fresh entry -- persist it so a lookup alone doesn't silently lose a brand-new player's row on restart
+  res.json({ elo: entry.elo, tier: tierForElo(entry.elo), wins: entry.wins, losses: entry.losses, matchesPlayed: entry.matchesPlayed });
+});
+
+// A ranked match's host (any player's client, per the accepted trust model
+// above) reports the round's outcome here once it ends. No auth beyond the
+// existing rate limiter -- a malicious report can only ever move the
+// clientIds it actually names, through the same public Elo formula everyone
+// else goes through, so the worst case is a self-serving win/loss report,
+// not an arbitrary rating mint.
+app.post('/api/ranked/report-result', (req, res) => {
+  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+  const results = req.body.results;
+  if (!Array.isArray(results) || results.length === 0) return res.status(400).json({ error: 'results required' });
+  const clean = [];
+  for (const r of results) {
+    if (!r || !CLIENT_ID_RE.test(String(r.clientId || ''))) return res.status(400).json({ error: 'bad clientId in results' });
+    const place = parseInt(r.place, 10);
+    if (!Number.isFinite(place) || place < 1) return res.status(400).json({ error: 'bad place in results' });
+    clean.push({ clientId: String(r.clientId), itTime: Number(r.itTime) || 0, place });
+  }
+  applyEloUpdates(clean);
+  res.json({ ok: true });
+});
+
 let _indexHtmlCache = null;
 app.get('/', (req, res) => {
   if (!_indexHtmlCache) {
@@ -405,6 +508,7 @@ function handleHostControl(ws) {
         name: sanitizeName(msg.name),
         maxPlayers: Math.max(1, Math.min(64, parseInt(msg.maxPlayers, 10) || 16)),
         playerCount: 0,
+        ranked: !!msg.ranked,
         createdAt: Date.now(),
         lastHeartbeat: Date.now(),
         controlSocket: ws,

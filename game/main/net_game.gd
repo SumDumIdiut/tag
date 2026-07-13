@@ -2,6 +2,7 @@ extends Node2D
 
 const REMOTE_AVATAR_SCENE := preload("res://player/remote_avatar.tscn")
 const ARENA_SCENE := preload("res://levels/tag_arena.tscn")
+const MATCH_RESULTS_SCENE := preload("res://main/match_results.tscn")
 
 var arena: Node2D
 var avatars := {} # peer_id -> RemoteAvatar, including your own
@@ -29,6 +30,7 @@ func _ready() -> void:
 
 	NetworkManager.match_state_received.connect(_on_match_state)
 	NetworkManager.disconnected_from_server.connect(_on_disconnected)
+	NetworkManager.match_ended.connect(_on_match_ended)
 	SkinCatalog.skin_received.connect(_on_skin_received)
 	SkinCatalog.hat_received.connect(_on_hat_received)
 
@@ -104,3 +106,14 @@ func _on_match_state(_tick: int, states: Dictionary) -> void:
 
 func _on_disconnected() -> void:
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")
+
+## Only ever fires for a ranked round (see TagMode.round_ended) -- casual
+## matches have no end condition and just keep running until everyone
+## leaves. Swaps straight to the results screen without waiting for a
+## disconnect.
+func _on_match_ended(ranking: Array) -> void:
+	var scene := MATCH_RESULTS_SCENE.instantiate()
+	scene.setup(ranking, my_peer_id)
+	get_tree().root.add_child(scene)
+	get_tree().current_scene.queue_free()
+	get_tree().current_scene = scene
