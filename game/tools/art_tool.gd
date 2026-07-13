@@ -307,9 +307,7 @@ func _show_part(images: Dictionary, key: String, context: String, id: String) ->
 	_current_id = id
 	empty_state_label.visible = false
 	canvas_holder.visible = true
-	if _current_canvas:
-		_current_canvas.queue_free()
-		_current_canvas = null
+	_clear_canvas_holder()
 	var canvas = PixelCanvasScene.new(images[key], ZOOM)
 	canvas_holder.add_child(canvas)
 	canvas.painted.connect(_on_painted)
@@ -322,11 +320,25 @@ func _clear_canvas() -> void:
 	_current_id = ""
 	_current_key = ""
 	_current_images = {}
-	if _current_canvas:
-		_current_canvas.queue_free()
-		_current_canvas = null
+	_clear_canvas_holder()
 	canvas_holder.visible = false
 	empty_state_label.visible = true
+
+## queue_free() only *schedules* removal, it doesn't take a node out of the
+## tree immediately -- switching parts faster than one deletion clears (a
+## totally normal thing to do, just clicking through the sidebar) left the
+## previous canvas still sitting in the CenterContainer when the next one
+## was added, and multiple same-sized siblings fighting for centered
+## position there collapses everyone's layout to zero size. This is why
+## parts stopped rendering at all after a couple of clicks. remove_child()
+## first takes it out of the tree synchronously, so there's never more than
+## one canvas actually laid out here at a time; queue_free() after that
+## still handles the actual memory cleanup.
+func _clear_canvas_holder() -> void:
+	for child in canvas_holder.get_children():
+		canvas_holder.remove_child(child)
+		child.queue_free()
+	_current_canvas = null
 
 func _build_toolbar() -> void:
 	var brush_btn := _tool_button("Brush", 0)
