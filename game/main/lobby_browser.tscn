@@ -28,9 +28,9 @@ theme_override_constants/separation = 12
 
 [node name="Title" type="Label" parent="VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 34
 horizontal_alignment = 1
-text = "Lobbies"
+text = "LOBBIES"
 
 [node name="LobbyList" type="ItemList" parent="VBox"]
 layout_mode = 2
@@ -38,6 +38,7 @@ custom_minimum_size = Vector2(0, 180)
 
 [node name="JoinButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 44)
 text = "Join Selected"
 
 [node name="CreateRow" type="HBoxContainer" parent="VBox"]
@@ -47,18 +48,22 @@ theme_override_constants/separation = 8
 [node name="NameEdit" type="LineEdit" parent="VBox/CreateRow"]
 layout_mode = 2
 size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 38)
 placeholder_text = "Lobby name"
 
 [node name="MaxPlayersSpin" type="SpinBox" parent="VBox/CreateRow"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 38)
 min_value = 2
 max_value = 8
 value = 8
 
 [node name="CreateButton" type="Button" parent="VBox/CreateRow"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 38)
 text = "Create"
 
 [node name="DisconnectButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 36)
 text = "Disconnect"

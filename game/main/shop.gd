@@ -11,6 +11,7 @@ extends Control
 # centered preview art, an EQUIPPED badge on your current pick.
 
 const SKIN_EDITOR_SCENE := preload("res://main/skin_editor.tscn")
+const UIStyle := preload("res://ui/ui_style.gd")
 
 @onready var skin_grid: GridContainer = $VBox/ScrollContainer/SkinGrid
 @onready var status_label: Label = $VBox/StatusLabel
@@ -21,12 +22,18 @@ const SKIN_EDITOR_SCENE := preload("res://main/skin_editor.tscn")
 
 const CARD_SIZE := Vector2(140, 184)
 const BANNER_HEIGHT_FRACTION := 0.3
-const CARD_COLOR := Color(0.4, 0.42, 0.48) # flat neutral border/banner tint -- no more rarity coloring
+const CARD_COLOR := UIStyle.COLOR_SHOP # matches the Shop bar's own color on the main menu
 
 var _button_group := ButtonGroup.new()
 var _mode := "skin" # "skin" or "hat"
 
 func _ready() -> void:
+	UIStyle.add_background(self)
+	UIStyle.style_button(skins_tab_button, UIStyle.COLOR_SHOP, 8)
+	UIStyle.style_button(hats_tab_button, UIStyle.COLOR_SHOP, 8)
+	UIStyle.style_button(draw_button, UIStyle.COLOR_SHOP)
+	UIStyle.style_back_button(back_button)
+
 	back_button.pressed.connect(_on_back_pressed)
 	skins_tab_button.pressed.connect(func(): _set_mode("skin"))
 	hats_tab_button.pressed.connect(func(): _set_mode("hat"))

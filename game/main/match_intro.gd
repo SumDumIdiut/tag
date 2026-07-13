@@ -6,9 +6,10 @@ extends Control
 # NetworkManager/RPC changes, just where the scene swap happens.
 
 const NET_GAME_SCENE := preload("res://main/net_game.tscn")
+const UIStyle := preload("res://ui/ui_style.gd")
 const INTRO_DURATION_SEC := 2.5
 
-@onready var roster_box: VBoxContainer = $VBox/RosterBox
+@onready var roster_box: VBoxContainer = $VBox/RosterPanel/RosterBox
 @onready var countdown_label: Label = $VBox/CountdownLabel
 @onready var skip_button: Button = $VBox/SkipButton
 
@@ -23,6 +24,9 @@ func setup(my_id: int, roster: Dictionary) -> void:
 	_roster = roster
 
 func _ready() -> void:
+	UIStyle.add_background(self)
+	$VBox/RosterPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_NEUTRAL))
+	UIStyle.style_back_button(skip_button)
 	skip_button.pressed.connect(_proceed)
 	SkinCatalog.skin_received.connect(_on_skin_received)
 	for peer_id in _roster.keys():

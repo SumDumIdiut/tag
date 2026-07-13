@@ -1,8 +1,11 @@
 extends CanvasLayer
 
+const UIStyle := preload("res://ui/ui_style.gd")
+
 @onready var panel: Control = $Panel
-@onready var resume_button: Button = $Panel/VBox/ResumeButton
-@onready var menu_button: Button = $Panel/VBox/MenuButton
+@onready var card_panel: PanelContainer = $Panel/CardPanel
+@onready var resume_button: Button = $Panel/CardPanel/VBox/ResumeButton
+@onready var menu_button: Button = $Panel/CardPanel/VBox/MenuButton
 
 func _ready() -> void:
 	# Needs to keep processing input (and stay visible/interactive) while the
@@ -10,6 +13,9 @@ func _ready() -> void:
 	# the game would freeze along with everything else.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	panel.visible = false
+	card_panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_NEUTRAL, 0.08, 0.18))
+	UIStyle.style_button(resume_button, UIStyle.COLOR_NEUTRAL)
+	UIStyle.style_back_button(menu_button)
 	resume_button.pressed.connect(_on_resume_pressed)
 	menu_button.pressed.connect(_on_main_menu_pressed)
 

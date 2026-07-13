@@ -21,29 +21,40 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -170.0
-offset_top = -110.0
+offset_top = -130.0
 offset_right = 170.0
-offset_bottom = 110.0
-theme_override_constants/separation = 14
+offset_bottom = 130.0
+theme_override_constants/separation = 16
 
 [node name="Title" type="Label" parent="VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 34
 horizontal_alignment = 1
-text = "Online"
+text = "ONLINE"
+
+[node name="Subtitle" type="Label" parent="VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.72, 0.78, 1)
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+text = "PLAY WITH OTHERS"
 
 [node name="BrowseButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 46)
 text = "Browse Servers"
 
 [node name="HostButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 46)
 text = "Host Server"
 
 [node name="DirectConnectButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 40)
 text = "Direct Connect (advanced)"
 
 [node name="BackButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 36)
 text = "Back"

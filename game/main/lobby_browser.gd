@@ -1,5 +1,7 @@
 extends Control
 
+const UIStyle := preload("res://ui/ui_style.gd")
+
 @onready var lobby_list: ItemList = $VBox/LobbyList
 @onready var name_edit: LineEdit = $VBox/CreateRow/NameEdit
 @onready var max_players_spin: SpinBox = $VBox/CreateRow/MaxPlayersSpin
@@ -10,6 +12,11 @@ extends Control
 var _lobbies: Array = []
 
 func _ready() -> void:
+	UIStyle.add_background(self)
+	UIStyle.style_button(join_button, UIStyle.COLOR_ONLINE)
+	UIStyle.style_button(create_button, UIStyle.COLOR_ONLINE, 8)
+	UIStyle.style_back_button(disconnect_button)
+
 	create_button.pressed.connect(_on_create_pressed)
 	join_button.pressed.connect(_on_join_pressed)
 	disconnect_button.pressed.connect(_on_disconnect_pressed)

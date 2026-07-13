@@ -6,8 +6,9 @@ extends Control
 # only ever runs server-side, see relay-server/server.js's applyEloUpdates).
 
 const RANKED_API_BASE := "https://codecade.co.za/tag/api/ranked"
+const UIStyle := preload("res://ui/ui_style.gd")
 
-@onready var placements_box: VBoxContainer = $VBox/PlacementsBox
+@onready var placements_box: VBoxContainer = $VBox/PlacementsPanel/PlacementsBox
 @onready var rank_label: Label = $VBox/RankLabel
 @onready var continue_button: Button = $VBox/ContinueButton
 
@@ -19,6 +20,9 @@ func setup(ranking: Array, my_peer_id: int) -> void:
 	_my_peer_id = my_peer_id
 
 func _ready() -> void:
+	UIStyle.add_background(self)
+	$VBox/PlacementsPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_RANKED))
+	UIStyle.style_button(continue_button, UIStyle.COLOR_QUICKPLAY)
 	continue_button.pressed.connect(_on_continue_pressed)
 	for entry in _ranking:
 		placements_box.add_child(_build_row(entry))

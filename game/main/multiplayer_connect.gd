@@ -1,5 +1,7 @@
 extends Control
 
+const UIStyle := preload("res://ui/ui_style.gd")
+
 @onready var username_edit: LineEdit = $VBox/UsernameEdit
 @onready var address_edit: LineEdit = $VBox/AddressEdit
 @onready var connect_button: Button = $VBox/ConnectButton
@@ -7,6 +9,10 @@ extends Control
 @onready var status_label: Label = $VBox/StatusLabel
 
 func _ready() -> void:
+	UIStyle.add_background(self)
+	UIStyle.style_button(connect_button, UIStyle.COLOR_ONLINE)
+	UIStyle.style_back_button(back_button)
+
 	username_edit.text = GameSettings.saved_username
 	connect_button.pressed.connect(_on_connect_pressed)
 	back_button.pressed.connect(_on_back_pressed)

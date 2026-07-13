@@ -1,6 +1,7 @@
 extends Control
 
 const MATCH_INTRO_SCENE := preload("res://main/match_intro.tscn")
+const UIStyle := preload("res://ui/ui_style.gd")
 
 @onready var lobby_name_label: Label = $VBox/LobbyNameLabel
 @onready var roster_list: ItemList = $VBox/RosterList
@@ -11,6 +12,11 @@ const MATCH_INTRO_SCENE := preload("res://main/match_intro.tscn")
 var _is_ready := false
 
 func _ready() -> void:
+	UIStyle.add_background(self)
+	UIStyle.style_button(ready_button, UIStyle.COLOR_ONLINE)
+	UIStyle.style_button(start_button, UIStyle.COLOR_ONLINE)
+	UIStyle.style_back_button(leave_button)
+
 	ready_button.pressed.connect(_on_ready_pressed)
 	start_button.pressed.connect(_on_start_pressed)
 	leave_button.pressed.connect(_on_leave_pressed)

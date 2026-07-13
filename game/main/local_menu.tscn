@@ -20,27 +20,41 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -170.0
-offset_top = -150.0
-offset_right = 170.0
-offset_bottom = 150.0
-theme_override_constants/separation = 14
+offset_left = -180.0
+offset_top = -180.0
+offset_right = 180.0
+offset_bottom = 180.0
+theme_override_constants/separation = 20
 
 [node name="Title" type="Label" parent="VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 34
 horizontal_alignment = 1
-text = "Local Play"
+text = "LOCAL"
 
-[node name="NpcCountRow" type="HBoxContainer" parent="VBox"]
+[node name="Subtitle" type="Label" parent="VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.72, 0.78, 1)
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+text = "PRACTICE AGAINST BOTS"
+
+[node name="SettingsPanel" type="PanelContainer" parent="VBox"]
 layout_mode = 2
 
-[node name="NpcCountLabel" type="Label" parent="VBox/NpcCountRow"]
+[node name="SettingsBox" type="VBoxContainer" parent="VBox/SettingsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="NpcCountRow" type="HBoxContainer" parent="VBox/SettingsPanel/SettingsBox"]
+layout_mode = 2
+
+[node name="NpcCountLabel" type="Label" parent="VBox/SettingsPanel/SettingsBox/NpcCountRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "NPCs"
 
-[node name="NpcCountSlider" type="HSlider" parent="VBox/NpcCountRow"]
+[node name="NpcCountSlider" type="HSlider" parent="VBox/SettingsPanel/SettingsBox/NpcCountRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0
@@ -48,20 +62,20 @@ max_value = 7
 step = 1
 value = 3
 
-[node name="NpcCountValue" type="Label" parent="VBox/NpcCountRow"]
+[node name="NpcCountValue" type="Label" parent="VBox/SettingsPanel/SettingsBox/NpcCountRow"]
 layout_mode = 2
 custom_minimum_size = Vector2(24, 0)
 text = "3"
 
-[node name="SkillRow" type="HBoxContainer" parent="VBox"]
+[node name="SkillRow" type="HBoxContainer" parent="VBox/SettingsPanel/SettingsBox"]
 layout_mode = 2
 
-[node name="SkillLabel" type="Label" parent="VBox/SkillRow"]
+[node name="SkillLabel" type="Label" parent="VBox/SettingsPanel/SettingsBox/SkillRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "NPC Skill"
 
-[node name="SkillSlider" type="HSlider" parent="VBox/SkillRow"]
+[node name="SkillSlider" type="HSlider" parent="VBox/SettingsPanel/SettingsBox/SkillRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 1
@@ -69,19 +83,22 @@ max_value = 5
 step = 1
 value = 3
 
-[node name="SkillValue" type="Label" parent="VBox/SkillRow"]
+[node name="SkillValue" type="Label" parent="VBox/SettingsPanel/SettingsBox/SkillRow"]
 layout_mode = 2
 custom_minimum_size = Vector2(24, 0)
 text = "3"
 
 [node name="StartButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 46)
 text = "Play Tag"
 
 [node name="SandboxButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 40)
 text = "Movement Sandbox"
 
 [node name="BackButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 36)
 text = "Back"

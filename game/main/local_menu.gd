@@ -1,14 +1,22 @@
 extends Control
 
-@onready var npc_count_slider: HSlider = $VBox/NpcCountRow/NpcCountSlider
-@onready var npc_count_value: Label = $VBox/NpcCountRow/NpcCountValue
-@onready var skill_slider: HSlider = $VBox/SkillRow/SkillSlider
-@onready var skill_value: Label = $VBox/SkillRow/SkillValue
+const UIStyle := preload("res://ui/ui_style.gd")
+
+@onready var npc_count_slider: HSlider = $VBox/SettingsPanel/SettingsBox/NpcCountRow/NpcCountSlider
+@onready var npc_count_value: Label = $VBox/SettingsPanel/SettingsBox/NpcCountRow/NpcCountValue
+@onready var skill_slider: HSlider = $VBox/SettingsPanel/SettingsBox/SkillRow/SkillSlider
+@onready var skill_value: Label = $VBox/SettingsPanel/SettingsBox/SkillRow/SkillValue
 @onready var start_button: Button = $VBox/StartButton
 @onready var sandbox_button: Button = $VBox/SandboxButton
 @onready var back_button: Button = $VBox/BackButton
 
 func _ready() -> void:
+	UIStyle.add_background(self)
+	$VBox/SettingsPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_LOCAL))
+	UIStyle.style_button(start_button, UIStyle.COLOR_LOCAL)
+	UIStyle.style_button(sandbox_button, UIStyle.COLOR_NEUTRAL)
+	UIStyle.style_back_button(back_button)
+
 	npc_count_slider.value = GameSettings.npc_count
 	skill_slider.value = GameSettings.npc_skill
 	_update_npc_count_label(npc_count_slider.value)

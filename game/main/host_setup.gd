@@ -1,5 +1,7 @@
 extends Control
 
+const UIStyle := preload("res://ui/ui_style.gd")
+
 @onready var username_edit: LineEdit = $VBox/UsernameEdit
 @onready var server_name_edit: LineEdit = $VBox/ServerNameEdit
 @onready var host_button: Button = $VBox/HostButton
@@ -15,6 +17,10 @@ var _server_name := "Someone's Server"
 var _cancelled := false
 
 func _ready() -> void:
+	UIStyle.add_background(self)
+	UIStyle.style_button(host_button, UIStyle.COLOR_ONLINE)
+	UIStyle.style_back_button(back_button)
+
 	username_edit.text = GameSettings.saved_username
 	host_button.pressed.connect(_on_host_pressed)
 	back_button.pressed.connect(_on_back_pressed)
