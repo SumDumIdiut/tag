@@ -34,6 +34,16 @@ jobs:
         shell: pwsh
         run: .\godot.exe --headless --path game --editor --quit
 
+      # Regenerates every baked character/hat PNG (game/assets/character/)
+      # from whatever's currently in game/assets/character_templates/ -- this
+      # is the actual mechanism behind "a friend's edited template shows up
+      # in every future build": their edit just needs to land in that folder
+      # on main, this step (and nothing else) is what turns it into what
+      # players see. See game/tools/bake_character_art.gd.
+      - name: Bake character art from templates
+        shell: pwsh
+        run: .\godot.exe --headless --path game res://tools/bake_character_art.tscn
+
       - name: Create builds directory
         shell: pwsh
         run: New-Item -ItemType Directory -Force -Path builds

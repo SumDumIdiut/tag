@@ -66,6 +66,21 @@ const BUILTIN_HATS := [
 	{"id": "crown", "name": "Crown", "shape": "crown", "color": Color(0.95, 0.8, 0.25)},
 ]
 
+const CHARACTER_SHADE_AMOUNT := 0.18
+const CHARACTER_HIGHLIGHT_AMOUNT := 0.12
+const HAT_SHADE_AMOUNT := 0.2
+const HAT_HIGHLIGHT_AMOUNT := 0.15
+
+# Neutral marker tones used by the editable-template art pipeline (see
+# paint_character_template/paint_hat_template below, tools/extract_templates.gd,
+# and tools/bake_character_art.gd) -- these never appear in the actual game,
+# they're symbolic roles a friend editing the template PNGs can recognize
+# ("this whole region is the base color," "this is the shaded region," ...)
+# that the bake script swaps back out for a real per-skin color.
+const TEMPLATE_BASE := Color(0.65, 0.65, 0.65, 1.0)
+const TEMPLATE_SHADE := Color(0.42, 0.42, 0.42, 1.0)
+const TEMPLATE_HIGHLIGHT := Color(0.88, 0.88, 0.88, 1.0)
+
 signal skin_selected(id: String)
 signal hat_selected(id: String)
 ## Emitted once a custom skin's or hat's texture finishes arriving from the
@@ -135,7 +150,7 @@ func get_texture(id: String) -> Texture2D:
 	if _texture_cache.has(id):
 		return _texture_cache[id]
 	if is_builtin(id):
-		var tex := _make_character_texture(_builtin_color(id))
+		var tex := _compose_whole_texture(id)
 		_texture_cache[id] = tex
 		return tex
 	_fetch_custom_texture(id)
@@ -144,17 +159,20 @@ func get_texture(id: String) -> Texture2D:
 ## Per-rig-part version of get_texture() -- {part_name -> Texture2D}, empty
 ## if a custom skin's image hasn't finished fetching yet (same async-fetch/
 ## skin_received pattern as get_texture: treat {} as "show a placeholder,
-## try again on skin_received", not a real failure). Built-in skins are
-## painted directly into parts and cached per-part; a fetched custom
-## (whole-image) skin is sliced into the same PART_DEFS regions on first
-## request, so older whole-image custom skins render correctly on the
-## per-part rig with no server-side changes needed.
+## try again on skin_received", not a real failure). Built-in skins load the
+## art a friend may have painted over (see tools/bake_character_art.gd,
+## game/assets/character/<skin>_<part>.png), falling back to the original
+## procedural paint only if that file is missing -- keeps this unbreakable
+## even if the bake step was never run. A fetched custom (whole-image) skin
+## is sliced into the same PART_DEFS regions on first request, so older
+## whole-image custom skins render correctly on the per-part rig with no
+## server-side changes needed.
 func get_part_textures(id: String) -> Dictionary:
 	var cache_key := "parts:" + id
 	if _texture_cache.has(cache_key):
 		return _texture_cache[cache_key]
 	if is_builtin(id):
-		var parts := _make_character_parts(_builtin_color(id))
+		var parts := _load_or_paint_character_parts(id)
 		_texture_cache[cache_key] = parts
 		return parts
 	if _texture_cache.has(id):
@@ -163,6 +181,32 @@ func get_part_textures(id: String) -> Dictionary:
 		return parts
 	_fetch_custom_texture(id) # de-duped internally; emits skin_received once the whole image lands
 	return {}
+
+## Composited from get_part_textures() (baked-art-or-procedural, whichever
+## that resolves to) rather than a separate whole-image paint, so the flat
+## preview thumbnail (shop cards, roster previews) always matches whatever
+## the live rig actually renders.
+func _compose_whole_texture(id: String) -> ImageTexture:
+	var parts := get_part_textures(id)
+	var whole := Image.create(VISUAL_WIDTH, VISUAL_HEIGHT, false, Image.FORMAT_RGBA8)
+	whole.fill(Color(0, 0, 0, 0))
+	for part_name in PART_NAMES:
+		if not parts.has(part_name):
+			continue
+		var rect: Rect2i = PART_DEFS[part_name].rect
+		var part_img: Image = parts[part_name].get_image()
+		whole.blit_rect(part_img, Rect2i(Vector2i.ZERO, rect.size), rect.position)
+	return ImageTexture.create_from_image(whole)
+
+func _load_or_paint_character_parts(id: String) -> Dictionary:
+	var parts := {}
+	for part_name in PART_NAMES:
+		var path := "res://assets/character/%s_%s.png" % [id, part_name]
+		if ResourceLoader.exists(path):
+			parts[part_name] = load(path)
+		else:
+			return _make_character_parts(_builtin_color(id))
+	return parts
 
 func select_skin(id: String) -> void:
 	selected_skin_id = id
@@ -179,7 +223,9 @@ func select_hat(id: String) -> void:
 ## Returns the cached hat texture if we already have it, kicking off an
 ## async fetch (skin_received-style, see hat_received) otherwise. Empty id
 ## means "no hat" and always returns null -- callers should treat that as
-## "don't render a hat sprite", not an error.
+## "don't render a hat sprite", not an error. Built-in hats load the baked
+## art (game/assets/character/hats/<hat>.png) if present, same
+## load-or-fall-back-to-procedural pattern as get_part_textures.
 func get_hat_texture(id: String) -> Texture2D:
 	if id.is_empty():
 		return null
@@ -187,11 +233,22 @@ func get_hat_texture(id: String) -> Texture2D:
 	if _texture_cache.has(cache_key):
 		return _texture_cache[cache_key]
 	if is_builtin_hat(id):
-		var tex := _make_hat_texture(id)
+		var tex := _load_or_paint_hat(id)
 		_texture_cache[cache_key] = tex
 		return tex
 	_fetch_hat_texture(id)
 	return null
+
+func _load_or_paint_hat(id: String) -> Texture2D:
+	var path := "res://assets/character/hats/%s.png" % id
+	if ResourceLoader.exists(path):
+		return load(path)
+	var def := {}
+	for h in BUILTIN_HATS:
+		if h.id == id:
+			def = h
+			break
+	return ImageTexture.create_from_image(_paint_hat_image(def.get("shape", "cap"), def.get("color", Color.WHITE)))
 
 func _builtin_color(id: String) -> Color:
 	for s in BUILTIN_SKINS:
@@ -225,8 +282,8 @@ func _paint_character_image(color: Color) -> Image:
 	var img := Image.create(VISUAL_WIDTH, VISUAL_HEIGHT, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 
-	var shade := color.darkened(0.18)
-	var highlight := color.lightened(0.12)
+	var shade := color.darkened(CHARACTER_SHADE_AMOUNT)
+	var highlight := color.lightened(CHARACTER_HIGHLIGHT_AMOUNT)
 	var eye_color := Color(0.05, 0.05, 0.08)
 
 	# Legs
@@ -241,6 +298,30 @@ func _paint_character_image(color: Color) -> Image:
 	# Head
 	_fill_ellipse(img, 16.0, 10.0, 9.0, 9.0, highlight)
 	# Eyes
+	_fill_ellipse(img, 12.0, 9.0, 1.6, 1.6, eye_color)
+	_fill_ellipse(img, 20.0, 9.0, 1.6, 1.6, eye_color)
+
+	return img
+
+## Same shapes as _paint_character_image, but with the three tintable
+## regions (torso/arms+legs/head) marked with TEMPLATE_BASE/SHADE/HIGHLIGHT
+## instead of a real color -- eyes stay their real fixed near-black, since
+## that region is never tinted by skin color anyway (see bake's multiply
+## fallback below, which keeps near-black near-black for any skin color).
+## tools/extract_templates.gd calls this once to produce the editable files
+## under game/assets/character_templates/; tools/bake_character_art.gd
+## reverses the substitution per skin color to produce what the game loads.
+func paint_character_template() -> Image:
+	var img := Image.create(VISUAL_WIDTH, VISUAL_HEIGHT, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var eye_color := Color(0.05, 0.05, 0.08)
+
+	_fill_rect(img, 11, 36, 15, 47, TEMPLATE_SHADE)
+	_fill_rect(img, 17, 36, 21, 47, TEMPLATE_SHADE)
+	_fill_rect(img, 3, 19, 9, 33, TEMPLATE_SHADE)
+	_fill_rect(img, 23, 19, 29, 33, TEMPLATE_SHADE)
+	_fill_rect(img, 9, 17, 23, 38, TEMPLATE_BASE)
+	_fill_ellipse(img, 16.0, 10.0, 9.0, 9.0, TEMPLATE_HIGHLIGHT)
 	_fill_ellipse(img, 12.0, 9.0, 1.6, 1.6, eye_color)
 	_fill_ellipse(img, 20.0, 9.0, 1.6, 1.6, eye_color)
 
@@ -262,8 +343,8 @@ func _make_hat_texture(id: String) -> ImageTexture:
 func _paint_hat_image(shape: String, color: Color) -> Image:
 	var img := Image.create(HAT_WIDTH, HAT_HEIGHT, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var shade := color.darkened(0.2)
-	var highlight := color.lightened(0.15)
+	var shade := color.darkened(HAT_SHADE_AMOUNT)
+	var highlight := color.lightened(HAT_HIGHLIGHT_AMOUNT)
 
 	match shape:
 		"cap":
@@ -288,6 +369,33 @@ func _paint_hat_image(shape: String, color: Color) -> Image:
 			_fill_rect(img, 8, 0, 11, 10, color) # center spike (tallest)
 			_fill_rect(img, 12, 4, 16, 10, color) # right spike
 			_fill_ellipse(img, 9.0, 3.0, 1.3, 1.3, Color(0.85, 0.2, 0.25)) # jewel
+
+	return img
+
+## Same shapes as _paint_hat_image, marker-substituted the same way as
+## paint_character_template -- the crown's jewel keeps its real fixed color
+## since it's never tinted by the hat's own color either (see _paint_hat_image).
+func paint_hat_template(shape: String) -> Image:
+	var img := Image.create(HAT_WIDTH, HAT_HEIGHT, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+
+	match shape:
+		"cap":
+			_fill_ellipse(img, 9.0, 10.0, 6.5, 6.5, TEMPLATE_BASE)
+			_fill_rect(img, 9, 13, 17, 15, TEMPLATE_SHADE)
+		"beanie":
+			_fill_ellipse(img, 9.0, 10.0, 7.0, 7.0, TEMPLATE_BASE)
+			_fill_rect(img, 1, 12, 17, 15, TEMPLATE_SHADE)
+		"tophat":
+			_fill_rect(img, 5, 0, 13, 10, TEMPLATE_BASE)
+			_fill_rect(img, 5, 6, 13, 8, TEMPLATE_HIGHLIGHT)
+			_fill_rect(img, 1, 10, 17, 13, TEMPLATE_SHADE)
+		"crown":
+			_fill_rect(img, 2, 10, 16, 14, TEMPLATE_BASE)
+			_fill_rect(img, 3, 4, 7, 10, TEMPLATE_BASE)
+			_fill_rect(img, 8, 0, 11, 10, TEMPLATE_BASE)
+			_fill_rect(img, 12, 4, 16, 10, TEMPLATE_BASE)
+			_fill_ellipse(img, 9.0, 3.0, 1.3, 1.3, Color(0.85, 0.2, 0.25))
 
 	return img
 
