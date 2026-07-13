@@ -80,7 +80,7 @@ func _physics_process(delta: float) -> void:
 	global_position = global_position.lerp(extrapolated, LERP_WEIGHT)
 
 	_rig.update(delta, target_velocity, _last_on_floor, _last_is_dashing, _last_is_climbing, Player.MOVE_SPEED)
-	_rig.apply_to(_parts, _parts["torso"])
+	_rig.apply_to(_parts, _parts["torso"], visual)
 
 ## Sets which skin this avatar displays, by id -- called once by net_game.gd
 ## when this peer's skin choice becomes known, not on every state update

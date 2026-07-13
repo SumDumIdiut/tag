@@ -138,6 +138,16 @@ var right_arm := Pendulum.new(1.2, 9.5, 85.0)
 var left_leg := Pendulum.new(1.8, 24.0, 60.0)
 var right_leg := Pendulum.new(1.8, 24.0, 60.0)
 
+# Whole-body tilt from air drag, not a joint -- rotates the entire visual
+# root rather than any one pendulum, since the effect being modeled (moving
+# fast pushes the whole silhouette back, not just one limb) pivots around
+# the character's actual center, not the torso's neck attach point the way
+# torso_rot itself does. A plain spring chasing a speed-derived target angle
+# reads as "leaning into the wind" without needing its own gravity term --
+# unlike a limb, there's no rest pose for the whole body to sag back to
+# except upright.
+var body_lean := Spring.new(70.0, 15.0, 0.0)
+
 # Real walking distance (not time) covered since the last full stride --
 # see the walk branch below. Real world equivalent: roughly the length of
 # one full left-right-left cycle for this rig's proportions.
@@ -154,6 +164,13 @@ var _last_vel := Vector2.ZERO
 # drive is doing.
 const LEAN_RESPONSE := 0.16
 const MAX_LEAN_TORQUE := 260.0
+
+# Wind-resistance body tilt -- unlike LEAN above (which reacts to
+# acceleration, i.e. speeding up or stopping), this reacts to raw speed
+# itself, the same way a cyclist stays leaned into a headwind at a steady
+# fast speed even while not accelerating at all.
+const WIND_LEAN_PER_SPEED := 0.032
+const MAX_WIND_LEAN_DEG := 26.0
 
 ## Advances every pendulum/spring one step from real dynamics driven by the
 ## given state. `vel`/`on_floor`/`is_dashing`/`is_climbing`/`move_speed` are
@@ -225,6 +242,9 @@ func update(delta: float, vel: Vector2, on_floor: bool, is_dashing: bool, is_cli
 	left_leg.update(left_leg_drive, delta)
 	right_leg.update(right_leg_drive, delta)
 
+	var wind_lean_target := clampf(-vel.x * WIND_LEAN_PER_SPEED, -MAX_WIND_LEAN_DEG, MAX_WIND_LEAN_DEG)
+	body_lean.update(wind_lean_target, delta)
+
 ## A one-shot impulse for a discrete event (a wall jump, a dash-jump cancel,
 ## getting tagged, getting repelled) -- shoves the relevant pendulums so
 ## they swing hard and settle back on their own, on top of whatever the
@@ -278,8 +298,12 @@ func kick(action: String) -> void:
 ## `parts` is the same {part_name -> Sprite2D} dict player.gd/
 ## remote_avatar.gd already build for set_skin(); `torso` is
 ## parts["torso"], passed separately since it's the one node this touches
-## position on, not just rotation.
-func apply_to(parts: Dictionary, torso: Node2D) -> void:
+## position on, not just rotation. `visual_root` (the Visual node itself,
+## optional) carries the whole-body wind lean -- kept separate from torso's
+## own rotation since torso pivots around its neck attach point, not the
+## character's overall center, so leaning it directly would swing the hips
+## out rather than tilting the whole silhouette.
+func apply_to(parts: Dictionary, torso: Node2D, visual_root: Node2D = null) -> void:
 	torso.position = Vector2(0.0, torso_y.value)
 	torso.rotation_degrees = torso_rot.angle
 	if parts.has("head"):
@@ -292,3 +316,5 @@ func apply_to(parts: Dictionary, torso: Node2D) -> void:
 		parts["left_leg"].rotation_degrees = left_leg.angle
 	if parts.has("right_leg"):
 		parts["right_leg"].rotation_degrees = right_leg.angle
+	if visual_root:
+		visual_root.rotation_degrees = body_lean.value
