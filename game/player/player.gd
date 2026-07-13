@@ -56,8 +56,14 @@ const WALL_JUMP_LOCK_TIME := 0.16 # Celeste: WallJumpForceTime
 # standing inside each other, and worse, it lets "it" ping-pong rapidly back
 # and forth between the same two players the instant each tag's immunity
 # window expires, since they never actually separated in the first place.
-const REPEL_SPEED := 300.0
-const REPEL_LOCK_TIME := 0.25
+# This needs to read as a genuine launch, not a nudge -- both players get
+# thrown hard, with a strong upward component regardless of the horizontal
+# away direction (which is often nearly flat, e.g. two players standing
+# side by side), since a purely horizontal shove at any speed still just
+# reads as a fast slide, not a launch.
+const REPEL_SPEED := 900.0
+const REPEL_UPWARD_BOOST := 320.0
+const REPEL_LOCK_TIME := 0.35
 # Wall-jump doesn't require actually pressing into the wall -- being
 # airborne and within this reach of one is enough (Celeste: WallJumpCheckDist
 # = 3px in its own scale), checked via a short raycast when not in contact.
@@ -254,7 +260,9 @@ func set_tagged_it(active: bool) -> void:
 ## holding.
 func apply_repel(away_direction: Vector2) -> void:
 	velocity = away_direction * REPEL_SPEED
+	velocity.y -= REPEL_UPWARD_BOOST
 	repel_lock_timer = REPEL_LOCK_TIME
+	_trigger_action("repel")
 
 # Purely cosmetic squash/stretch, recomputed every rendered frame (not tied
 # to the fixed physics tick). Still runs client-side for local/AI play
