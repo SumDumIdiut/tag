@@ -37,6 +37,18 @@ func _init(p_image: Image = null, p_zoom: int = 12) -> void:
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(image.get_width() * zoom, image.get_height() * zoom)
+	# A brand-new part starts fully transparent, which is indistinguishable
+	# from "nothing rendered" against the tool's dark panel background --
+	# a checkerboard behind the pixels is the standard paint-tool fix so an
+	# empty canvas still visibly looks like a canvas.
+	var checker := TextureRect.new()
+	checker.texture = _make_checker_texture()
+	checker.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	checker.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	checker.stretch_mode = TextureRect.STRETCH_TILE
+	checker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(checker)
+
 	_texture_rect = TextureRect.new()
 	_texture_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_texture_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -44,6 +56,17 @@ func _ready() -> void:
 	_texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_texture_rect)
 	_refresh_texture()
+
+func _make_checker_texture() -> ImageTexture:
+	var tile := Image.create(zoom * 2, zoom * 2, false, Image.FORMAT_RGB8)
+	tile.fill(Color(0.5, 0.5, 0.54))
+	for y in range(zoom):
+		for x in range(zoom):
+			tile.set_pixel(x, y, Color(0.35, 0.35, 0.38))
+	for y in range(zoom, zoom * 2):
+		for x in range(zoom, zoom * 2):
+			tile.set_pixel(x, y, Color(0.35, 0.35, 0.38))
+	return ImageTexture.create_from_image(tile)
 
 func _refresh_texture() -> void:
 	_texture_rect.texture = ImageTexture.create_from_image(image)
