@@ -1,6 +1,7 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://player/player.gd" id="1"]
+[ext_resource type="AnimationLibrary" path="res://player/rig_animations.tres" id="2"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
 radius = 10.0
@@ -47,6 +48,9 @@ centered = false
 offset = Vector2(-9, -18)
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="Visual"]
+libraries = {
+"": ExtResource("2")
+}
 
 [node name="Camera2D" type="Camera2D" parent="."]
 enabled = false
