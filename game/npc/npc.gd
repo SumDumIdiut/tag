@@ -1,15 +1,16 @@
 extends Player
 class_name NPC
 
-# Scripted Tag AI. Chasing uses a waypoint graph (see WaypointGraph) for
-# macro-navigation across platforms -- steering straight at a target's raw
-# position falls apart the moment the target is on a different platform,
-# behind a pillar, or otherwise unreachable in a straight line, which is
-# exactly why a chaser could wander forever without ever closing in. Fleeing
-# stays local/reactive (it doesn't need a destination, just "away"), but adds
-# separation from other nearby non-it participants so fleeing NPCs spread out
-# instead of clumping into a single mass that can physically wall off the
-# chaser from ever reaching anyone.
+# Scripted Tag AI. Both chasing and fleeing use a waypoint graph (see
+# WaypointGraph) for macro-navigation across platforms -- steering straight
+# at a raw position (the target's, or a point far off in the "away"
+# direction) falls apart the moment real travel means crossing to a
+# different platform, behind a pillar, or otherwise unreachable in a
+# straight line, which is exactly why a chaser could wander forever without
+# closing in, and why a fleeing NPC could dead-end itself in a corner.
+# Fleeing additionally adds separation from other nearby non-it participants
+# so fleeing NPCs spread out instead of clumping into a single mass that can
+# physically wall off the chaser from ever reaching anyone.
 # skill_level (1-5) tunes reaction speed, mistake rate, dash readiness, and
 # how far ahead a chaser leads a moving target.
 @export var skill_level: int = 3
@@ -26,8 +27,20 @@ var _decision_dash := false
 # actually going anywhere -- catches "jammed against geometry or another
 # character" cases the one-shot reactive obstacle probe below can miss.
 var _stuck_timer := 0.0
+# Counts consecutive stuck-jumps without the jam clearing -- see
+# _check_stuck: jumping alone can't free an NPC wedged sideways against a
+# wall or another character, only vertical clearance, so repeated failures
+# escalate to a dash for actual horizontal force.
+var _stuck_jump_count := 0
 
 const SEPARATION_RADIUS := 70.0
+# How far off in the "away from the chaser" direction to aim when routing a
+# flee decision through the waypoint graph -- see _make_decision. Doesn't
+# need to be a real reachable point, just far enough that the graph's
+# nearest-waypoint snap picks whichever real waypoint is actually furthest
+# that direction, so next_hop can route across an actual connected escape
+# path instead of a single straight-line guess.
+const FLEE_AIM_DISTANCE := 2000.0
 
 func _skill_t() -> float:
 	return clampf(float(skill_level - 1) / 4.0, 0.0, 1.0)
@@ -81,8 +94,23 @@ func _check_stuck(delta: float) -> void:
 		if _stuck_timer > 0.2:
 			_decision_jump = true
 			_stuck_timer = 0.0
+			_stuck_jump_count += 1
+			if _stuck_jump_count >= 3:
+				_decision_dash = true
+				_stuck_jump_count = 0
 	else:
 		_stuck_timer = 0.0
+		_stuck_jump_count = 0
+
+## How far ahead to probe for walls/ledges -- scales with current speed (a
+## fast dash covers this in a fraction of the reaction interval a slow walk
+## does, so a fixed short probe reacts to a wall it's already touching) and
+## with skill (better "reflexes" read as noticing a hazard farther out, not
+## just responding quicker once it's already close).
+func _look_distance() -> float:
+	var speed_term: float = absf(velocity.x) * _reaction_interval()
+	var skill_term: float = lerpf(20.0, 50.0, _skill_t())
+	return maxf(skill_term, speed_term + 20.0)
 
 func _make_decision() -> void:
 	var target := tag_mode.get_ai_target(self)
@@ -107,11 +135,28 @@ func _make_decision() -> void:
 			steer_pos = waypoint_graph.next_hop(global_position, lead_target)
 		dir_sign = signf(steer_pos.x - global_position.x)
 	else:
-		dir_sign = -signf(to_target.x)
+		var away_sign := -signf(to_target.x)
+		if away_sign == 0.0:
+			away_sign = 1.0 if randf() < 0.5 else -1.0
+		# Route fleeing through the waypoint graph too, the same way chasing
+		# already does -- a purely local "away from the chaser's x" heading
+		# walks straight into dead-end corners or off the edge of the current
+		# platform the moment real escape means crossing to a different one.
+		# Aiming through the graph at a point far off in the away direction
+		# resolves (via nearest-waypoint snap) to whichever real waypoint is
+		# actually reachable that direction, so next_hop routes across an
+		# actual connected escape path instead of a single straight guess.
+		var flee_aim: Vector2 = global_position + Vector2(away_sign * FLEE_AIM_DISTANCE, 0.0)
+		var flee_steer: Vector2 = flee_aim
+		if waypoint_graph:
+			flee_steer = waypoint_graph.next_hop(global_position, flee_aim)
+		dir_sign = signf(flee_steer.x - global_position.x)
+		if dir_sign == 0.0:
+			dir_sign = away_sign
 		# Don't flee straight into a nearby wall/boundary and trap ourselves
 		# in a corner -- if that direction is blocked close by, the other
 		# direction (even toward the chaser) beats getting cornered.
-		if dir_sign != 0.0 and _blocked_ahead(dir_sign, 60.0):
+		if dir_sign != 0.0 and _blocked_ahead(dir_sign, _look_distance()):
 			dir_sign = -dir_sign
 		# Separation: nudge away from whichever other non-it participant is
 		# closest, if it's crowding us -- keeps fleeing NPCs from clumping
@@ -132,8 +177,9 @@ func _make_decision() -> void:
 
 	# Reactive obstacle handling: a blocked path or a ledge just ahead both
 	# call for a jump, and so does a target clearly above us.
-	var blocked := _blocked_ahead(dir_sign, 20.0)
-	var floor_ahead := _floor_ahead(dir_sign, 20.0)
+	var look := _look_distance()
+	var blocked := _blocked_ahead(dir_sign, look)
+	var floor_ahead := _floor_ahead(dir_sign, look)
 	if blocked or not floor_ahead or to_target.y < -20.0:
 		_decision_jump = randf() > _mistake_chance()
 

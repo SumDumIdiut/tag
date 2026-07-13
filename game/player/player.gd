@@ -294,7 +294,7 @@ func _process(delta: float) -> void:
 	# detect the same event and kick its own copy of the rig in sync (see
 	# server_match.gd's state dict / RemoteAvatar.set_state).
 	_rig.update(delta, velocity, on_floor_now, is_dashing, is_climbing, MOVE_SPEED)
-	_rig.apply_to(_parts, _parts["torso"])
+	_rig.apply_to(_parts, _parts["torso"], _visual)
 
 func apply_input(input: Dictionary, delta: float) -> void:
 	var move_dir: Vector2 = input.get("move_dir", Vector2.ZERO)
