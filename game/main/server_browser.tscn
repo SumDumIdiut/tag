@@ -28,9 +28,9 @@ theme_override_constants/separation = 12
 
 [node name="Title" type="Label" parent="VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 34
 horizontal_alignment = 1
-text = "Server Browser"
+text = "SERVERS"
 
 [node name="ServerList" type="ItemList" parent="VBox"]
 layout_mode = 2
@@ -38,11 +38,13 @@ custom_minimum_size = Vector2(0, 180)
 
 [node name="UsernameEdit" type="LineEdit" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 38)
 text = "Player"
 placeholder_text = "Your username"
 
 [node name="ConnectButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 46)
 text = "Connect"
 
 [node name="StatusLabel" type="Label" parent="VBox"]
@@ -52,4 +54,5 @@ autowrap_mode = 2
 
 [node name="BackButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 36)
 text = "Back"

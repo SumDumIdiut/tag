@@ -28,14 +28,17 @@ theme_override_constants/separation = 14
 
 [node name="Title" type="Label" parent="VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 34
 horizontal_alignment = 1
-text = "Get Ready"
+text = "GET READY"
 
-[node name="RosterBox" type="VBoxContainer" parent="VBox"]
+[node name="RosterPanel" type="PanelContainer" parent="VBox"]
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/separation = 8
+
+[node name="RosterBox" type="VBoxContainer" parent="VBox/RosterPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
 
 [node name="CountdownLabel" type="Label" parent="VBox"]
 layout_mode = 2
@@ -44,4 +47,5 @@ theme_override_font_sizes/font_size = 18
 
 [node name="SkipButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 36)
 text = "Skip"

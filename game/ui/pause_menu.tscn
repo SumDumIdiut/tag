@@ -26,29 +26,34 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0, 0, 0, 0.6)
 
-[node name="VBox" type="VBoxContainer" parent="Panel"]
+[node name="CardPanel" type="PanelContainer" parent="Panel"]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -110.0
-offset_top = -70.0
-offset_right = 110.0
-offset_bottom = 70.0
+offset_left = -130.0
+offset_top = -100.0
+offset_right = 130.0
+offset_bottom = 100.0
+
+[node name="VBox" type="VBoxContainer" parent="Panel/CardPanel"]
+layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Title" type="Label" parent="Panel/VBox"]
+[node name="Title" type="Label" parent="Panel/CardPanel/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 28
 horizontal_alignment = 1
-text = "Paused"
+text = "PAUSED"
 
-[node name="ResumeButton" type="Button" parent="Panel/VBox"]
+[node name="ResumeButton" type="Button" parent="Panel/CardPanel/VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 44)
 text = "Resume"
 
-[node name="MenuButton" type="Button" parent="Panel/VBox"]
+[node name="MenuButton" type="Button" parent="Panel/CardPanel/VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 40)
 text = "Main Menu"

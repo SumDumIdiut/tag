@@ -6,6 +6,8 @@ extends Control
 # item (see skin_catalog.gd's top comment for the tradeoff this deliberately
 # accepts: freehand strokes only, no arbitrary file upload).
 
+const UIStyle := preload("res://ui/ui_style.gd")
+
 const ZOOM := 14
 
 const PALETTE := [
@@ -17,7 +19,7 @@ const PALETTE := [
 
 @onready var name_edit: LineEdit = $VBox/NameEdit
 @onready var part_tabs: HBoxContainer = $VBox/PartTabs
-@onready var canvas_holder: CenterContainer = $VBox/CanvasHolder
+@onready var canvas_holder: CenterContainer = $VBox/CanvasPanel/CanvasHolder
 @onready var palette_box: HBoxContainer = $VBox/PaletteRow/PaletteBox
 @onready var eraser_button: Button = $VBox/PaletteRow/EraserButton
 @onready var status_label: Label = $VBox/StatusLabel
@@ -36,6 +38,12 @@ func setup(mode: String) -> void:
 	_mode = mode
 
 func _ready() -> void:
+	UIStyle.add_background(self)
+	$VBox/CanvasPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_SHOP, 0.05, 0.3))
+	UIStyle.style_button(upload_button, UIStyle.COLOR_SHOP)
+	UIStyle.style_button(eraser_button, UIStyle.COLOR_NEUTRAL, 8)
+	UIStyle.style_back_button(back_button)
+
 	upload_button.pressed.connect(_on_upload_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 	eraser_button.pressed.connect(_on_eraser_pressed)
@@ -102,6 +110,7 @@ func _build_part_tab_button(part_name: String) -> void:
 	btn.button_group = _part_group
 	btn.button_pressed = (part_name == "head")
 	btn.pressed.connect(_show_part.bind(part_name))
+	UIStyle.style_button(btn, UIStyle.COLOR_SHOP, 8)
 	part_tabs.add_child(btn)
 
 func _show_part(part_name: String) -> void:

@@ -20,19 +20,31 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -160.0
-offset_top = -80.0
-offset_right = 160.0
-offset_bottom = 80.0
-theme_override_constants/separation = 12
+offset_left = -170.0
+offset_top = -120.0
+offset_right = 170.0
+offset_bottom = 120.0
+theme_override_constants/separation = 20
 
 [node name="Title" type="Label" parent="VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 34
 horizontal_alignment = 1
-text = "Quick Play"
+text = "QUICK PLAY"
 
-[node name="StatusLabel" type="Label" parent="VBox"]
+[node name="StatusPanel" type="PanelContainer" parent="VBox"]
+layout_mode = 2
+
+[node name="StatusBox" type="VBoxContainer" parent="VBox/StatusPanel"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 14
+
+[node name="Icon" type="Control" parent="VBox/StatusPanel/StatusBox"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+
+[node name="StatusLabel" type="Label" parent="VBox/StatusPanel/StatusBox"]
 layout_mode = 2
 horizontal_alignment = 1
 autowrap_mode = 2
@@ -40,4 +52,5 @@ text = "Finding a match..."
 
 [node name="BackButton" type="Button" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 40)
 text = "Cancel"

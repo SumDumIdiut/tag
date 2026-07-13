@@ -7,8 +7,12 @@ extends Control
 # mechanism host_setup.gd uses for manual hosting -- so this screen never
 # dead-ends with "no servers found."
 
-@onready var status_label: Label = $VBox/StatusLabel
+const UIStyle := preload("res://ui/ui_style.gd")
+const ModeIconScene := preload("res://ui/mode_icon.gd")
+
+@onready var status_label: Label = $VBox/StatusPanel/StatusBox/StatusLabel
 @onready var back_button: Button = $VBox/BackButton
+@onready var icon_slot: Control = $VBox/StatusPanel/StatusBox/Icon
 
 const DIRECTORY_URL := "https://codecade.co.za/tag/api/servers"
 const RELAY_JOIN_BASE := "wss://codecade.co.za/tag/relay/join/"
@@ -27,6 +31,11 @@ var _username := ""
 var _cancelled := false
 
 func _ready() -> void:
+	UIStyle.add_background(self)
+	$VBox/StatusPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_QUICKPLAY))
+	UIStyle.style_back_button(back_button)
+	_setup_pulsing_icon()
+
 	back_button.pressed.connect(_on_back_pressed)
 	_username = GameSettings.saved_username
 	GameSettings.save_username(_username)
@@ -126,3 +135,18 @@ func _on_back_pressed() -> void:
 	NetworkManager.disconnect_from_server()
 	_spawner.kill_child()
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")
+
+## A small pulsing bolt icon over the status text -- makes the wait feel
+## alive instead of a static label, matching the Quick Play bar's own icon
+## and color from the main menu.
+func _setup_pulsing_icon() -> void:
+	var icon = ModeIconScene.new()
+	icon.icon_type = "bolt"
+	icon.icon_color = UIStyle.COLOR_QUICKPLAY
+	icon.custom_minimum_size = Vector2(40, 48)
+	icon.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	icon.position = Vector2(-20, 0)
+	icon_slot.add_child(icon)
+	var tween := create_tween().set_loops()
+	tween.tween_property(icon, "modulate:a", 0.4, 0.6).set_trans(Tween.TRANS_SINE)
+	tween.tween_property(icon, "modulate:a", 1.0, 0.6).set_trans(Tween.TRANS_SINE)

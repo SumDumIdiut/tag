@@ -28,12 +28,13 @@ theme_override_constants/separation = 10
 
 [node name="Title" type="Label" parent="VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 30
 horizontal_alignment = 1
-text = "Draw"
+text = "DRAW"
 
 [node name="NameEdit" type="LineEdit" parent="VBox"]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 36)
 placeholder_text = "Name"
 
 [node name="PartTabs" type="HBoxContainer" parent="VBox"]
@@ -41,10 +42,13 @@ layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 4
 
-[node name="CanvasHolder" type="CenterContainer" parent="VBox"]
+[node name="CanvasPanel" type="PanelContainer" parent="VBox"]
 layout_mode = 2
 size_flags_vertical = 3
 custom_minimum_size = Vector2(0, 300)
+
+[node name="CanvasHolder" type="CenterContainer" parent="VBox/CanvasPanel"]
+layout_mode = 2
 
 [node name="PaletteRow" type="HBoxContainer" parent="VBox"]
 layout_mode = 2
