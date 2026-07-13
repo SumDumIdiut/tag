@@ -156,7 +156,6 @@ var is_climbing := false
 var climb_exhausted_timer := 0.0
 
 @onready var _visual: Node2D = $Visual
-@onready var _anim_player: AnimationPlayer = $Visual/AnimationPlayer
 @onready var _hat: Sprite2D = $Visual/Torso/Head/Hat
 @onready var _parts: Dictionary = {
 	"head": $Visual/Torso/Head,
@@ -166,27 +165,27 @@ var climb_exhausted_timer := 0.0
 	"left_leg": $Visual/Torso/LeftLeg,
 	"right_leg": $Visual/Torso/RightLeg,
 }
+var _rig := LimbPhysicsRig.new()
 
 var _was_on_floor_visual := false
 var _was_tagged_it := false
 
 const TAG_IT_COLOR := Color(1.0, 0.85, 0.1, 1.0)
-const WALK_ANIM_MIN_SPEED_SCALE := 0.4
-const WALK_ANIM_MAX_SPEED_SCALE := 2.0
 
-# One-shot move animations, distinct from the continuous idle/walk/jump/
-# fall/dash/climb state loops -- these play once when a specific move tech
-# fires (a wall jump, a dash-jump cancel, ...) and don't loop. `current_action`
-# is never cleared back to "" -- it always holds the most recently triggered
-# action, and both the local playback below and RemoteAvatar (over the
-# network, see server_match.gd's state dict) detect a fresh trigger by
-# comparing `current_action_id` against the last id they actually played,
-# not by string content. That makes this robust to the SAME action firing
-# twice in a row (e.g. rapid wall-jumping) and to state updates arriving over
-# an unreliable channel -- any later update still carries the correct
-# not-yet-consumed id, so a dropped packet just delays the animation instead
-# of losing the trigger entirely.
-const ONE_SHOT_ANIMS := ["tag_reaction", "dash_jump", "wall_jump", "super_wall_jump", "diagonal_wall_jump"]
+# One-shot move events, distinct from the continuous per-frame limb-physics
+# update -- these apply an impulse (see LimbPhysicsRig.kick) once when a
+# specific move tech fires (a wall jump, a dash-jump cancel, ...), so the
+# limbs swing hard and settle back on their own instead of easing toward a
+# target like everything else. `current_action` is never cleared back to ""
+# -- it always holds the most recently triggered action, and both the local
+# kick below and RemoteAvatar (over the network, see server_match.gd's
+# state dict) detect a fresh trigger by comparing `current_action_id`
+# against the last id they actually consumed, not by string content. That
+# makes this robust to the SAME action firing twice in a row (e.g. rapid
+# wall-jumping) and to state updates arriving over an unreliable channel --
+# any later update still carries the correct not-yet-consumed id, so a
+# dropped packet just delays the kick instead of losing the trigger
+# entirely.
 var current_action := ""
 var current_action_id := 0
 var _last_played_action_id := 0
@@ -194,6 +193,7 @@ var _last_played_action_id := 0
 func _trigger_action(action_name: String) -> void:
 	current_action = action_name
 	current_action_id += 1
+	_rig.kick(action_name)
 
 func _ready() -> void:
 	if _visual:
@@ -241,9 +241,9 @@ func set_tagged_it(active: bool) -> void:
 	_visual.modulate = TAG_IT_COLOR if active else Color.WHITE
 	# Only on the rising edge -- TagMode's it_changed (and this call) only
 	# fires when the status actually flips, but guard anyway so a caller
-	# re-asserting "still it" doesn't restart the flinch mid-playback.
+	# re-asserting "still it" doesn't restart the flinch kick.
 	if active and not _was_tagged_it:
-		_play_anim("tag_reaction")
+		_rig.kick("tag_reaction")
 	_was_tagged_it = active
 
 ## Called by TagMode when this player's been in sustained physical contact
@@ -280,45 +280,13 @@ func _process(delta: float) -> void:
 			target_scale = Vector2(1.1, 0.9)
 	_visual.scale = _visual.scale.lerp(target_scale, clampf(delta * 12.0, 0.0, 1.0))
 
-	_update_locomotion_anim(on_floor_now)
-
-## Picks among every movement animation. A freshly-triggered one-shot move
-## (wall jump, dash jump, ...) takes top priority and plays once; while one
-## of those (or tag_reaction) is still playing, nothing here overrides it.
-## Otherwise: dash and climb (deliberate player actions), then airborne
-## jump/fall (split by vertical velocity sign), then grounded walk/idle.
-## speed_scale on walk ties the cycle's cadence to actual run speed instead
-## of a fixed loop, so sprinting doesn't look like a slow moonwalk.
-func _update_locomotion_anim(on_floor_now: bool) -> void:
-	if not _anim_player:
-		return
-	if _anim_player.is_playing() and _anim_player.current_animation in ONE_SHOT_ANIMS:
-		return
-	if current_action_id != _last_played_action_id:
-		_last_played_action_id = current_action_id
-		_anim_player.speed_scale = 1.0
-		_anim_player.play(current_action)
-		return
-	if is_dashing:
-		_anim_player.speed_scale = 1.0
-		_play_anim("dash")
-	elif is_climbing:
-		_anim_player.speed_scale = 1.0
-		_play_anim("climb")
-	elif not on_floor_now:
-		_anim_player.speed_scale = 1.0
-		_play_anim("jump" if velocity.y < 0.0 else "fall")
-	elif absf(velocity.x) > 5.0:
-		_anim_player.speed_scale = clampf(absf(velocity.x) / MOVE_SPEED, WALK_ANIM_MIN_SPEED_SCALE, WALK_ANIM_MAX_SPEED_SCALE)
-		_play_anim("walk")
-	else:
-		_anim_player.speed_scale = 1.0
-		_play_anim("idle")
-
-func _play_anim(name: String) -> void:
-	if not _anim_player or _anim_player.current_animation == name:
-		return
-	_anim_player.play(name)
+	# Trigger events (wall jump, dash jump, tag) apply their kick immediately
+	# in _trigger_action()/set_tagged_it() -- current_action_id here is only
+	# so a networked RemoteAvatar watching this same peer_id's state can
+	# detect the same event and kick its own copy of the rig in sync (see
+	# server_match.gd's state dict / RemoteAvatar.set_state).
+	_rig.update(delta, velocity, on_floor_now, is_dashing, is_climbing, MOVE_SPEED)
+	_rig.apply_to(_parts, _parts["torso"])
 
 func apply_input(input: Dictionary, delta: float) -> void:
 	var move_dir: Vector2 = input.get("move_dir", Vector2.ZERO)

@@ -12,7 +12,6 @@ class_name RemoteAvatar
 @onready var visual: Node2D = $Visual
 @onready var name_label: Label = $NameLabel
 @onready var camera: Camera2D = $Camera2D
-@onready var _anim_player: AnimationPlayer = $Visual/AnimationPlayer
 @onready var _hat: Sprite2D = $Visual/Torso/Head/Hat
 @onready var _parts: Dictionary = {
 	"head": $Visual/Torso/Head,
@@ -22,6 +21,7 @@ class_name RemoteAvatar
 	"left_leg": $Visual/Torso/LeftLeg,
 	"right_leg": $Visual/Torso/RightLeg,
 }
+var _rig := LimbPhysicsRig.new()
 
 const LERP_WEIGHT := 0.35
 # Dead-reckoning cap -- how far past the last known update we'll still trust
@@ -46,10 +46,16 @@ var target_velocity: Vector2 = Vector2.ZERO
 var target_facing: int = 1
 var _time_since_update := 0.0
 var _was_it := false
-# Mirrors Player.ONE_SHOT_ANIMS/_last_played_action_id -- see player.gd's
-# comment on current_action_id for why this compares ids, not strings.
-const ONE_SHOT_ANIMS := ["tag_reaction", "dash_jump", "wall_jump", "super_wall_jump", "diagonal_wall_jump"]
-var _last_played_action_id := 0
+# The limb rig integrates every physics frame (see _physics_process below),
+# not just when a new set_state() arrives -- state updates only land once
+# per network tick, but the spring simulation needs to keep advancing every
+# frame in between for the motion to actually look continuous rather than
+# stepping. These hold the last state a real update reported, for
+# _physics_process to keep feeding the rig from in the meantime.
+var _last_on_floor := true
+var _last_is_dashing := false
+var _last_is_climbing := false
+var _last_action_id := 0
 
 func _ready() -> void:
 	if name_label:
@@ -72,6 +78,9 @@ func _physics_process(delta: float) -> void:
 	# overshoot far past where the real player actually is.
 	var extrapolated := target_position + target_velocity * minf(_time_since_update, MAX_EXTRAPOLATION_SEC)
 	global_position = global_position.lerp(extrapolated, LERP_WEIGHT)
+
+	_rig.update(delta, target_velocity, _last_on_floor, _last_is_dashing, _last_is_climbing, Player.MOVE_SPEED)
+	_rig.apply_to(_parts, _parts["torso"])
 
 ## Sets which skin this avatar displays, by id -- called once by net_game.gd
 ## when this peer's skin choice becomes known, not on every state update
@@ -112,48 +121,17 @@ func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_cli
 		var flip := absf(visual.scale.x) * (1.0 if facing >= 0 else -1.0)
 		visual.scale.x = flip
 	# Rising edge only -- state updates arrive every network tick, so without
-	# this a still-"it" peer would restart the flinch clip on every single
-	# update instead of playing it once when tag actually happens.
+	# this a still-"it" peer would restart the flinch kick on every single
+	# update instead of applying it once when tag actually happens.
 	if is_it and not _was_it:
-		_play_anim("tag_reaction")
+		_rig.kick("tag_reaction")
 	_was_it = is_it
-	_update_locomotion_anim(vel, is_dashing, is_climbing, on_floor, action, action_id)
-
-## Same selection as Player._update_locomotion_anim, but driven by the last
-## reported network state instead of local physics -- a RemoteAvatar never
-## simulates movement itself. `action`/`action_id` are the wall-jump/
-## dash-jump one-shots (see player.gd) -- id comparison, not the "id != 0"
-## a rising-edge check might suggest, since action_id starts at 0 on a
-## freshly spawned Player and _last_played_action_id also starts at 0; the
-## first real trigger still correctly reads as "new" because it bumps the
-## id to 1 before this ever compares them.
-func _update_locomotion_anim(vel: Vector2, is_dashing: bool, is_climbing: bool, on_floor: bool, action: String, action_id: int) -> void:
-	if not _anim_player:
-		return
-	if _anim_player.is_playing() and _anim_player.current_animation in ONE_SHOT_ANIMS:
-		return
-	if action_id != _last_played_action_id:
-		_last_played_action_id = action_id
-		_anim_player.speed_scale = 1.0
-		_anim_player.play(action)
-		return
-	if is_dashing:
-		_anim_player.speed_scale = 1.0
-		_play_anim("dash")
-	elif is_climbing:
-		_anim_player.speed_scale = 1.0
-		_play_anim("climb")
-	elif not on_floor:
-		_anim_player.speed_scale = 1.0
-		_play_anim("jump" if vel.y < 0.0 else "fall")
-	elif absf(vel.x) > 5.0:
-		_anim_player.speed_scale = clampf(absf(vel.x) / Player.MOVE_SPEED, 0.4, 2.0)
-		_play_anim("walk")
-	else:
-		_anim_player.speed_scale = 1.0
-		_play_anim("idle")
-
-func _play_anim(name: String) -> void:
-	if not _anim_player or _anim_player.current_animation == name:
-		return
-	_anim_player.play(name)
+	# A fresh wall-jump/dash-jump id is likewise a one-shot kick, not a
+	# continuous state -- see player.gd's current_action_id comment for why
+	# this compares ids instead of "did the action string change."
+	if action_id != _last_action_id:
+		_last_action_id = action_id
+		_rig.kick(action)
+	_last_on_floor = on_floor
+	_last_is_dashing = is_dashing
+	_last_is_climbing = is_climbing
