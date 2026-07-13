@@ -5,38 +5,46 @@ A multiplayer Tag game built in Godot 4.7, with Celeste-style platforming moveme
 
 ## Structure
 
-- `game/` - the Godot project (client, dedicated server, and local/singleplayer modes all live here; see `game/player/player.gd` for the shared movement code).
+- `game/` - the Godot project (client, dedicated server, art tool, and local/singleplayer modes all live here; see `game/player/player.gd` for the shared movement code). `game/tools/` holds the in-project scripts (character art template/bake pipeline, tileset builder) -- see [ART_GUIDE.md](ART_GUIDE.md).
 - `_archive_multiplayer/` - preserved code from an earlier networking architecture, kept for reference (see its own README).
-- `tools/` - local dev tooling (the Godot editor binary itself is gitignored; asset-generation scripts are kept).
+- `tools/` (repo root) - local dev tooling that runs outside Godot (the editor binary itself is gitignored; PowerShell asset-generation scripts are kept).
 
 ## Running it
 
 Open `game/` in the Godot 4.7 editor, or run one of the exported executables from a
 [Release](../../releases) (built automatically on every push to `main`):
 
-- **`Tag.exe`** - the client. Main Menu offers local Tag (with AI bots), a movement
-  sandbox, and Multiplayer (connects to a dedicated server).
+- **`Tag.exe`** - the client. The main menu offers three destinations: Online, Local,
+  and Sandbox, plus a Customize button for skins/hats.
 - **`Tag-Server.exe`** - a headless, fully authoritative dedicated server. Hosts any
   number of concurrent lobbies over WebSockets (chosen so it can be reached through a
   Cloudflare Tunnel without requiring players to install anything extra).
+- **`TagArtTool.exe`** - paint over the game's character/hat art, no source repo
+  needed. See [ART_GUIDE.md](ART_GUIDE.md).
 
 ## Modes
 
-- **Movement Sandbox** - a single-player course for testing the moveset in isolation.
-- **Local Tag** - play against up to 7 AI-controlled bots (skill levels 1-5) on one
+- **Sandbox** - a single-player course for testing the moveset in isolation.
+- **Local** - play against up to 7 AI-controlled bots (skill levels 1-5) on one
   machine, no networking involved.
-- **Multiplayer** - connect to a dedicated server, create/join a lobby, ready up, and
-  play real-player Tag. The server runs the authoritative simulation; the client
-  predicts its own movement locally and reconciles against server snapshots.
+- **Online** - Quick Play or Ranked (both auto-match: join an open server if one
+  exists, otherwise host one and wait), or browse/host/direct-connect manually. The
+  server runs the authoritative simulation; every client (including the host's own)
+  renders confirmed server state rather than predicting locally.
 
 ## Building
 
 Export presets are defined in `game/export_presets.cfg`:
 
 - `Windows Desktop` -> client (`builds/Tag.exe`)
-- `Windows Dedicated Server` -> server (`builds/Tag-Server.exe`), distinguished from
-  the client at runtime via the `dedicated_server` custom feature tag (see
-  `game/main/bootstrap.gd`)
+- `Windows Dedicated Server` -> server (`builds/Tag-Server.exe`)
+- `Art Tool` -> standalone art tool (`builds/TagArtTool.exe`)
 
-`.github/workflows/build.yml` runs both exports on every push to `main` and publishes
-the results as a GitHub Release.
+All three are one project, distinguished at runtime by a custom feature tag per
+preset (`dedicated_server` / `art_tool` / neither -- see `game/main/bootstrap.gd`).
+
+`.github/workflows/build.yml` runs all three exports on every push to `main` and
+publishes the results as a GitHub Release. Before exporting, it also re-bakes the
+character/hat art from whatever's currently in `game/assets/character_templates/`
+(see [ART_GUIDE.md](ART_GUIDE.md)) -- so a merged art edit is already in the very
+next build with no extra steps.
