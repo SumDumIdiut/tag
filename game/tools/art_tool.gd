@@ -1,11 +1,12 @@
 extends Control
 
 # Standalone paint tool, exported as its own executable (TagArtTool.exe, see
-# export_presets.cfg's "Art Tool" preset). Two pages, switched at the top
+# export_presets.cfg's "Art Tool" preset). Three pages, switched at the top
 # like a dedicated app rather than one cramped screen: PAINT (create/edit
 # any number of independent custom skins and hats -- no pre-made defaults,
-# every one starts as a blank canvas) and PREVIEW (a single large render of
-# any skin/hat combination, picked from real dropdowns).
+# every one starts as a blank canvas), PREVIEW (a single large render of
+# any skin/hat combination, picked from real dropdowns), and LEVEL (paint a
+# tile-based map and publish it live -- see game/levels/level_data.gd).
 #
 # Custom skins/hats are unrelated to the game's built-in 8 colors -- they're
 # painted in real color directly, the same way the game's own in-shop
@@ -16,6 +17,8 @@ const CharacterPreviewScene := preload("res://ui/character_preview.gd")
 const PixelCanvasScene := preload("res://main/pixel_canvas.gd")
 const UpdateCheckerScript := preload("res://net/update_checker.gd")
 const UpdatePromptScene := preload("res://ui/update_prompt.gd")
+const TileCanvasScene := preload("res://main/tile_canvas.gd")
+const LevelData := preload("res://levels/level_data.gd")
 
 const ZOOM := 18
 
@@ -42,8 +45,10 @@ and it's live for everyone immediately, no build or restart needed.
 
 @onready var paint_tab_button: Button = $VBox/PageTabRow/PaintTabButton
 @onready var preview_tab_button: Button = $VBox/PageTabRow/PreviewTabButton
+@onready var level_tab_button: Button = $VBox/PageTabRow/LevelTabButton
 @onready var paint_page: HBoxContainer = $VBox/PaintPage
 @onready var preview_page: VBoxContainer = $VBox/PreviewPage
+@onready var level_page: HBoxContainer = $VBox/LevelPage
 
 @onready var part_list: VBoxContainer = $VBox/PaintPage/PartPanel/PartScroll/PartList
 @onready var canvas_holder: CenterContainer = $VBox/PaintPage/CanvasPanel/CanvasBox/CanvasHolder
@@ -54,6 +59,11 @@ and it's live for everyone immediately, no build or restart needed.
 @onready var big_preview_center: CenterContainer = $VBox/PreviewPage/BigPreviewPanel/BigPreviewCenter
 @onready var skin_select: OptionButton = $VBox/PreviewPage/SelectorRow/SkinSelectBox/SkinSelect
 @onready var hat_select: OptionButton = $VBox/PreviewPage/SelectorRow/HatSelectBox/HatSelect
+
+@onready var level_toolbar: HBoxContainer = $VBox/LevelPage/LevelCanvasPanel/LevelCanvasBox/LevelToolbar
+@onready var level_canvas_center: CenterContainer = $VBox/LevelPage/LevelCanvasPanel/LevelCanvasBox/LevelCanvasScroll/LevelCanvasCenter
+@onready var level_name_edit: LineEdit = $VBox/LevelPage/LevelRightPanel/LevelRightBox/LevelNameEdit
+@onready var publish_level_button: Button = $VBox/LevelPage/LevelRightPanel/LevelRightBox/PublishLevelButton
 
 @onready var status_label: Label = $VBox/BottomRow/StatusLabel
 @onready var export_button: Button = $VBox/BottomRow/ExportButton
@@ -88,6 +98,9 @@ var _big_preview
 var _preview_skin_id := ""
 var _preview_hat_id := ""
 
+var _tile_canvas: TileCanvas
+const LEVEL_API_BASE := "https://codecade.co.za/tag/api/levels"
+
 func _ready() -> void:
 	get_window().size = Vector2i(1300, 860)
 	get_window().title = "Tag Art Tool"
@@ -95,6 +108,7 @@ func _ready() -> void:
 	_setup_page_tabs()
 	_build_sidebar()
 	_build_toolbar()
+	_build_level_page()
 	color_picker.color_changed.connect(_on_color_picked_from_wheel)
 	export_button.pressed.connect(_on_export_pressed)
 	UIStyle.style_button(export_button, UIStyle.COLOR_SHOP)
@@ -120,17 +134,29 @@ func _setup_page_tabs() -> void:
 	var tab_group := ButtonGroup.new()
 	paint_tab_button.button_group = tab_group
 	preview_tab_button.button_group = tab_group
+	level_tab_button.button_group = tab_group
 	UIStyle.style_button(paint_tab_button, UIStyle.COLOR_SHOP, 10)
 	UIStyle.style_button(preview_tab_button, UIStyle.COLOR_ONLINE, 10)
+	UIStyle.style_button(level_tab_button, UIStyle.COLOR_SANDBOX, 10)
 	paint_tab_button.pressed.connect(func():
 		paint_page.visible = true
 		preview_page.visible = false
+		level_page.visible = false
+		export_button.visible = true
 	)
 	preview_tab_button.pressed.connect(func():
 		paint_page.visible = false
 		preview_page.visible = true
+		level_page.visible = false
+		export_button.visible = true
 		_refresh_preview_selectors()
 		_refresh_big_preview()
+	)
+	level_tab_button.pressed.connect(func():
+		paint_page.visible = false
+		preview_page.visible = false
+		level_page.visible = true
+		export_button.visible = false
 	)
 
 ## No pre-loaded defaults -- both lists start empty; "+ New Skin"/"+ New
@@ -466,6 +492,89 @@ func _apply_tool_state() -> void:
 		_current_canvas.tool = _current_tool
 		_current_canvas.erasing = false
 		_current_canvas.paint_color = color_picker.color
+
+## Builds the Level page's tile palette + tool row and the TileCanvas
+## itself -- same click/drag-paint interaction PixelCanvas uses for pixel
+## art, just operating on tile cells (see tile_canvas.gd).
+func _build_level_page() -> void:
+	_tile_canvas = TileCanvasScene.new()
+	level_canvas_center.add_child(_tile_canvas)
+
+	var level_tool_group := ButtonGroup.new()
+	var tile_names := ["Boundary", "Pillar", "Platform"]
+	for i in tile_names.size():
+		var swatch := Button.new()
+		swatch.text = tile_names[i]
+		swatch.toggle_mode = true
+		swatch.button_group = level_tool_group
+		swatch.button_pressed = (i == 0)
+		UIStyle.style_button(swatch, TileCanvas.TILE_COLORS[i], 8)
+		swatch.pressed.connect(func():
+			_tile_canvas.tool = TileCanvas.Tool.PAINT
+			_tile_canvas.current_tile_type = i
+		)
+		level_toolbar.add_child(swatch)
+
+	var erase_btn := Button.new()
+	erase_btn.text = "Erase"
+	erase_btn.toggle_mode = true
+	erase_btn.button_group = level_tool_group
+	UIStyle.style_button(erase_btn, UIStyle.COLOR_RANKED, 8)
+	erase_btn.pressed.connect(func(): _tile_canvas.tool = TileCanvas.Tool.ERASE)
+	level_toolbar.add_child(erase_btn)
+
+	var spawn_btn := Button.new()
+	spawn_btn.text = "Spawn Point"
+	spawn_btn.toggle_mode = true
+	spawn_btn.button_group = level_tool_group
+	UIStyle.style_button(spawn_btn, UIStyle.COLOR_ONLINE, 8)
+	spawn_btn.pressed.connect(func(): _tile_canvas.tool = TileCanvas.Tool.SPAWN)
+	level_toolbar.add_child(spawn_btn)
+
+	level_toolbar.add_child(VSeparator.new())
+
+	var clear_btn := Button.new()
+	clear_btn.text = "Clear"
+	UIStyle.style_button(clear_btn, UIStyle.COLOR_NEUTRAL, 8)
+	clear_btn.pressed.connect(func(): _tile_canvas.clear())
+	level_toolbar.add_child(clear_btn)
+
+	UIStyle.style_button(publish_level_button, UIStyle.COLOR_SHOP)
+	publish_level_button.pressed.connect(_on_publish_level_pressed)
+
+## Live-publish, same trust model as the skin/hat Publish buttons -- goes
+## straight to the shared level catalog with no review step, immediately
+## selectable by any host (see host_setup.gd's map dropdown).
+func _on_publish_level_pressed() -> void:
+	var data := _tile_canvas.to_level_data()
+	if not LevelData.is_valid(data):
+		status_label.text = "Add some tiles and at least 2 spawn points before publishing."
+		return
+
+	var level_name := level_name_edit.text.strip_edges()
+	if level_name.is_empty():
+		level_name = "Untitled Map"
+
+	publish_level_button.disabled = true
+	status_label.text = "Publishing \"%s\"..." % level_name
+	var req := HTTPRequest.new()
+	add_child(req)
+	var body := JSON.stringify({"name": level_name, "tiles": data.tiles, "spawn_points": data.spawn_points})
+	var err := req.request(
+		"%s/%s/upload" % [LEVEL_API_BASE, SkinCatalog.client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body
+	)
+	if err != OK:
+		req.queue_free()
+		status_label.text = "Publish failed -- couldn't start the request."
+		publish_level_button.disabled = false
+		return
+	var response: Array = await req.request_completed
+	req.queue_free()
+	publish_level_button.disabled = false
+	if response[1] == 200:
+		status_label.text = "Published \"%s\" -- live for everyone now." % level_name
+	else:
+		status_label.text = "Publish failed for \"%s\" -- check your connection." % level_name
 
 func _on_color_picked_from_wheel(color: Color) -> void:
 	if _current_canvas:
