@@ -50,6 +50,12 @@ custom_minimum_size = Vector2(140, 38)
 toggle_mode = true
 text = "Preview"
 
+[node name="LevelTabButton" type="Button" parent="VBox/PageTabRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(140, 38)
+toggle_mode = true
+text = "Level"
+
 [node name="PaintPage" type="HBoxContainer" parent="VBox"]
 layout_mode = 2
 size_flags_vertical = 3
@@ -156,6 +162,64 @@ text = "HAT"
 [node name="HatSelect" type="OptionButton" parent="VBox/PreviewPage/SelectorRow/HatSelectBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(220, 38)
+
+[node name="LevelPage" type="HBoxContainer" parent="VBox"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+
+[node name="LevelCanvasPanel" type="PanelContainer" parent="VBox/LevelPage"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="LevelCanvasBox" type="VBoxContainer" parent="VBox/LevelPage/LevelCanvasPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="LevelToolbar" type="HBoxContainer" parent="VBox/LevelPage/LevelCanvasPanel/LevelCanvasBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 6
+
+[node name="LevelCanvasScroll" type="ScrollContainer" parent="VBox/LevelPage/LevelCanvasPanel/LevelCanvasBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="LevelCanvasCenter" type="CenterContainer" parent="VBox/LevelPage/LevelCanvasPanel/LevelCanvasBox/LevelCanvasScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="LevelRightPanel" type="PanelContainer" parent="VBox/LevelPage"]
+layout_mode = 2
+custom_minimum_size = Vector2(240, 0)
+
+[node name="LevelRightBox" type="VBoxContainer" parent="VBox/LevelPage/LevelRightPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LevelNameLabel" type="Label" parent="VBox/LevelPage/LevelRightPanel/LevelRightBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "MAP NAME"
+
+[node name="LevelNameEdit" type="LineEdit" parent="VBox/LevelPage/LevelRightPanel/LevelRightBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 38)
+placeholder_text = "My Map"
+
+[node name="LevelInfoLabel" type="Label" parent="VBox/LevelPage/LevelRightPanel/LevelRightBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.63, 0.72, 1)
+autowrap_mode = 2
+text = "Paint boundary/pillar/platform tiles, then drop at least 2 spawn points before publishing."
+
+[node name="PublishLevelButton" type="Button" parent="VBox/LevelPage/LevelRightPanel/LevelRightBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 46)
+text = "Publish Map"
 
 [node name="BottomRow" type="HBoxContainer" parent="VBox"]
 layout_mode = 2
