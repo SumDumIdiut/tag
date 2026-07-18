@@ -33,6 +33,7 @@ func _ready() -> void:
 	var is_private := false
 	var quit_when_empty := false
 	var is_ranked := false
+	var level_id := ""
 
 	for arg in OS.get_cmdline_args():
 		if arg.begins_with("--port="):
@@ -43,6 +44,8 @@ func _ready() -> void:
 			max_players = int(arg.substr(14))
 		elif arg.begins_with("--relay-url="):
 			relay_url = arg.substr(12)
+		elif arg.begins_with("--level="):
+			level_id = arg.substr(8)
 		elif arg == "--private":
 			is_private = true
 		elif arg == "--quit-when-empty":
@@ -56,6 +59,7 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 	NetworkManager.is_ranked_server = is_ranked
+	NetworkManager.level_id = level_id
 
 	if not is_private:
 		_relay_client = RelayClient.new(relay_url, server_name, max_players, port, is_ranked)

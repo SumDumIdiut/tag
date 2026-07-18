@@ -45,9 +45,9 @@ func _on_ready_pressed() -> void:
 func _on_start_pressed() -> void:
 	NetworkManager.start_match()
 
-func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary) -> void:
+func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary, level_id: String) -> void:
 	var scene := MATCH_INTRO_SCENE.instantiate()
-	scene.setup(my_id, roster)
+	scene.setup(my_id, roster, level_id)
 	get_tree().root.add_child(scene)
 	get_tree().current_scene.queue_free()
 	get_tree().current_scene = scene

@@ -15,12 +15,14 @@ const INTRO_DURATION_SEC := 2.5
 
 var _my_id := -1
 var _roster := {}
+var _level_id := ""
 var _time_left := INTRO_DURATION_SEC
 var _proceeded := false
 var _previews := {} # peer_id -> TextureRect, so a late-arriving custom skin can be re-applied
 
-func setup(my_id: int, roster: Dictionary) -> void:
+func setup(my_id: int, roster: Dictionary, level_id: String = "") -> void:
 	_my_id = my_id
+	_level_id = level_id
 	_roster = roster
 
 func _ready() -> void:
@@ -68,7 +70,7 @@ func _proceed() -> void:
 		return
 	_proceeded = true
 	var scene := NET_GAME_SCENE.instantiate()
-	scene.setup(_my_id, _roster)
+	scene.setup(_my_id, _roster, _level_id)
 	get_tree().root.add_child(scene)
 	get_tree().current_scene.queue_free()
 	get_tree().current_scene = scene
