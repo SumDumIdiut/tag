@@ -9,7 +9,7 @@ extends Node
 
 signal lobby_list_updated(lobbies: Array)
 signal lobby_state_updated(lobby: Dictionary)
-signal match_started(lobby_id: int, my_peer_id: int, roster: Dictionary)
+signal match_started(lobby_id: int, my_peer_id: int, roster: Dictionary, level_id: String)
 signal match_state_received(tick: int, states: Dictionary)
 ## Fires once on every peer when a ranked round's timer runs out. `ranking`
 ## is [{peer_id, username, it_time, place}], sorted best (place 1) first.
@@ -25,6 +25,7 @@ const RANKED_REPORT_URL := "https://codecade.co.za/tag/api/ranked/report-result"
 
 var is_server := false
 var is_ranked_server := false # set by server_main.gd from --ranked; auto-lobbies/starts ranked rounds instead of waiting for manual create/join/Start
+var level_id := "" # set by server_main.gd from --level=<id>; "" means the built-in default arena, applies to every lobby this server process hosts
 var username := "Player"
 var my_peer_id := -1
 var current_lobby: Dictionary = {}
@@ -350,9 +351,9 @@ func _send_lobby_state(lobby_id: int) -> void:
 		rpc_id(peer_id, "_client_receive_lobby_state", lobby)
 
 ## Called by ServerMatch once it's finished spawning players.
-func notify_match_started(lobby_id: int, roster: Dictionary) -> void:
+func notify_match_started(lobby_id: int, roster: Dictionary, match_level_id: String) -> void:
 	for peer_id in roster.keys():
-		rpc_id(peer_id, "_client_match_started", lobby_id, peer_id, roster)
+		rpc_id(peer_id, "_client_match_started", lobby_id, peer_id, roster, match_level_id)
 
 ## Called by ServerMatch every physics tick.
 func push_match_state(peer_id: int, tick: int, states: Dictionary) -> void:
@@ -404,9 +405,9 @@ func _client_receive_lobby_state(lobby: Dictionary) -> void:
 	lobby_state_updated.emit(lobby)
 
 @rpc("authority", "reliable")
-func _client_match_started(lobby_id: int, my_id: int, roster: Dictionary) -> void:
+func _client_match_started(lobby_id: int, my_id: int, roster: Dictionary, match_level_id: String) -> void:
 	my_peer_id = my_id
-	match_started.emit(lobby_id, my_id, roster)
+	match_started.emit(lobby_id, my_id, roster, match_level_id)
 
 @rpc("authority", "unreliable_ordered")
 func _client_receive_match_state(tick: int, states: Dictionary) -> void:

@@ -66,6 +66,23 @@ const MAX_CUSTOM_SKINS_PER_CLIENT = 5;
 const MAX_HATS_PER_CLIENT = 5;
 const MAX_UPLOAD_BYTES = 100 * 1024; // generous over what a handful of tiny PNGs actually need -- just an abuse backstop
 
+// Levels live in the same catalog.json (type: 'level') as skins/hats, but
+// each one's actual layout is plain JSON, not a PNG -- see
+// game/levels/level_data.gd on the client for the exact shape and why it's
+// safe to trust directly (tile-index numbers + spawn coordinates only,
+// never scenes/scripts). Dimension caps mirror LevelData's own -- kept in
+// sync by hand, same tradeoff already accepted for PART_DIMENSIONS above.
+const LEVEL_DATA_DIR = path.join(DATA_DIR, 'level_data');
+const MAX_LEVELS_PER_CLIENT = 5;
+const MAX_LEVEL_TILES = 6000;
+const MIN_LEVEL_SPAWN_POINTS = 2;
+const MAX_LEVEL_SPAWN_POINTS = 16;
+// A full 6000-tile level's JSON is ~85-90KB -- this just needs to comfortably
+// clear that with room to spare, while staying under the global
+// express.json({limit: '256kb'}) body-parser cap below (a request over that
+// limit never reaches this handler at all, so this can't usefully exceed it).
+const MAX_LEVEL_UPLOAD_BYTES = 150 * 1024;
+
 // Reads a PNG's declared width/height straight from its IHDR chunk (always
 // the first chunk, always 8-byte signature + 4-byte length + 4-byte "IHDR"
 // + data) rather than pulling in an image-decoding dependency -- this trusts
@@ -81,6 +98,7 @@ function pngDimensions(buf) {
 }
 
 fs.mkdirSync(SKIN_IMAGE_DIR, { recursive: true });
+fs.mkdirSync(LEVEL_DATA_DIR, { recursive: true });
 
 // One-time migration from the old combined per-client format
 // ({ clientId: { selected, custom: [{id, name}] } }), from back when any
@@ -245,10 +263,11 @@ app.get('/api/servers', (req, res) => {
 app.use(express.json({ limit: '256kb' }));
 
 // The shared catalog of server-curated + player-drawn custom skins -- every
-// client sees the same list. Hats live in the same catalog.json (see
-// readCatalog()) but are filtered out here; use /api/hats/catalog for those.
+// client sees the same list. Hats and levels live in the same catalog.json
+// (see readCatalog()) but are filtered out here; use /api/hats/catalog and
+// /api/levels/catalog for those.
 app.get('/api/skins/catalog', (req, res) => {
-  res.json(readCatalog().filter(e => e.type !== 'hat'));
+  res.json(readCatalog().filter(e => e.type !== 'hat' && e.type !== 'level'));
 });
 
 app.get('/api/skins/:clientId', (req, res) => {
@@ -404,6 +423,69 @@ app.get('/api/hats/image/:hatId', (req, res) => {
   res.set('Content-Type', 'image/png');
   res.set('Cache-Control', 'public, max-age=86400');
   fs.createReadStream(imgPath).pipe(res);
+});
+
+// ─── HTTP: levels ─────────────────────────────────────────────────────────────
+// Live-published, no review step -- same trust model as drawn skins/hats.
+// Unlike skins/hats, a level's data is used by the dedicated server itself
+// to build real match collision (see game/net/server_match.gd), not just
+// rendered client-side -- but it's plain tile-index/coordinate JSON, so
+// there's nothing here a level could ever do beyond "place solid tiles in
+// weird places" no matter how it was crafted.
+function isValidLevelData(data) {
+  if (!data || typeof data !== 'object') return false;
+  const { tiles, spawn_points: spawns } = data;
+  if (!Array.isArray(tiles) || !Array.isArray(spawns)) return false;
+  if (tiles.length > MAX_LEVEL_TILES) return false;
+  if (spawns.length < MIN_LEVEL_SPAWN_POINTS || spawns.length > MAX_LEVEL_SPAWN_POINTS) return false;
+  for (const t of tiles) {
+    if (!Array.isArray(t) || t.length < 3) return false;
+    if (typeof t[0] !== 'number' || typeof t[1] !== 'number' || typeof t[2] !== 'number') return false;
+    if (t[2] < 0 || t[2] > 2) return false;
+  }
+  for (const s of spawns) {
+    if (!Array.isArray(s) || s.length < 2) return false;
+    if (typeof s[0] !== 'number' || typeof s[1] !== 'number') return false;
+  }
+  return true;
+}
+
+app.get('/api/levels/catalog', (req, res) => {
+  res.json(readCatalog().filter(e => e.type === 'level'));
+});
+
+app.post('/api/levels/:clientId/upload', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+
+  const clientId = req.params.clientId;
+  const existingCount = readCatalog().filter(e => e.createdBy === clientId && e.type === 'level').length;
+  if (existingCount >= MAX_LEVELS_PER_CLIENT) {
+    return res.status(400).json({ error: `max ${MAX_LEVELS_PER_CLIENT} published levels per client` });
+  }
+
+  const name = sanitizeName(req.body.name);
+  const data = { tiles: req.body.tiles, spawn_points: req.body.spawn_points };
+  if (!isValidLevelData(data)) return res.status(400).json({ error: 'invalid level data' });
+  const json = JSON.stringify(data);
+  if (Buffer.byteLength(json) > MAX_LEVEL_UPLOAD_BYTES) return res.status(400).json({ error: 'level too large' });
+
+  const id = 'level_' + crypto.randomBytes(8).toString('hex');
+  fs.writeFileSync(path.join(LEVEL_DATA_DIR, id + '.json'), json);
+  const catalog = readCatalog();
+  catalog.push({ id, name, type: 'level', createdBy: clientId, createdAt: Date.now() });
+  fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
+  res.json({ id });
+});
+
+app.get('/api/levels/data/:levelId', (req, res) => {
+  const levelId = req.params.levelId;
+  if (!/^level_[a-f0-9]{16}$/.test(levelId)) return res.status(400).end();
+  const dataPath = path.join(LEVEL_DATA_DIR, levelId + '.json');
+  if (!fs.existsSync(dataPath)) return res.status(404).end();
+  res.set('Content-Type', 'application/json');
+  res.set('Cache-Control', 'public, max-age=86400');
+  fs.createReadStream(dataPath).pipe(res);
 });
 
 // ─── HTTP: ranked ─────────────────────────────────────────────────────────────

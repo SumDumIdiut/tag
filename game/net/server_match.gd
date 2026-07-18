@@ -12,6 +12,8 @@ class_name ServerMatch
 
 const PLAYER_SCENE := preload("res://player/player.tscn")
 const ARENA_SCENE := preload("res://levels/tag_arena.tscn")
+const LevelData := preload("res://levels/level_data.gd")
+const LEVEL_DATA_URL := "https://codecade.co.za/tag/api/levels/data/%s"
 const TICK_RATE := 1.0 / 60.0
 
 const ROUND_DURATION_SEC := 180.0
@@ -38,8 +40,37 @@ func _init(network_manager: Node, p_lobby_id: int, members: Dictionary, p_ranked
 		_client_ids[peer_id] = members[peer_id].get("client_id", "")
 
 func _ready() -> void:
-	_arena = ARENA_SCENE.instantiate()
-	add_child(_arena)
+	var level_id: String = _network_manager.level_id
+	if level_id.is_empty():
+		_arena = ARENA_SCENE.instantiate()
+		add_child(_arena)
+		_finish_setup()
+	else:
+		_fetch_custom_arena(level_id)
+
+## Fetches this server process's chosen custom level from the relay and
+## builds it via LevelData -- same JSON every client independently fetches
+## for rendering (see net_game.gd), so both sides simulate/render identical
+## geometry. Falls back to the built-in arena on any fetch/parse/validation
+## failure so a bad or unreachable custom level can never stop a match from
+## starting at all.
+func _fetch_custom_arena(id: String) -> void:
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+		req.queue_free()
+		var built: Node2D = null
+		if response_code == 200:
+			var parsed = JSON.parse_string(body.get_string_from_utf8())
+			if typeof(parsed) == TYPE_DICTIONARY and LevelData.is_valid(parsed):
+				built = LevelData.build_arena_from_data(parsed)
+		_arena = built if built != null else ARENA_SCENE.instantiate()
+		add_child(_arena)
+		_finish_setup()
+	)
+	req.request(LEVEL_DATA_URL % id)
+
+func _finish_setup() -> void:
 	var spawn_points := _arena.get_node("SpawnPoints").get_children()
 	spawn_points.shuffle()
 
@@ -62,7 +93,7 @@ func _ready() -> void:
 	var roster := {}
 	for peer_id in _usernames.keys():
 		roster[peer_id] = {"username": _usernames[peer_id], "skin_id": _skin_ids[peer_id]}
-	_network_manager.notify_match_started(lobby_id, roster)
+	_network_manager.notify_match_started(lobby_id, roster, _network_manager.level_id)
 
 ## Fires once when a ranked round's timer runs out. Ranks every participant
 ## still in the match by least time spent as "it" (ascending -- lowest is

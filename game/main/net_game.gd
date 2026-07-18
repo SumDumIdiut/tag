@@ -3,20 +3,27 @@ extends Node2D
 const REMOTE_AVATAR_SCENE := preload("res://player/remote_avatar.tscn")
 const ARENA_SCENE := preload("res://levels/tag_arena.tscn")
 const MATCH_RESULTS_SCENE := preload("res://main/match_results.tscn")
+const LevelData := preload("res://levels/level_data.gd")
+const LEVEL_DATA_URL := "https://codecade.co.za/tag/api/levels/data/%s"
 
 var arena: Node2D
 var avatars := {} # peer_id -> RemoteAvatar, including your own
 var my_peer_id := -1
 var roster := {} # peer_id -> {username, skin_id}
+var level_id := ""
 var hud: Label
 
-func setup(p_my_peer_id: int, p_roster: Dictionary) -> void:
+func setup(p_my_peer_id: int, p_roster: Dictionary, p_level_id: String = "") -> void:
 	my_peer_id = p_my_peer_id
 	roster = p_roster
+	level_id = p_level_id
 
 func _ready() -> void:
-	arena = ARENA_SCENE.instantiate()
-	add_child(arena)
+	if level_id.is_empty():
+		arena = ARENA_SCENE.instantiate()
+		add_child(arena)
+	else:
+		_fetch_custom_arena(level_id)
 
 	hud = Label.new()
 	hud.offset_left = 16.0
@@ -64,6 +71,27 @@ func _apply_hat(peer_id: int) -> void:
 		return
 	var hat_id: String = roster[peer_id].get("hat_id", "")
 	avatars[peer_id].set_hat(hat_id)
+
+## Independently fetches and builds the exact same custom level the server
+## is authoritatively simulating (see server_match.gd's identical fetch),
+## so what's rendered here actually matches what players collide with.
+## Falls back to the built-in arena on any fetch/parse/validation failure --
+## avatars still render/interpolate fine even before this resolves, so
+## nothing here blocks the rest of _ready().
+func _fetch_custom_arena(id: String) -> void:
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+		req.queue_free()
+		var built: Node2D = null
+		if response_code == 200:
+			var parsed = JSON.parse_string(body.get_string_from_utf8())
+			if typeof(parsed) == TYPE_DICTIONARY and LevelData.is_valid(parsed):
+				built = LevelData.build_arena_from_data(parsed)
+		arena = built if built != null else ARENA_SCENE.instantiate()
+		add_child(arena)
+	)
+	req.request(LEVEL_DATA_URL % id)
 
 func _on_skin_received(skin_id: String) -> void:
 	for peer_id in roster.keys():
