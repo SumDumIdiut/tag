@@ -10,13 +10,37 @@ const TILE_SIZE := 10
 const OUT_ATLAS := "res://assets/tiles/tag_tiles.png"
 const OUT_TILESET := "res://levels/tag_tileset.tres"
 
-# Same 3 colors tag_arena.tscn's ColorRects already used, in the same
-# tile-index order convert_arena_to_tiles.gd expects, so converting the
-# arena to tiles doesn't change how it looks at all.
+# Each of the 3 base types (matching tag_arena.tscn's original ColorRects,
+# same order convert_arena_to_tiles.gd expects) now gets 3 art variants --
+# Piece (a straight edge), Corner, and Internal (fully surrounded) -- so a
+# hand-placed level can use the right-looking piece at a platform's edges/
+# corners instead of one flat texture tiling awkwardly everywhere.
+#
+# Laid out **variant-major** (all 3 types' Piece, then all 3 types'
+# Corner, then all 3 types' Internal) rather than type-major, specifically
+# so atlas indices 0/1/2 stay exactly Boundary/Pillar/Platform's Piece
+# variant -- the same colors, in the same order, at the same atlas
+# coordinates the original 3-tile atlas used. That's what keeps this change
+# backward compatible with data that already encodes raw tile_type ints
+# 0/1/2: tag_arena.tscn's already-painted TileMapLayer cells, and any
+# level already published to the relay server before this change (see
+# level_data.gd). Index into this array is exactly what tile_type means
+# everywhere else (level_data.gd, tile_canvas.gd, art_tool.gd's
+# tile_index()): variant_index * 3 + type_index, type order always
+# [Boundary, Pillar, Platform] and variant order always [Piece, Corner,
+# Internal] -- see VARIANT_NAMES below, which every other file's
+# tile-index math assumes matches this.
+const VARIANT_NAMES := ["Piece", "Corner", "Internal"]
 const TILES := [
-	{"name": "boundary", "color": Color(0.5, 0.5, 0.55, 1)},
-	{"name": "pillar", "color": Color(0.6, 0.5, 0.35, 1)},
-	{"name": "platform", "color": Color(0.65, 0.65, 0.7, 1)},
+	{"name": "boundary piece", "color": Color(0.5, 0.5, 0.55, 1)},
+	{"name": "pillar piece", "color": Color(0.6, 0.5, 0.35, 1)},
+	{"name": "platform piece", "color": Color(0.65, 0.65, 0.7, 1)},
+	{"name": "boundary corner", "color": Color(0.42, 0.42, 0.47, 1)},
+	{"name": "pillar corner", "color": Color(0.5, 0.41, 0.27, 1)},
+	{"name": "platform corner", "color": Color(0.56, 0.56, 0.61, 1)},
+	{"name": "boundary internal", "color": Color(0.58, 0.58, 0.63, 1)},
+	{"name": "pillar internal", "color": Color(0.68, 0.58, 0.42, 1)},
+	{"name": "platform internal", "color": Color(0.73, 0.73, 0.78, 1)},
 ]
 
 func _ready() -> void:

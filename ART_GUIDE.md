@@ -66,8 +66,9 @@ it's just in the next build."
 
 There's no separate custom tool for this -- Godot's own built-in TileMap editor
 already does the job well. `game/levels/tag_tileset.tres` defines the tile set
-(3 tiles: boundary/pillar/platform, each with matching physics collision already set
-up), and `game/levels/tag_arena.tscn`'s `Tiles` node is a `TileMapLayer` painted with
+(3 base types -- boundary/pillar/platform -- each with 3 art variants -- Piece/Corner/
+Internal -- for 9 tiles total, all with matching physics collision already set up), and
+`game/levels/tag_arena.tscn`'s `Tiles` node is a `TileMapLayer` painted with
 it. To extend or build a new arena: open the scene in the Godot editor, select the
 `Tiles` node, and paint with the TileSet panel at the bottom of the screen (bucket
 fill and rectangle-select both work great for platform layouts). Spawn points and the
