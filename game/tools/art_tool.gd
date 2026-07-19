@@ -949,6 +949,31 @@ func _build_level_page() -> void:
 	spawn_btn.pressed.connect(func(): _tile_canvas.tool = TileCanvas.Tool.SPAWN)
 	level_toolbar.add_child(spawn_btn)
 
+	# Click a start cell, then an end cell, to place a synced moving
+	# platform between them (see moving_platform.gd) -- two discrete clicks,
+	# not a drag, so TileCanvas itself special-cases this tool to not repeat
+	# on mouse motion the way PAINT/ERASE do.
+	var platform_btn := Button.new()
+	platform_btn.text = "Platform"
+	platform_btn.toggle_mode = true
+	platform_btn.button_group = level_tool_group
+	UIStyle.style_button(platform_btn, UIStyle.COLOR_LOCAL, 8)
+	platform_btn.pressed.connect(func(): _tile_canvas.tool = TileCanvas.Tool.PLATFORM)
+	level_toolbar.add_child(platform_btn)
+
+	var period_label := Label.new()
+	period_label.text = "Period (s):"
+	period_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	level_toolbar.add_child(period_label)
+	var period_spin := SpinBox.new()
+	period_spin.min_value = 0.5
+	period_spin.max_value = 60.0
+	period_spin.step = 0.5
+	period_spin.value = TileCanvas.DEFAULT_PLATFORM_PERIOD_SEC
+	period_spin.custom_minimum_size = Vector2(70, 0)
+	period_spin.value_changed.connect(func(v: float): _tile_canvas.current_platform_period_sec = v)
+	level_toolbar.add_child(period_spin)
+
 	level_toolbar.add_child(VSeparator.new())
 
 	var clear_btn := Button.new()
@@ -987,7 +1012,7 @@ func _on_publish_level_pressed() -> void:
 	status_label.text = "Publishing \"%s\"..." % level_name
 	var req := HTTPRequest.new()
 	add_child(req)
-	var body := JSON.stringify({"name": level_name, "tiles": data.tiles, "spawn_points": data.spawn_points})
+	var body := JSON.stringify({"name": level_name, "tiles": data.tiles, "spawn_points": data.spawn_points, "platforms": data.platforms})
 	var err := req.request(
 		"%s/%s/upload" % [LEVEL_API_BASE, SkinCatalog.client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body
 	)
