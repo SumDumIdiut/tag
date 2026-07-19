@@ -64,14 +64,20 @@ static func button_box(color: Color, bg_alpha: float, border_alpha: float, radiu
 ## Applies a colored bordered look to an existing Button (normal/hover/
 ## pressed/focus) plus a hover-grow tween, the same treatment the main
 ## menu's mode bars use. Safe to call on any Button regardless of size.
-static func style_button(btn: Button, color: Color, radius: int = 10) -> void:
+## `grow`: the hover-scale tween is meant for spaced-out primary buttons
+## (mode bars, page tabs, toolbar actions); pass false for buttons packed
+## tightly in a vertical/grid list (sidebar entries) where growing on
+## hover visually overlaps the neighboring item above/below/beside it --
+## the color/border hover state alone is still enough feedback there.
+static func style_button(btn: Button, color: Color, radius: int = 10, grow: bool = true) -> void:
 	btn.add_theme_stylebox_override("normal", button_box(color, 0.14, 0.35, radius))
 	btn.add_theme_stylebox_override("hover", button_box(color, 0.26, 0.75, radius))
 	btn.add_theme_stylebox_override("pressed", button_box(color, 0.4, 1.0, radius))
 	btn.add_theme_stylebox_override("focus", button_box(color, 0.26, 0.75, radius))
 	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	btn.clip_contents = false
-	_wire_hover(btn)
+	if grow:
+		_wire_hover(btn)
 
 static func _wire_hover(btn: Button) -> void:
 	if btn.has_meta("_ui_style_hover_wired"):
@@ -89,6 +95,43 @@ static func _on_hover(btn: Button, entered: bool) -> void:
 	var tween := btn.create_tween()
 	tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tween.tween_property(btn, "scale", target, 0.15)
+
+## Recolors an HSlider's default light-gray/white track and grabber (jarring
+## against the dark theme) to match the rest of the UI -- a dark groove, a
+## colored fill up to the current value, and a small solid-color grabber
+## dot instead of the engine's default white circle icon.
+static func style_slider(slider: HSlider, color: Color) -> void:
+	var groove := StyleBoxFlat.new()
+	groove.bg_color = Color(1, 1, 1, 0.08)
+	groove.corner_radius_top_left = 4
+	groove.corner_radius_top_right = 4
+	groove.corner_radius_bottom_right = 4
+	groove.corner_radius_bottom_left = 4
+	groove.content_margin_top = 4.0
+	groove.content_margin_bottom = 4.0
+	slider.add_theme_stylebox_override("slider", groove)
+
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(color.r, color.g, color.b, 0.85)
+	fill.corner_radius_top_left = 4
+	fill.corner_radius_top_right = 4
+	fill.corner_radius_bottom_right = 4
+	fill.corner_radius_bottom_left = 4
+	fill.content_margin_top = 4.0
+	fill.content_margin_bottom = 4.0
+	slider.add_theme_stylebox_override("grabber_area", fill)
+	slider.add_theme_stylebox_override("grabber_area_highlight", fill)
+
+	var dot := Image.create(12, 12, false, Image.FORMAT_RGBA8)
+	dot.fill(Color(0, 0, 0, 0))
+	for y in 12:
+		for x in 12:
+			if Vector2(x - 5.5, y - 5.5).length() <= 5.5:
+				dot.set_pixel(x, y, Color(color.r, color.g, color.b).lightened(0.4))
+	var dot_tex := ImageTexture.create_from_image(dot)
+	slider.add_theme_icon_override("grabber", dot_tex)
+	slider.add_theme_icon_override("grabber_highlight", dot_tex)
+	slider.add_theme_icon_override("grabber_disabled", dot_tex)
 
 ## A translucent bordered panel background -- used for roster lists, server
 ## lists, cards, and other content wells that need to visually separate
