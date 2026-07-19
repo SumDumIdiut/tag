@@ -768,7 +768,7 @@ func _build_shared_toolbar(container: Container) -> void:
 	# strip. `flow`'s own generous separation keeps the now-visually-heavier
 	# button groups from feeling cramped against each other.
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_NEUTRAL, 0.05, 0.16, 12))
+	panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_NEUTRAL, 0.09, 0.28, 12))
 	# Without this, PanelContainer only ever claims its child's minimum size
 	# inside `container` (an HBoxContainer) instead of the available width --
 	# HFlowContainer then has almost no width to actually flow within, and
@@ -849,7 +849,11 @@ func _build_shared_toolbar(container: Container) -> void:
 
 	var transform_menu := MenuButton.new()
 	transform_menu.text = "Transform ▾"
-	UIStyle.style_button(transform_menu, UIStyle.COLOR_NEUTRAL, 8)
+	# Its own accent (not neutral like Zoom/Undo) -- half of what's in this
+	# menu (Clear, Invert) is a whole-canvas destructive action, the same
+	# tone Erase already uses on the Level page, so it reads as "be careful
+	# in here" at a glance rather than blending into the view-only controls.
+	UIStyle.style_button(transform_menu, UIStyle.COLOR_RANKED, 8)
 	var transform_actions := [
 		["Flip H", func(): if _current_canvas: _current_canvas.flip_horizontal()],
 		["Flip V", func(): if _current_canvas: _current_canvas.flip_vertical()],
@@ -864,7 +868,7 @@ func _build_shared_toolbar(container: Container) -> void:
 	transform_popup.id_pressed.connect(func(id: int): transform_actions[id][1].call())
 	flow.add_child(transform_menu)
 
-	flow.add_child(VSeparator.new())
+	flow.add_child(_toolbar_separator())
 	# toggle_mode + a shared group so the active brush size is actually
 	# visible at a glance -- these used to be plain momentary buttons with
 	# no lasting pressed state at all, the only control row here that
@@ -885,12 +889,15 @@ func _build_shared_toolbar(container: Container) -> void:
 		)
 		flow.add_child(size_btn)
 
-	flow.add_child(VSeparator.new())
-	flow.add_child(_toggle_button("Mirror H", func(v: bool): _mirror_h = v))
-	flow.add_child(_toggle_button("Mirror V", func(v: bool): _mirror_v = v))
-	flow.add_child(_toggle_button("Grid", func(v: bool): _show_grid = v))
+	flow.add_child(_toolbar_separator())
+	# COLOR_ONLINE (green) here purely as a third distinct accent, separating
+	# these view/canvas toggles at a glance from the destructive-leaning
+	# Transform group (COLOR_RANKED) and the brush-size group (COLOR_LOCAL).
+	flow.add_child(_toggle_button("Mirror H", func(v: bool): _mirror_h = v, UIStyle.COLOR_ONLINE))
+	flow.add_child(_toggle_button("Mirror V", func(v: bool): _mirror_v = v, UIStyle.COLOR_ONLINE))
+	flow.add_child(_toggle_button("Grid", func(v: bool): _show_grid = v, UIStyle.COLOR_ONLINE))
 
-	flow.add_child(VSeparator.new())
+	flow.add_child(_toolbar_separator())
 	var alpha_label := Label.new()
 	alpha_label.text = "Opacity"
 	alpha_label.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
@@ -907,13 +914,26 @@ func _build_shared_toolbar(container: Container) -> void:
 	)
 	flow.add_child(alpha_slider)
 
-	flow.add_child(VSeparator.new())
+	flow.add_child(_toolbar_separator())
 	flow.add_child(_action_button("Zoom -", func(): if _current_canvas: _current_canvas.set_zoom(_current_canvas.zoom - 2)))
 	flow.add_child(_action_button("Zoom +", func(): if _current_canvas: _current_canvas.set_zoom(_current_canvas.zoom + 2)))
 
-	flow.add_child(VSeparator.new())
-	flow.add_child(_action_button("Undo", func(): if _current_canvas: _current_canvas.undo()))
-	flow.add_child(_action_button("Redo", func(): if _current_canvas: _current_canvas.redo()))
+	flow.add_child(_toolbar_separator())
+	flow.add_child(_action_button("↶ Undo", func(): if _current_canvas: _current_canvas.undo()))
+	flow.add_child(_action_button("↷ Redo", func(): if _current_canvas: _current_canvas.redo()))
+
+## Godot's default VSeparator theme box is a 1px near-invisible line -- this
+## overrides it with a visible StyleBoxLine so the toolbar's groupings
+## (dropdowns / brush sizes / toggles / opacity / zoom / undo-redo) actually
+## read as separated clusters instead of one long unbroken row.
+func _toolbar_separator() -> VSeparator:
+	var sep := VSeparator.new()
+	var box := StyleBoxLine.new()
+	box.color = Color(1, 1, 1, 0.18)
+	box.thickness = 2
+	box.vertical = true
+	sep.add_theme_stylebox_override("separator", box)
+	return sep
 
 ## A dropdown grouping several PixelCanvas.Tool ids under one button --
 ## `items` is `[[label, tool_id], ...]`. Only builds the button + its popup
@@ -943,11 +963,11 @@ func _sync_tool_menu_label(btn: MenuButton, default_label: String, items: Array)
 ## new pressed state; `_apply_tool_state()` is called right after so the
 ## change is reflected on `_current_canvas` immediately, not just on the
 ## next paint stroke.
-func _toggle_button(label: String, on_toggle: Callable) -> Button:
+func _toggle_button(label: String, on_toggle: Callable, color: Color = UIStyle.COLOR_NEUTRAL) -> Button:
 	var btn := Button.new()
 	btn.text = label
 	btn.toggle_mode = true
-	UIStyle.style_button(btn, UIStyle.COLOR_NEUTRAL, 8)
+	UIStyle.style_button(btn, color, 8)
 	btn.toggled.connect(func(pressed: bool):
 		on_toggle.call(pressed)
 		_apply_tool_state()
