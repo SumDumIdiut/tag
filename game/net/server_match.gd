@@ -29,6 +29,12 @@ var _coalesced_input := {} # peer_id -> Dictionary, merged since the last tick
 var _tag_mode: TagMode
 var _arena: Node2D
 var _tick := 0
+## Set once by _finish_setup() and kept for the lifetime of the match --
+## a late-joining spectator (see NetworkManager._server_register_spectator)
+## needs this exact shape to send as its own "_client_match_started" payload,
+## and unlike a lobby's `members` this never changes as players disconnect
+## mid-match (matches roster.gd's read-only "who was originally in this").
+var roster := {}
 
 func _init(network_manager: Node, p_lobby_id: int, members: Dictionary, p_ranked: bool = false) -> void:
 	_network_manager = network_manager
@@ -90,7 +96,6 @@ func _finish_setup() -> void:
 	if ranked:
 		_tag_mode.round_ended.connect(_on_round_ended)
 
-	var roster := {}
 	for peer_id in _usernames.keys():
 		roster[peer_id] = {"username": _usernames[peer_id], "skin_id": _skin_ids[peer_id]}
 	_network_manager.notify_match_started(lobby_id, roster, _network_manager.level_id)
@@ -205,6 +210,12 @@ func _physics_process(delta: float) -> void:
 		}
 	for peer_id in _players.keys():
 		_network_manager.push_match_state(peer_id, _tick, states)
+	# Read-only watchers (see NetworkManager._server_register_spectator) get
+	# the exact same states dict, unmodified -- there's no receive_input path
+	# wired to a spectator's peer_id at all, so they can render everything
+	# but never act on it.
+	for spectator_peer_id in _network_manager.get_spectators(lobby_id):
+		_network_manager.push_match_state(spectator_peer_id, _tick, states)
 
 func teardown() -> void:
 	queue_free()
