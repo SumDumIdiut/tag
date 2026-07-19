@@ -7,7 +7,7 @@
 <link rel="icon" href="data:,">
 <style>
   :root { color-scheme: dark; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
     min-height: 100vh;
     font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -23,22 +23,32 @@
   nav a:hover { text-decoration: underline; }
   .list { display: flex; flex-direction: column; gap: 8px; }
   .row {
-    display: flex; align-items: center; gap: 14px;
-    padding: 12px 16px; border-radius: 12px;
+    display: flex; align-items: center; gap: 10px;
+    min-height: 44px; padding: 12px 16px; border-radius: 12px;
     border: 1.5px solid rgba(255,255,255,.09); background: rgba(255,255,255,.04);
     text-decoration: none; color: inherit;
   }
-  .row:hover { background: rgba(255,255,255,.08); }
-  .rank { width: 28px; text-align: center; font-weight: 800; color: #7b82a8; font-size: 13px; }
+  .row:hover, .row:active { background: rgba(255,255,255,.08); }
+  .rank { flex: 0 0 24px; text-align: center; font-weight: 800; color: #7b82a8; font-size: 13px; }
   .rank.top1 { color: #ffd166; }
   .rank.top2 { color: #d8dee9; }
   .rank.top3 { color: #d99a5f; }
-  .name { flex: 1; font-weight: 700; font-size: 14.5px; }
-  .tier { font-size: 11px; padding: 3px 9px; border-radius: 999px; background: rgba(124,108,248,.15); color: #b6acf9; font-weight: 700; }
-  .elo { font-weight: 800; font-size: 15px; width: 60px; text-align: right; }
-  .record { color: #7b82a8; font-size: 11.5px; width: 70px; text-align: right; }
+  /* min-width: 0 is what actually lets a flex item shrink below its text's
+     natural width -- without it, text-overflow: ellipsis never kicks in
+     and a long name just forces the row wider than the screen instead. */
+  .name { flex: 1 1 auto; min-width: 0; font-weight: 700; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tier { flex: 0 0 auto; font-size: 11px; padding: 3px 9px; border-radius: 999px; background: rgba(124,108,248,.15); color: #b6acf9; font-weight: 700; }
+  .elo { flex: 0 0 auto; font-weight: 800; font-size: 15px; width: 46px; text-align: right; }
+  .record { flex: 0 0 auto; color: #7b82a8; font-size: 11.5px; width: 62px; text-align: right; }
   .empty { color: #4e5578; font-size: 13.5px; padding: 40px 0; text-align: center; }
   footer { margin-top: 32px; color: #4e5578; font-size: 11.5px; text-align: center; }
+  /* Narrow phones (iPhone SE and similar, ~375px and under): the W-L
+     record is the least essential column here (rank/name/tier/elo tell
+     the whole story), so it's the first thing to go rather than letting
+     name truncation get any more aggressive than it already is. */
+  @media (max-width: 380px) {
+    .record { display: none; }
+  }
 </style>
 </head>
 <body>
