@@ -99,6 +99,8 @@ function pngDimensions(buf) {
 
 fs.mkdirSync(SKIN_IMAGE_DIR, { recursive: true });
 fs.mkdirSync(LEVEL_DATA_DIR, { recursive: true });
+const MATCHES_DIR = path.join(DATA_DIR, 'matches'); // one file per match, mirrors SKIN_IMAGE_DIR/LEVEL_DATA_DIR's one-file-per-id pattern
+fs.mkdirSync(MATCHES_DIR, { recursive: true });
 
 // One-time migration from the old combined per-client format
 // ({ clientId: { selected, custom: [{id, name}] } }), from back when any
@@ -358,6 +360,31 @@ const ACHIEVEMENTS = [
   { id: 'diamond', name: 'Diamond League', condition: (rank) => rank.elo >= 1850 },
   { id: 'last_place', name: "Tag, You're It", condition: (rank, m) => m.place === m.n },
 ];
+
+function achievementList(ids) {
+  return ids.map(id => {
+    const def = ACHIEVEMENTS.find(a => a.id === id);
+    return { id, name: def ? def.name : id };
+  });
+}
+
+// One file per match at data/matches/<id>.json (mirrors the existing one-
+// file-per-id pattern already used for levels/skin images), plus a capped
+// (last 20) list of match-id references on each participant's own
+// progression row so a profile page can list "recent matches" without
+// scanning the whole matches directory.
+const MAX_RECENT_MATCHES = 20;
+function recordMatchHistory(results) {
+  const id = 'match_' + crypto.randomBytes(8).toString('hex');
+  const record = { id, timestamp: Date.now(), results };
+  fs.writeFileSync(path.join(MATCHES_DIR, id + '.json'), JSON.stringify(record));
+  for (const r of results) {
+    const entry = getProgressionEntry(r.clientId);
+    if (!entry.recentMatches) entry.recentMatches = [];
+    entry.recentMatches.unshift(id);
+    if (entry.recentMatches.length > MAX_RECENT_MATCHES) entry.recentMatches.length = MAX_RECENT_MATCHES;
+  }
+}
 
 // Called right after applyEloUpdates(results) inside report-result -- reuses
 // the exact same validated {clientId, itTime, place} entries, plus n
@@ -695,6 +722,8 @@ app.post('/api/ranked/report-result', (req, res) => {
   }
   applyEloUpdates(clean);
   applyProgressionUpdates(clean);
+  recordMatchHistory(clean);
+  saveProgression();
   res.json({ ok: true });
 });
 
@@ -702,14 +731,7 @@ app.get('/api/progression/:clientId', (req, res) => {
   if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
   const entry = getProgressionEntry(req.params.clientId);
   saveProgression(); // mirrors GET /api/ranked/:clientId -- a lookup alone shouldn't lose a freshly-created zero-row on restart
-  res.json({
-    xp: entry.xp,
-    level: levelForXp(entry.xp),
-    achievements: entry.achievements.map(id => {
-      const def = ACHIEVEMENTS.find(a => a.id === id);
-      return { id, name: def ? def.name : id };
-    }),
-  });
+  res.json({ xp: entry.xp, level: levelForXp(entry.xp), achievements: achievementList(entry.achievements) });
 });
 
 // ─── HTTP: auth (accounts) ────────────────────────────────────────────────────
@@ -797,6 +819,35 @@ app.get('/api/friends/:clientId', (req, res) => {
     };
   });
   res.json(out);
+});
+
+// ─── HTTP: leaderboard + profiles ──────────────────────────────────────────────
+app.get('/api/leaderboard', (req, res) => {
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+  const rows = Object.entries(ranks).map(([clientId, r]) => ({
+    clientId,
+    username: (progression[clientId] && progression[clientId].username) || null,
+    elo: r.elo, tier: tierForElo(r.elo), wins: r.wins, losses: r.losses, matchesPlayed: r.matchesPlayed,
+  }));
+  rows.sort((a, b) => b.elo - a.elo);
+  res.json(rows.slice(0, limit));
+});
+
+app.get('/api/profile/:clientId', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  const clientId = req.params.clientId;
+  const rank = getRankEntry(clientId);
+  const prog = getProgressionEntry(clientId);
+  const recentMatches = (prog.recentMatches || []).map(matchId => {
+    try { return JSON.parse(fs.readFileSync(path.join(MATCHES_DIR, matchId + '.json'), 'utf-8')); }
+    catch { return null; }
+  }).filter(Boolean);
+  res.json({
+    clientId, username: prog.username,
+    elo: rank.elo, tier: tierForElo(rank.elo), wins: rank.wins, losses: rank.losses, matchesPlayed: rank.matchesPlayed,
+    xp: prog.xp, level: levelForXp(prog.xp), achievements: achievementList(prog.achievements),
+    recentMatches,
+  });
 });
 
 let _indexHtmlCache = null;

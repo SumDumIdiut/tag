@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tag — Leaderboard</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: #0b0d14; color: #e4e7f0;
+    padding: 32px 20px 60px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  header { margin-bottom: 24px; }
+  h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 4px; }
+  .sub { color: #7b82a8; font-size: 13px; }
+  nav { margin-top: 12px; }
+  nav a { color: #b6acf9; font-size: 12.5px; text-decoration: none; }
+  nav a:hover { text-decoration: underline; }
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 16px; border-radius: 12px;
+    border: 1.5px solid rgba(255,255,255,.09); background: rgba(255,255,255,.04);
+    text-decoration: none; color: inherit;
+  }
+  .row:hover { background: rgba(255,255,255,.08); }
+  .rank { width: 28px; text-align: center; font-weight: 800; color: #7b82a8; font-size: 13px; }
+  .rank.top1 { color: #ffd166; }
+  .rank.top2 { color: #d8dee9; }
+  .rank.top3 { color: #d99a5f; }
+  .name { flex: 1; font-weight: 700; font-size: 14.5px; }
+  .tier { font-size: 11px; padding: 3px 9px; border-radius: 999px; background: rgba(124,108,248,.15); color: #b6acf9; font-weight: 700; }
+  .elo { font-weight: 800; font-size: 15px; width: 60px; text-align: right; }
+  .record { color: #7b82a8; font-size: 11.5px; width: 70px; text-align: right; }
+  .empty { color: #4e5578; font-size: 13.5px; padding: 40px 0; text-align: center; }
+  footer { margin-top: 32px; color: #4e5578; font-size: 11.5px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Tag — Leaderboard</h1>
+      <p class="sub">Top ranked players by ELO.</p>
+      <nav><a href="index.html">&larr; Server Browser</a></nav>
+    </header>
+    <div class="list" id="list"></div>
+    <footer>codecade.co.za/tag</footer>
+  </div>
+
+<script>
+const listEl = document.getElementById('list');
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function render(rows) {
+  if (!rows.length) {
+    listEl.innerHTML = '<div class="empty">No ranked matches played yet.</div>';
+    return;
+  }
+  listEl.innerHTML = rows.map((r, i) => {
+    const rankClass = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
+    const name = r.username ? esc(r.username) : esc(r.clientId).slice(0, 10) + '…';
+    return '<a class="row" href="profile.html?id=' + encodeURIComponent(r.clientId) + '">' +
+      '<div class="rank ' + rankClass + '">#' + (i + 1) + '</div>' +
+      '<div class="name">' + name + '</div>' +
+      '<div class="tier">' + esc(r.tier) + '</div>' +
+      '<div class="elo">' + r.elo + '</div>' +
+      '<div class="record">' + r.wins + 'W-' + r.losses + 'L</div>' +
+    '</a>';
+  }).join('');
+}
+
+fetch('api/leaderboard?limit=50')
+  .then(r => r.json())
+  .then(render)
+  .catch(() => { listEl.innerHTML = '<div class="empty">Could not reach the relay server.</div>'; });
+</script>
+</body>
+</html>
