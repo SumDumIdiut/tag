@@ -93,24 +93,6 @@ jobs:
           }
           if (-not (Test-Path "builds\Tag.exe")) { throw "Tag.exe still missing after $maxAttempts attempts" }
 
-      - name: Export dedicated server
-        shell: pwsh
-        run: |
-          $maxAttempts = 3
-          $pollTimeoutSec = 60
-          $pollIntervalSec = 3
-          for ($i = 1; $i -le $maxAttempts; $i++) {
-            .\godot.exe --headless --path game --export-release "Windows Dedicated Server" "../builds/Tag-Server.exe"
-            $waited = 0
-            while (-not (Test-Path "builds\Tag-Server.exe") -and $waited -lt $pollTimeoutSec) {
-              Start-Sleep -Seconds $pollIntervalSec
-              $waited += $pollIntervalSec
-            }
-            if (Test-Path "builds\Tag-Server.exe") { break }
-            Write-Host "Tag-Server.exe missing after attempt $i (waited up to ${pollTimeoutSec}s) -- retrying..."
-          }
-          if (-not (Test-Path "builds\Tag-Server.exe")) { throw "Tag-Server.exe still missing after $maxAttempts attempts" }
-
       - name: Export art tool
         shell: pwsh
         run: |
@@ -135,6 +117,6 @@ jobs:
         shell: pwsh
         run: |
           $tag = "build-$($env:GITHUB_RUN_NUMBER)"
-          gh release create $tag "builds/Tag.exe" "builds/Tag-Server.exe" "builds/TagArtTool.exe" `
+          gh release create $tag "builds/Tag.exe" "builds/TagArtTool.exe" `
             --title "Build $($env:GITHUB_RUN_NUMBER)" `
-            --notes "Automated build from commit $($env:GITHUB_SHA). Download Tag.exe to play. If you want to use the in-client Host Server button, also grab Tag-Server.exe and put it in the same folder as Tag.exe. Download TagArtTool.exe to paint over the game's character/hat art -- see ART_GUIDE.md."
+            --notes "Automated build from commit $($env:GITHUB_SHA). Download Tag.exe to play -- it hosts too (Host Server/Quick Play/Ranked all just spawn a second copy of itself as a local server, nothing extra to download). Download TagArtTool.exe to paint over the game's character/hat art -- see ART_GUIDE.md."
