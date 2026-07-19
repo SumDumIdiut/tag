@@ -18,6 +18,14 @@ extends Node
 # by default, not what's actually bundled inside the binary.
 
 func _ready() -> void:
+	# Applies whatever tiles override GameAssetUpdater downloaded in a past
+	# session (see game_asset_overrides.gd) before any arena gets built --
+	# harmless no-op if nothing's ever been downloaded. Purely cosmetic
+	# (pixels only, never tile behavior), so this is safe to run
+	# unconditionally on every build variant, including the headless server
+	# (which never renders it, but doesn't hurt to have it loaded either).
+	GameAssetOverrides.apply_tile_texture_override()
+
 	# Deferred: changing scenes from the very first _ready() of the main
 	# scene, while the SceneTree is still finishing its own initial setup,
 	# throws a spurious "parent node is busy" error otherwise.
