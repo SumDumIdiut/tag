@@ -553,8 +553,15 @@ func _build_shared_toolbar(container: Container) -> void:
 	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	container.add_child(flow)
 
-	var group := ButtonGroup.new()
-	var tool_defs := [
+	# Three dropdowns replace what used to be ~22 flat buttons here -- the
+	# rest (brush size, mirror/grid, opacity, zoom, undo/redo) stay inline
+	# below since those are adjusted constantly mid-stroke and would just add
+	# friction behind a click. "Tools" and "Selection" both persist into
+	# _current_tool (the same shared state _tool_button always drove), so
+	# whichever one you picked from has its own label updated to show the
+	# active tool and the other's resets to its default title -- exactly one
+	# visible indicator of what's active, regardless of which menu it's in.
+	var tools_items := [
 		["Brush", PixelCanvas.Tool.BRUSH],
 		["Eraser", PixelCanvas.Tool.ERASER],
 		["Fill", PixelCanvas.Tool.FILL],
@@ -564,15 +571,68 @@ func _build_shared_toolbar(container: Container) -> void:
 		["Rect Fill", PixelCanvas.Tool.RECT_FILL],
 		["Ellipse", PixelCanvas.Tool.ELLIPSE],
 		["Ellipse Fill", PixelCanvas.Tool.ELLIPSE_FILL],
+	]
+	var selection_tool_items := [
 		["Select", PixelCanvas.Tool.SELECT],
 		["Move", PixelCanvas.Tool.MOVE],
 		["Stamp", PixelCanvas.Tool.STAMP],
 	]
-	for i in tool_defs.size():
-		var btn := _tool_button(tool_defs[i][0], tool_defs[i][1], group)
-		flow.add_child(btn)
-		if i == 0:
-			btn.button_pressed = true
+	var tools_menu := _build_tool_menu_button("Tools", tools_items)
+	var selection_menu := _build_tool_menu_button("Selection", selection_tool_items)
+	flow.add_child(tools_menu)
+	flow.add_child(selection_menu)
+
+	var sync_labels := func():
+		_sync_tool_menu_label(tools_menu, "Tools", tools_items)
+		_sync_tool_menu_label(selection_menu, "Selection", selection_tool_items)
+	tools_menu.get_popup().id_pressed.connect(func(id: int):
+		_current_tool = id
+		_apply_tool_state()
+		sync_labels.call()
+	)
+
+	# Selection's popup mixes two different kinds of item: the 3 tool ids
+	# above (persist into _current_tool, same as Tools' menu) and 4 one-shot
+	# actions on whatever's currently selected (Copy/Cut/Paste/Deselect --
+	# same semantics _action_button already had, no persistent state).
+	# Action ids are offset by 100 so they can never collide with a real
+	# PixelCanvas.Tool value.
+	var selection_actions := [
+		["Copy", func(): if _current_canvas: _current_canvas.copy_selection()],
+		["Cut", func(): if _current_canvas: _current_canvas.cut_selection()],
+		["Paste", func(): if _current_canvas: _current_canvas.paste()],
+		["Deselect", func(): if _current_canvas: _current_canvas.clear_selection()],
+	]
+	var selection_popup := selection_menu.get_popup()
+	selection_popup.add_separator()
+	for i in selection_actions.size():
+		selection_popup.add_item(selection_actions[i][0], 100 + i)
+	selection_popup.id_pressed.connect(func(id: int):
+		if id >= 100:
+			selection_actions[id - 100][1].call()
+			return
+		_current_tool = id
+		_apply_tool_state()
+		sync_labels.call()
+	)
+	sync_labels.call()
+
+	var transform_menu := MenuButton.new()
+	transform_menu.text = "Transform ▾"
+	UIStyle.style_button(transform_menu, UIStyle.COLOR_NEUTRAL, 8)
+	var transform_actions := [
+		["Flip H", func(): if _current_canvas: _current_canvas.flip_horizontal()],
+		["Flip V", func(): if _current_canvas: _current_canvas.flip_vertical()],
+		["Rot CW", func(): if _current_canvas: _current_canvas.rotate_90_cw()],
+		["Rot CCW", func(): if _current_canvas: _current_canvas.rotate_90_ccw()],
+		["Clear", func(): if _current_canvas: _current_canvas.clear_canvas()],
+		["Invert", func(): if _current_canvas: _current_canvas.invert_colors()],
+	]
+	var transform_popup := transform_menu.get_popup()
+	for i in transform_actions.size():
+		transform_popup.add_item(transform_actions[i][0], i)
+	transform_popup.id_pressed.connect(func(id: int): transform_actions[id][1].call())
+	flow.add_child(transform_menu)
 
 	flow.add_child(VSeparator.new())
 	for size_px in [1, 2, 3, 4, 6, 10]:
@@ -609,22 +669,6 @@ func _build_shared_toolbar(container: Container) -> void:
 	flow.add_child(alpha_slider)
 
 	flow.add_child(VSeparator.new())
-	flow.add_child(_action_button("Flip H", func(): if _current_canvas: _current_canvas.flip_horizontal()))
-	flow.add_child(_action_button("Flip V", func(): if _current_canvas: _current_canvas.flip_vertical()))
-	flow.add_child(_action_button("Rot CW", func(): if _current_canvas: _current_canvas.rotate_90_cw()))
-	flow.add_child(_action_button("Rot CCW", func(): if _current_canvas: _current_canvas.rotate_90_ccw()))
-
-	flow.add_child(VSeparator.new())
-	flow.add_child(_action_button("Copy", func(): if _current_canvas: _current_canvas.copy_selection()))
-	flow.add_child(_action_button("Cut", func(): if _current_canvas: _current_canvas.cut_selection()))
-	flow.add_child(_action_button("Paste", func(): if _current_canvas: _current_canvas.paste()))
-	flow.add_child(_action_button("Deselect", func(): if _current_canvas: _current_canvas.clear_selection()))
-
-	flow.add_child(VSeparator.new())
-	flow.add_child(_action_button("Clear", func(): if _current_canvas: _current_canvas.clear_canvas()))
-	flow.add_child(_action_button("Invert", func(): if _current_canvas: _current_canvas.invert_colors()))
-
-	flow.add_child(VSeparator.new())
 	flow.add_child(_action_button("Zoom -", func(): if _current_canvas: _current_canvas.set_zoom(_current_canvas.zoom - 2)))
 	flow.add_child(_action_button("Zoom +", func(): if _current_canvas: _current_canvas.set_zoom(_current_canvas.zoom + 2)))
 
@@ -632,17 +676,29 @@ func _build_shared_toolbar(container: Container) -> void:
 	flow.add_child(_action_button("Undo", func(): if _current_canvas: _current_canvas.undo()))
 	flow.add_child(_action_button("Redo", func(): if _current_canvas: _current_canvas.redo()))
 
-func _tool_button(label: String, tool_id: int, group: ButtonGroup) -> Button:
-	var btn := Button.new()
-	btn.text = label
-	btn.toggle_mode = true
-	btn.button_group = group
+## A dropdown grouping several PixelCanvas.Tool ids under one button --
+## `items` is `[[label, tool_id], ...]`. Only builds the button + its popup
+## entries; the caller wires up `id_pressed` itself (see _build_shared_
+## toolbar), since Selection's popup also needs to mix in non-tool action
+## ids the same button can't know about here.
+func _build_tool_menu_button(label: String, items: Array) -> MenuButton:
+	var btn := MenuButton.new()
+	btn.text = "%s ▾" % label
 	UIStyle.style_button(btn, UIStyle.COLOR_LOCAL, 8)
-	btn.pressed.connect(func():
-		_current_tool = tool_id
-		_apply_tool_state()
-	)
+	var popup := btn.get_popup()
+	for item in items:
+		popup.add_item(item[0], item[1])
 	return btn
+
+## Sets `btn`'s displayed text to show whichever of `items` matches
+## _current_tool, or resets it to the plain default label if none do (the
+## active tool is in a different dropdown).
+func _sync_tool_menu_label(btn: MenuButton, default_label: String, items: Array) -> void:
+	for item in items:
+		if item[1] == _current_tool:
+			btn.text = "%s: %s ▾" % [default_label, item[0]]
+			return
+	btn.text = "%s ▾" % default_label
 
 ## A momentary toggle button (Mirror H/V, Grid) -- `on_toggle` receives the
 ## new pressed state; `_apply_tool_state()` is called right after so the
@@ -659,7 +715,8 @@ func _toggle_button(label: String, on_toggle: Callable) -> Button:
 	)
 	return btn
 
-## A plain one-shot action button (Flip/Rotate/Copy/Clear/Zoom/Undo/...) --
+## A plain one-shot action button (brush size, Zoom, Undo/Redo -- the
+## controls that stayed inline instead of moving into a dropdown) --
 ## `on_press` takes no arguments, matching Button.pressed's signature.
 func _action_button(label: String, on_press: Callable) -> Button:
 	var btn := Button.new()
