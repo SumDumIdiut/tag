@@ -308,7 +308,77 @@ setInterval(() => {
   if (changed) saveSessions();
 }, SWEEP_INTERVAL_MS * 12); // every ~60s -- session expiry isn't time-sensitive like server heartbeats
 
-// ─── State ────────────────────────────────────────────────────────────────────
+// ─── Progression (XP, levels, achievements) ────────────────────────────────────
+// Piggybacks entirely on the same trusted event ranked Elo already uses --
+// POST /api/ranked/report-result -- rather than opening a second, separately-
+// trusted report endpoint. No new client-reported data: XP/achievements are
+// derived purely from the same {clientId, itTime, place} payload applyElo
+// Updates() already validated, plus each player's own running progression
+// row. Ranked-only for the same reason ranks themselves are (DESIGN_SPEC.md
+// 4.2) -- casual matches report nothing today, so casual XP is out of scope.
+const PROGRESSION_JSON_PATH = path.join(DATA_DIR, 'progression.json');
+const XP_BASE = 20;
+const XP_PLACEMENT_BONUS = 8;
+
+function loadProgression() {
+  try { return JSON.parse(fs.readFileSync(PROGRESSION_JSON_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+let progression = loadProgression(); // clientId -> { xp, achievements: [ids...] }
+
+function saveProgression() {
+  fs.writeFileSync(PROGRESSION_JSON_PATH, JSON.stringify(progression));
+}
+
+function getProgressionEntry(clientId) {
+  if (!progression[clientId]) progression[clientId] = { xp: 0, achievements: [] };
+  return progression[clientId];
+}
+
+// level is always derived from xp, never stored redundantly -- there's
+// nothing to keep in sync if the curve ever changes, just re-derive.
+function levelForXp(xp) {
+  return 1 + Math.floor(Math.sqrt(xp / 100));
+}
+
+// Each condition sees the player's own already-updated rank entry (post-
+// applyEloUpdates) and this specific match's {itTime, place} for them, plus
+// n (how many participants this round had, needed for "placed last").
+const ACHIEVEMENTS = [
+  { id: 'first_win', name: 'First Blood', condition: (rank, m) => rank.wins === 1 && m.place === 1 },
+  { id: 'ten_wins', name: 'Perfect Ten', condition: (rank) => rank.wins === 10 },
+  { id: 'fifty_wins', name: 'Half a Century', condition: (rank) => rank.wins === 50 },
+  { id: 'untouchable', name: 'Untouchable', condition: (rank, m) => m.place === 1 && m.itTime === 0 },
+  { id: 'veteran', name: 'Veteran', condition: (rank) => rank.matchesPlayed === 50 },
+  { id: 'century', name: 'Century Club', condition: (rank) => rank.matchesPlayed === 100 },
+  { id: 'marathon', name: 'Marathon Runner', condition: (rank) => rank.matchesPlayed === 200 },
+  { id: 'silver', name: 'Silver League', condition: (rank) => rank.elo >= 1100 },
+  { id: 'gold', name: 'Gold League', condition: (rank) => rank.elo >= 1300 },
+  { id: 'platinum', name: 'Platinum League', condition: (rank) => rank.elo >= 1550 },
+  { id: 'diamond', name: 'Diamond League', condition: (rank) => rank.elo >= 1850 },
+  { id: 'last_place', name: "Tag, You're It", condition: (rank, m) => m.place === m.n },
+];
+
+// Called right after applyEloUpdates(results) inside report-result -- reuses
+// the exact same validated {clientId, itTime, place} entries, plus n
+// (results.length) for achievements that depend on the whole round's size.
+function applyProgressionUpdates(results) {
+  const n = results.length;
+  for (const r of results) {
+    const entry = getProgressionEntry(r.clientId);
+    entry.xp += XP_BASE + Math.max(0, n - r.place) * XP_PLACEMENT_BONUS;
+    const rank = getRankEntry(r.clientId); // already updated by applyEloUpdates, called before this
+    for (const ach of ACHIEVEMENTS) {
+      if (entry.achievements.includes(ach.id)) continue;
+      if (ach.condition(rank, { itTime: r.itTime, place: r.place, n })) {
+        entry.achievements.push(ach.id);
+      }
+    }
+  }
+  saveProgression();
+}
+
+
 const servers = new Map();       // serverId -> { id, name, maxPlayers, playerCount, createdAt, lastHeartbeat, controlSocket }
 const pendingTokens = new Map(); // token -> { playerSocket, timer }
 const rateLimitHits = new Map(); // ip -> [timestamps]
@@ -597,7 +667,22 @@ app.post('/api/ranked/report-result', (req, res) => {
     clean.push({ clientId: String(r.clientId), itTime: Number(r.itTime) || 0, place });
   }
   applyEloUpdates(clean);
+  applyProgressionUpdates(clean);
   res.json({ ok: true });
+});
+
+app.get('/api/progression/:clientId', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  const entry = getProgressionEntry(req.params.clientId);
+  saveProgression(); // mirrors GET /api/ranked/:clientId -- a lookup alone shouldn't lose a freshly-created zero-row on restart
+  res.json({
+    xp: entry.xp,
+    level: levelForXp(entry.xp),
+    achievements: entry.achievements.map(id => {
+      const def = ACHIEVEMENTS.find(a => a.id === id);
+      return { id, name: def ? def.name : id };
+    }),
+  });
 });
 
 // ─── HTTP: auth (accounts) ────────────────────────────────────────────────────
