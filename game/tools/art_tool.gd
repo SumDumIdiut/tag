@@ -3,8 +3,8 @@ extends Control
 # Standalone paint tool, exported as its own executable (TagArtTool.exe, see
 # export_presets.cfg's "Art Tool" preset). Five pages, switched at the top
 # like a dedicated app rather than one cramped screen: PAINT (create/edit
-# any number of independent custom skins and hats -- no pre-made defaults,
-# every one starts as a blank canvas), PREVIEW (a single large render of
+# any number of independent custom skins, hats, and trails -- no pre-made
+# defaults, every one starts as a blank canvas), PREVIEW (a single large render of
 # any skin/hat combination, picked from real dropdowns), LEVEL (paint a
 # tile-based map and publish it live -- see game/levels/level_data.gd),
 # TILES (paint the actual texture of the game's built-in tile types --
@@ -55,6 +55,14 @@ const HAT_INSTRUCTIONS_TEXT := """Send each hat PNG and its name to whoever runs
 they add it with one command:
 
     node add-hat.js path/to/your-hat.png "Hat Name"
+
+and it's live for everyone immediately, no build or restart needed.
+"""
+
+const TRAIL_INSTRUCTIONS_TEXT := """Send each trail PNG and its name to whoever runs the game's server --
+they add it with one command:
+
+    node add-trail.js path/to/your-trail.png "Trail Name"
 
 and it's live for everyone immediately, no build or restart needed.
 """
@@ -127,7 +135,7 @@ To make this the game's real menu icon set:
 # "selected" at once.
 var _current_images: Dictionary
 var _current_key := ""
-var _current_context := "" # "skin", "hat", or "" (nothing open)
+var _current_context := "" # "skin", "hat", "trail", or "" (nothing open)
 var _current_id := ""
 var _current_canvas: PixelCanvas = null
 
@@ -159,6 +167,11 @@ var _custom_hats := {} # id -> {"design": Image}
 var _hat_names := {} # id -> display name
 var _custom_hats_list: VBoxContainer
 var _next_hat_num := 1
+
+var _custom_trails := {} # id -> {"design": Image}
+var _trail_names := {} # id -> display name
+var _custom_trails_list: VBoxContainer
+var _next_trail_num := 1
 
 var _big_preview
 var _preview_skin_id := ""
@@ -360,6 +373,20 @@ func _build_sidebar() -> void:
 	add_hat_btn.pressed.connect(_on_add_hat_pressed)
 	part_list.add_child(add_hat_btn)
 
+	var trail_spacer := Control.new()
+	trail_spacer.custom_minimum_size = Vector2(0, 8)
+	part_list.add_child(trail_spacer)
+
+	part_list.add_child(_section_label("CUSTOM TRAILS"))
+	_custom_trails_list = VBoxContainer.new()
+	_custom_trails_list.add_theme_constant_override("separation", 4)
+	part_list.add_child(_custom_trails_list)
+	var add_trail_btn := Button.new()
+	add_trail_btn.text = "+ New Trail"
+	UIStyle.style_button(add_trail_btn, UIStyle.COLOR_LOCAL, 8)
+	add_trail_btn.pressed.connect(_on_add_trail_pressed)
+	part_list.add_child(add_trail_btn)
+
 func _section_label(text: String) -> Label:
 	var l := Label.new()
 	l.text = text
@@ -394,6 +421,16 @@ func _on_add_hat_pressed() -> void:
 	_custom_hats[id] = parts
 	_rebuild_custom_hats_list()
 	_show_part(parts, "design", "hat", id)
+
+func _on_add_trail_pressed() -> void:
+	var id := "trail_%d" % _next_trail_num
+	var display_num := _next_trail_num
+	_next_trail_num += 1
+	_trail_names[id] = "Trail %d" % display_num
+	var parts := {"design": _blank_image(Vector2i(SkinCatalog.TRAIL_WIDTH, SkinCatalog.TRAIL_HEIGHT))}
+	_custom_trails[id] = parts
+	_rebuild_custom_trails_list()
+	_show_part(parts, "design", "trail", id)
 
 func _rebuild_custom_skins_list() -> void:
 	for child in _custom_skins_list.get_children():
@@ -517,6 +554,56 @@ func _build_hat_entry(id: String) -> Control:
 
 	return box
 
+func _rebuild_custom_trails_list() -> void:
+	for child in _custom_trails_list.get_children():
+		child.queue_free()
+	for id in _custom_trails.keys():
+		_custom_trails_list.add_child(_build_trail_entry(id))
+
+func _build_trail_entry(id: String) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 4)
+	var select_btn := Button.new()
+	select_btn.text = _trail_names[id]
+	select_btn.toggle_mode = true
+	select_btn.button_group = _part_group
+	select_btn.button_pressed = (_current_context == "trail" and _current_id == id)
+	select_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	select_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+	UIStyle.style_button(select_btn, UIStyle.COLOR_SANDBOX, 8)
+	select_btn.pressed.connect(_show_part.bind(_custom_trails[id], "design", "trail", id))
+	header.add_child(select_btn)
+	var publish_btn := Button.new()
+	publish_btn.text = "Publish"
+	publish_btn.custom_minimum_size = Vector2(72, 0)
+	UIStyle.style_button(publish_btn, UIStyle.COLOR_ONLINE, 8)
+	publish_btn.pressed.connect(_on_publish_trail_pressed.bind(id, publish_btn))
+	header.add_child(publish_btn)
+	header.add_child(_delete_button(func():
+		_custom_trails.erase(id)
+		_trail_names.erase(id)
+		if _current_context == "trail" and _current_id == id:
+			_clear_canvas()
+		_rebuild_custom_trails_list()
+	))
+	box.add_child(header)
+
+	var name_edit := LineEdit.new()
+	name_edit.text = _trail_names[id]
+	name_edit.placeholder_text = "Trail name"
+	name_edit.text_submitted.connect(func(new_text: String):
+		var trimmed := new_text.strip_edges()
+		if not trimmed.is_empty():
+			_trail_names[id] = trimmed
+		_rebuild_custom_trails_list()
+	)
+	box.add_child(name_edit)
+
+	return box
+
 func _delete_button(on_delete: Callable) -> Button:
 	var btn := Button.new()
 	btn.text = "x"
@@ -563,9 +650,26 @@ func _on_publish_hat_pressed(id: String, btn: Button) -> void:
 	else:
 		status_label.text = "Published \"%s\" -- live for everyone now." % hat_name
 
-## `images` is whichever part-dict is being edited; `context` is "skin" or
-## "hat" (drives the big preview's tinting-free rendering); `id` is the
-## stable internal id used for selection-highlighting and delete/rebuild.
+## Same idea as _on_publish_hat_pressed, for trails.
+func _on_publish_trail_pressed(id: String, btn: Button) -> void:
+	if not _custom_trails.has(id):
+		return
+	var trail_name: String = _trail_names[id]
+	btn.disabled = true
+	status_label.text = "Publishing \"%s\"..." % trail_name
+	var server_id: String = await SkinCatalog.add_drawn_trail(_custom_trails[id]["design"], trail_name)
+	if not is_instance_valid(btn):
+		return
+	btn.disabled = false
+	if server_id.is_empty():
+		status_label.text = "Publish failed for \"%s\" -- check your connection." % trail_name
+	else:
+		status_label.text = "Published \"%s\" -- live for everyone now." % trail_name
+
+## `images` is whichever part-dict is being edited; `context` is "skin",
+## "hat", or "trail" (drives the big preview's tinting-free rendering); `id`
+## is the stable internal id used for selection-highlighting and delete/
+## rebuild.
 func _show_part(images: Dictionary, key: String, context: String, id: String) -> void:
 	_current_images = images
 	_current_key = key
@@ -1289,6 +1393,18 @@ func _on_export_pressed() -> void:
 			f2.store_string(HAT_INSTRUCTIONS_TEXT)
 		status_parts.append(hats_out_dir)
 
+	if not _custom_trails.is_empty():
+		var trails_out_dir := base_dir.path_join("edited_trails")
+		DirAccess.make_dir_recursive_absolute(trails_out_dir)
+		for id in _custom_trails.keys():
+			var safe_name := _safe_filename(_trail_names[id], id)
+			var img: Image = _custom_trails[id]["design"]
+			img.save_png(trails_out_dir.path_join("%s.png" % safe_name))
+		var f5 := FileAccess.open(trails_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
+		if f5:
+			f5.store_string(TRAIL_INSTRUCTIONS_TEXT)
+		status_parts.append(trails_out_dir)
+
 	if not _tile_images.is_empty():
 		var tiles_out_dir := base_dir.path_join("edited_tiles")
 		DirAccess.make_dir_recursive_absolute(tiles_out_dir)
@@ -1314,7 +1430,7 @@ func _on_export_pressed() -> void:
 		status_parts.append(icons_out_dir)
 
 	if status_parts.is_empty():
-		status_label.text = "Nothing to export yet -- create a skin or hat first."
+		status_label.text = "Nothing to export yet -- create a skin, hat, or trail first."
 	else:
 		status_label.text = "Exported to: " + ", ".join(status_parts)
 

@@ -172,6 +172,7 @@ var climb_exhausted_timer := 0.0
 	"right_leg": $Visual/Torso/RightLeg,
 }
 var _rig := LimbPhysicsRig.new()
+var _trail_emitter: TrailEmitter
 
 var _was_on_floor_visual := false
 var _was_tagged_it := false
@@ -208,6 +209,11 @@ func _ready() -> void:
 		# keep this, and it covers the brief window before a real player's
 		# chosen skin is known too.
 		set_skin("red")
+	# Harmless on a headless dedicated server's authoritative Player
+	# instances too -- set_trail() is never called there, so trail_id stays
+	# "" and TrailEmitter.update() below is a cheap no-op every tick.
+	_trail_emitter = TrailEmitter.new()
+	add_child(_trail_emitter)
 
 ## Sets which skin this player/NPC actually displays, by id -- called by
 ## whoever knows which skin this instance should be (game.gd for the local
@@ -236,6 +242,13 @@ func set_hat(hat_id: String) -> void:
 	if tex:
 		_hat.texture = tex
 
+## Sets the equipped trail, by id -- "" clears it. See RemoteAvatar.set_trail
+## for the networked-peer equivalent; this is the local/singleplayer path
+## (game.gd) and the (always-empty, see _ready) dedicated-server path.
+func set_trail(trail_id: String) -> void:
+	if _trail_emitter:
+		_trail_emitter.trail_id = trail_id
+
 ## Recolors this player/NPC to flag it as the current Tag "it", or back to
 ## its own normal look when it's no longer it -- lets TagMode mark whoever's
 ## chasing without every participant needing to know its own skin. Tints via
@@ -250,6 +263,7 @@ func set_tagged_it(active: bool) -> void:
 	# re-asserting "still it" doesn't restart the flinch kick.
 	if active and not _was_tagged_it:
 		_rig.kick("tag_reaction")
+		SFX.play("tag")
 	_was_tagged_it = active
 
 ## Called by TagMode when this player's been in sustained physical contact
@@ -295,6 +309,7 @@ func _process(delta: float) -> void:
 	# server_match.gd's state dict / RemoteAvatar.set_state).
 	_rig.update(delta, velocity, on_floor_now, is_dashing, is_climbing, MOVE_SPEED)
 	_rig.apply_to(_parts, _parts["torso"], _visual)
+	_trail_emitter.update(delta, velocity.length())
 
 func apply_input(input: Dictionary, delta: float) -> void:
 	var move_dir: Vector2 = input.get("move_dir", Vector2.ZERO)

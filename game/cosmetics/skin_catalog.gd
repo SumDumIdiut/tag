@@ -74,6 +74,22 @@ const BUILTIN_HATS := [
 	{"id": "crown", "name": "Crown", "shape": "crown", "color": Color(0.95, 0.8, 0.25)},
 ]
 
+const TRAIL_API_BASE := "https://codecade.co.za/tag/api/trails"
+
+# A trail is a single small particle sprite stamped repeatedly behind a
+# moving player (see player.gd's trail emitter), not attached to the rig at
+# all -- so unlike a hat it gets no overlap/pivot geometry, just a flat
+# square canvas.
+const TRAIL_WIDTH := 16
+const TRAIL_HEIGHT := 16
+
+const BUILTIN_TRAILS := [
+	{"id": "sparks", "name": "Sparks", "color": Color(0.95, 0.8, 0.25)},
+	{"id": "smoke", "name": "Smoke", "color": Color(0.6, 0.6, 0.65)},
+	{"id": "embers", "name": "Embers", "color": Color(0.85, 0.3, 0.15)},
+	{"id": "frost", "name": "Frost", "color": Color(0.55, 0.8, 0.95)},
+]
+
 const CHARACTER_SHADE_AMOUNT := 0.18
 const CHARACTER_HIGHLIGHT_AMOUNT := 0.12
 const HAT_SHADE_AMOUNT := 0.2
@@ -91,10 +107,13 @@ const TEMPLATE_HIGHLIGHT := Color(0.88, 0.88, 0.88, 1.0)
 
 signal skin_selected(id: String)
 signal hat_selected(id: String)
-## Emitted once a custom skin's or hat's texture finishes arriving from the
-## server -- listeners re-resolve anything they'd shown a placeholder for.
+signal trail_selected(id: String)
+## Emitted once a custom skin's, hat's, or trail's texture finishes arriving
+## from the server -- listeners re-resolve anything they'd shown a
+## placeholder for.
 signal skin_received(id: String)
 signal hat_received(id: String)
+signal trail_received(id: String)
 ## Emitted once the initial fetch of the shared catalogs + your own
 ## selections completes -- the shop UI waits for this before its first real
 ## render, since get_all_skins()/selected_skin_id etc are unreliable before
@@ -104,8 +123,10 @@ signal catalog_loaded
 var client_id := ""
 var selected_skin_id := "red"
 var selected_hat_id := "" # "" means no hat equipped
+var selected_trail_id := "" # "" means no trail equipped
 var _catalog_custom_skins := [] # [{id, name, ...}], the server's shared custom-skin catalog
 var _catalog_hats := [] # [{id, name, ...}], the server's shared hat catalog
+var _catalog_trails := [] # [{id, name, ...}], the server's shared trail catalog
 var _texture_cache := {} # id -> Texture2D
 var _fetch_in_flight := {} # id -> true, de-dupes concurrent image fetches
 
@@ -155,6 +176,17 @@ func get_all_hats() -> Array:
 		out.append({"id": h.id, "name": h.name, "custom": true})
 	return out
 
+## Built-in trails plus every custom trail in the server's shared catalog,
+## same shape as get_all_hats(). Same "no built-in none entry" rule -- "no
+## trail" is its own explicit unequip action.
+func get_all_trails() -> Array:
+	var out := []
+	for t in BUILTIN_TRAILS:
+		out.append(t)
+	for t in _catalog_trails:
+		out.append({"id": t.id, "name": t.name, "custom": true})
+	return out
+
 func is_builtin(id: String) -> bool:
 	for s in BUILTIN_SKINS:
 		if s.id == id:
@@ -164,6 +196,12 @@ func is_builtin(id: String) -> bool:
 func is_builtin_hat(id: String) -> bool:
 	for h in BUILTIN_HATS:
 		if h.id == id:
+			return true
+	return false
+
+func is_builtin_trail(id: String) -> bool:
+	for t in BUILTIN_TRAILS:
+		if t.id == id:
 			return true
 	return false
 
@@ -253,6 +291,13 @@ func select_hat(id: String) -> void:
 	hat_selected.emit(id)
 	_post_hat_selection(id)
 
+## A trail is a third, independent cosmetic slot -- id == "" unequips it
+## without touching skin/hat selection.
+func select_trail(id: String) -> void:
+	selected_trail_id = id
+	trail_selected.emit(id)
+	_post_trail_selection(id)
+
 ## Returns the cached hat texture if we already have it, kicking off an
 ## async fetch (skin_received-style, see hat_received) otherwise. Empty id
 ## means "no hat" and always returns null -- callers should treat that as
@@ -282,6 +327,33 @@ func _load_or_paint_hat(id: String) -> Texture2D:
 			def = h
 			break
 	return ImageTexture.create_from_image(_paint_hat_image(def.get("shape", "cap"), def.get("color", Color.WHITE)))
+
+## Same idea as get_hat_texture, for the trail slot. Built-in trails load
+## baked art (game/assets/character/trails/<trail>.png) if present, same
+## load-or-fall-back-to-procedural pattern.
+func get_trail_texture(id: String) -> Texture2D:
+	if id.is_empty():
+		return null
+	var cache_key := "trail:" + id
+	if _texture_cache.has(cache_key):
+		return _texture_cache[cache_key]
+	if is_builtin_trail(id):
+		var tex := _load_or_paint_trail(id)
+		_texture_cache[cache_key] = tex
+		return tex
+	_fetch_trail_texture(id)
+	return null
+
+func _load_or_paint_trail(id: String) -> Texture2D:
+	var path := "res://assets/character/trails/%s.png" % id
+	if ResourceLoader.exists(path):
+		return load(path)
+	var def := {}
+	for t in BUILTIN_TRAILS:
+		if t.id == id:
+			def = t
+			break
+	return ImageTexture.create_from_image(_paint_trail_image(def.get("color", Color.WHITE)))
 
 func _builtin_color(id: String) -> Color:
 	for s in BUILTIN_SKINS:
@@ -392,6 +464,22 @@ func paint_hat_template(_shape: String) -> Image:
 	_stroke_rect(img, 0, 0, HAT_WIDTH, HAT_HEIGHT, TEMPLATE_BASE)
 	return img
 
+## Trails ship the same way hats now do -- no pre-designed silhouette, just a
+## plain square outline marking the paintable bounds, left entirely up to
+## whoever draws it (see the Art Tool).
+func _paint_trail_image(color: Color) -> Image:
+	var img := Image.create(TRAIL_WIDTH, TRAIL_HEIGHT, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	_stroke_rect(img, 0, 0, TRAIL_WIDTH, TRAIL_HEIGHT, color)
+	return img
+
+## Same idea, marker-substituted the same way as paint_hat_template.
+func paint_trail_template() -> Image:
+	var img := Image.create(TRAIL_WIDTH, TRAIL_HEIGHT, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	_stroke_rect(img, 0, 0, TRAIL_WIDTH, TRAIL_HEIGHT, TEMPLATE_BASE)
+	return img
+
 ## Turns an edited template into a real, per-color image: marker regions
 ## (base/shade/highlight) get the exact same transform the original
 ## procedural painter used (color / darkened / lightened) for pixel-parity
@@ -492,14 +580,32 @@ func _fetch_hat_texture(id: String) -> void:
 	)
 	req.request("%s/image/%s" % [HAT_API_BASE, id])
 
-# Four independent fetches -- the shared skin catalog, the shared hat
-# catalog, and this client's own current skin + hat selections -- that all
-# have to land before catalog_loaded fires. `pending` is a single-element
-# array (not a plain int) so every request callback can share and mutate the
-# same counter -- GDScript lambdas capture locals by value, so a plain int
+func _fetch_trail_texture(id: String) -> void:
+	var cache_key := "trail:" + id
+	if _fetch_in_flight.has(cache_key):
+		return
+	_fetch_in_flight[cache_key] = true
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+		req.queue_free()
+		_fetch_in_flight.erase(cache_key)
+		if response_code == 200 and body.size() > 0:
+			var img := Image.new()
+			if img.load_png_from_buffer(body) == OK:
+				_texture_cache[cache_key] = ImageTexture.create_from_image(img)
+				trail_received.emit(id)
+	)
+	req.request("%s/image/%s" % [TRAIL_API_BASE, id])
+
+# Six independent fetches -- the shared skin/hat/trail catalogs, and this
+# client's own current skin + hat + trail selections -- that all have to
+# land before catalog_loaded fires. `pending` is a single-element array (not
+# a plain int) so every request callback can share and mutate the same
+# counter -- GDScript lambdas capture locals by value, so a plain int
 # wouldn't be shared between separate closures.
 func _fetch_catalog() -> void:
-	var pending := [4]
+	var pending := [6]
 	var on_one_done := func():
 		pending[0] -= 1
 		if pending[0] == 0:
@@ -553,6 +659,30 @@ func _fetch_catalog() -> void:
 	)
 	hat_selection_req.request("%s/%s" % [HAT_API_BASE, client_id])
 
+	var trail_catalog_req := HTTPRequest.new()
+	add_child(trail_catalog_req)
+	trail_catalog_req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+		trail_catalog_req.queue_free()
+		if response_code == 200:
+			var parsed = JSON.parse_string(body.get_string_from_utf8())
+			if typeof(parsed) == TYPE_ARRAY:
+				_catalog_trails = parsed
+		on_one_done.call()
+	)
+	trail_catalog_req.request("%s/catalog" % TRAIL_API_BASE)
+
+	var trail_selection_req := HTTPRequest.new()
+	add_child(trail_selection_req)
+	trail_selection_req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+		trail_selection_req.queue_free()
+		if response_code == 200:
+			var parsed = JSON.parse_string(body.get_string_from_utf8())
+			if typeof(parsed) == TYPE_DICTIONARY:
+				selected_trail_id = str(parsed.get("selected", "") if parsed.get("selected") != null else "")
+		on_one_done.call()
+	)
+	trail_selection_req.request("%s/%s" % [TRAIL_API_BASE, client_id])
+
 ## Re-runs the catalog + selection fetches and emits catalog_loaded again
 ## once they land -- used by the drawing tool so a freshly-uploaded skin/hat
 ## shows up in the shop immediately, without needing an app restart.
@@ -572,6 +702,13 @@ func _post_hat_selection(id: String) -> void:
 	req.request_completed.connect(func(_r, _c, _h, _b): req.queue_free())
 	var body := JSON.stringify({"hatId": id if not id.is_empty() else null})
 	req.request("%s/%s/select" % [HAT_API_BASE, client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
+
+func _post_trail_selection(id: String) -> void:
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(_r, _c, _h, _b): req.queue_free())
+	var body := JSON.stringify({"trailId": id if not id.is_empty() else null})
+	req.request("%s/%s/select" % [TRAIL_API_BASE, client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
 
 ## Uploads a freshly-drawn skin -- one small Image per rig part (see
 ## PART_DEFS), already painted by the drawing tool. Async, callers need
@@ -632,6 +769,31 @@ func add_drawn_hat(hat_image: Image, hat_name: String) -> String:
 	var id: String = parsed.id
 	_texture_cache["hat:" + id] = ImageTexture.create_from_image(hat_image)
 	_catalog_hats.append({"id": id, "name": hat_name})
+	return id
+
+## Uploads a freshly-drawn trail -- a single small Image (see TRAIL
+## dimensions). Async, callers need `await`. Returns the new trail's
+## server-assigned id, or "" on failure.
+func add_drawn_trail(trail_image: Image, trail_name: String) -> String:
+	var req := HTTPRequest.new()
+	add_child(req)
+	var body := JSON.stringify({"name": trail_name, "imageBase64": Marshalls.raw_to_base64(trail_image.save_png_to_buffer())})
+	var err := req.request(
+		"%s/%s/upload" % [TRAIL_API_BASE, client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body
+	)
+	if err != OK:
+		req.queue_free()
+		return ""
+	var response: Array = await req.request_completed
+	req.queue_free()
+	if response[1] != 200:
+		return ""
+	var parsed = JSON.parse_string(response[3].get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY or not parsed.has("id"):
+		return ""
+	var id: String = parsed.id
+	_texture_cache["trail:" + id] = ImageTexture.create_from_image(trail_image)
+	_catalog_trails.append({"id": id, "name": trail_name})
 	return id
 
 func _load_or_create_client_id() -> String:

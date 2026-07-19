@@ -22,6 +22,7 @@ class_name RemoteAvatar
 	"right_leg": $Visual/Torso/RightLeg,
 }
 var _rig := LimbPhysicsRig.new()
+var _trail_emitter: TrailEmitter
 
 const LERP_WEIGHT := 0.35
 # Dead-reckoning cap -- how far past the last known update we'll still trust
@@ -67,6 +68,8 @@ func _ready() -> void:
 	if is_local and camera:
 		camera.enabled = true
 		camera.make_current()
+	_trail_emitter = TrailEmitter.new()
+	add_child(_trail_emitter)
 
 func _physics_process(delta: float) -> void:
 	_time_since_update += delta
@@ -81,6 +84,7 @@ func _physics_process(delta: float) -> void:
 
 	_rig.update(delta, target_velocity, _last_on_floor, _last_is_dashing, _last_is_climbing, Player.MOVE_SPEED)
 	_rig.apply_to(_parts, _parts["torso"], visual)
+	_trail_emitter.update(delta, target_velocity.length())
 
 ## Sets which skin this avatar displays, by id -- called once by net_game.gd
 ## when this peer's skin choice becomes known, not on every state update
@@ -107,6 +111,13 @@ func set_hat(hat_id: String) -> void:
 	var tex := SkinCatalog.get_hat_texture(hat_id)
 	if tex:
 		_hat.texture = tex
+
+## Sets the equipped trail, by id -- "" clears it. Unlike set_skin/set_hat
+## there's no "not ready yet" retry needed here: TrailEmitter re-resolves its
+## own texture from SkinCatalog.trail_received directly.
+func set_trail(trail_id: String) -> void:
+	if _trail_emitter:
+		_trail_emitter.trail_id = trail_id
 
 ## Directly overrides one part's texture, bypassing SkinCatalog entirely --
 ## used by the Art Tool (tools/art_tool.gd) to preview an in-progress edit
@@ -137,6 +148,7 @@ func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_cli
 	# update instead of applying it once when tag actually happens.
 	if is_it and not _was_it:
 		_rig.kick("tag_reaction")
+		SFX.play("tag")
 	_was_it = is_it
 	# A fresh wall-jump/dash-jump id is likewise a one-shot kick, not a
 	# continuous state -- see player.gd's current_action_id comment for why
