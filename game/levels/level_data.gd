@@ -97,6 +97,10 @@ static func build_arena_from_data(data: Dictionary) -> Node2D:
 	var tiles_layer := TileMapLayer.new()
 	tiles_layer.name = "Tiles"
 	tiles_layer.tile_set = TileSetResource
+	# Matches tag_arena.tscn's own Tiles node group -- player.gd's post-move
+	# floor-tile lookup finds whichever arena is currently live this way,
+	# without needing a direct node-path reference into either arena shape.
+	tiles_layer.add_to_group("arena_tiles")
 	for entry in data.get("tiles", []):
 		var x := int(entry[0])
 		var y := int(entry[1])

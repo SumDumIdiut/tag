@@ -24,6 +24,23 @@ const AIR_MULT := 0.65 # Celeste: AirMult
 const AIR_ACCEL := GROUND_ACCEL * AIR_MULT
 const AIR_FRICTION := GROUND_FRICTION * AIR_MULT
 
+# Per-tile floor behavior (see build_tileset.gd's "behavior" custom data
+# layer, tag_tileset.tres) -- Ice multiplies both accel and friction so
+# it's harder to both start and stop moving; Bouncy overrides vertical
+# velocity on contact for a trampoline launch. Neither is a discrete state
+# like dashing/climbing -- both apply on top of otherwise-normal ground
+# movement, resolved fresh from whatever tile is underfoot every tick (see
+# _refresh_floor_behavior, called once per tick after move_and_slide()).
+const TILE_BEHAVIOR_LAYER := "behavior"
+const ICE_GRIP_MULT := 0.15
+const BOUNCE_VELOCITY := 260.0 * SCALE
+# How far below this body's own origin the collision capsule's bottom edge
+# sits (see player.tscn's CollisionShape2D position/size) -- sampling here
+# (plus a small margin into the tile below) lands the tile query on the
+# tile actually being stood on, not the one level with the origin (which is
+# mid-body, not feet).
+const FLOOR_TILE_PROBE_OFFSET_Y := 17.0
+
 # Celeste's real Gravity is 900 (scaled); bumped up ~20% from that -- falling
 # next to a wall (capped at WALL_BUMP_SLIDE_SPEED) was reading as "stuck" /
 # unresponsive rather than actually falling, and stronger gravity gets
@@ -160,6 +177,15 @@ var _was_on_floor_physics := false
 var stamina := STAMINA_MAX
 var is_climbing := false
 var climb_exhausted_timer := 0.0
+
+# Cached once found (see _get_tiles_layer) -- re-searched on demand rather
+# than in _ready(), since node setup order between this Player and the
+# arena isn't guaranteed (server_match.gd builds the arena first, but
+# game.gd's local/singleplayer setup order isn't contractually fixed).
+var _tiles_layer: TileMapLayer = null
+# Read by _process_horizontal every tick; refreshed once per tick by
+# _refresh_floor_behavior (called from apply_input, after move_and_slide).
+var _floor_grip_mult := 1.0
 
 @onready var _visual: Node2D = $Visual
 @onready var _hat: Sprite2D = $Visual/Body/Hat
@@ -371,6 +397,7 @@ func apply_input(input: Dictionary, delta: float) -> void:
 		facing = 1 if move_dir.x > 0.0 else -1
 
 	move_and_slide()
+	_refresh_floor_behavior()
 
 	# Dashing (or just running) into the top edge of a platform hits its
 	# vertical face square-on -- a hard 90-degree corner has no slope to
@@ -383,6 +410,44 @@ func apply_input(input: Dictionary, delta: float) -> void:
 		var post_move_wall := _find_wall_jump_normal(is_on_wall_only())
 		if post_move_wall != Vector2.ZERO:
 			_try_corner_correction(post_move_wall)
+
+## Finds the arena's TileMapLayer once (see level_data.gd/tag_arena.tscn's
+## "arena_tiles" group) and caches it -- there's exactly one live per match,
+## and it never changes mid-match once found.
+func _get_tiles_layer() -> TileMapLayer:
+	if _tiles_layer == null:
+		var found := get_tree().get_first_node_in_group("arena_tiles")
+		if found is TileMapLayer:
+			_tiles_layer = found
+	return _tiles_layer
+
+## Reads whichever tile is directly underfoot (post-move, so this reflects
+## where move_and_slide() actually just settled) and applies its behavior --
+## Ice lowers _floor_grip_mult for _process_horizontal to scale accel/
+## friction by next tick; Bouncy overrides vertical velocity immediately,
+## priming the launch move_and_slide() will act on next tick. Neither ever
+## touches a client's own rendering: this only ever runs where movement is
+## actually simulated (the dedicated server's authoritative Player
+## instances, or a local/singleplayer game.gd Player) -- a networked
+## RemoteAvatar puppet has no Player/tile lookup of its own at all, it just
+## renders whatever position/velocity the sim already reports.
+func _refresh_floor_behavior() -> void:
+	_floor_grip_mult = 1.0
+	if not is_on_floor():
+		return
+	var layer := _get_tiles_layer()
+	if layer == null:
+		return
+	var probe_world := global_position + Vector2(0, FLOOR_TILE_PROBE_OFFSET_Y)
+	var cell := layer.local_to_map(layer.to_local(probe_world))
+	var tile_data := layer.get_cell_tile_data(cell)
+	if tile_data == null:
+		return
+	match String(tile_data.get_custom_data(TILE_BEHAVIOR_LAYER)):
+		"ice":
+			_floor_grip_mult = ICE_GRIP_MULT
+		"bouncy":
+			velocity.y = -BOUNCE_VELOCITY
 
 func _tick_timers(delta: float) -> void:
 	coyote_timer = maxf(coyote_timer - delta, 0.0)
@@ -443,6 +508,13 @@ func _process_horizontal(move_dir: Vector2, delta: float, on_floor: bool) -> voi
 	var target := move_dir.x * MOVE_SPEED
 	var accel := GROUND_ACCEL if on_floor else AIR_ACCEL
 	var friction := GROUND_FRICTION if on_floor else AIR_FRICTION
+	# Ice (see _refresh_floor_behavior) scales both down -- less grip to
+	# speed up AND less grip to stop, the same tradeoff real ice makes.
+	# _floor_grip_mult only ever differs from 1.0 while on_floor was also
+	# true the tick it was set, so this is a no-op in the air.
+	if on_floor:
+		accel *= _floor_grip_mult
+		friction *= _floor_grip_mult
 	var rate := accel if absf(target) > 0.01 else friction
 	velocity.x = move_toward(velocity.x, target, rate * delta)
 

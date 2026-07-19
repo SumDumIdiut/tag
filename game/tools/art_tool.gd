@@ -67,13 +67,15 @@ they add it with one command:
 and it's live for everyone immediately, no build or restart needed.
 """
 
-const TILE_INSTRUCTIONS_TEXT := """tag_tiles.png is a horizontal strip, one 10x10 tile per slot, 9 slots in
+const TILE_INSTRUCTIONS_TEXT := """tag_tiles.png is a horizontal strip, one 10x10 tile per slot, 11 slots in
 this exact order: Boundary Piece, Pillar Piece, Platform Piece, Boundary
 Corner, Pillar Corner, Platform Corner, Boundary Internal, Pillar
-Internal, Platform Internal -- the same layout tools/build_tileset.gd
-generates and game/levels/tag_tileset.tres reads from. (Slots 0-2 are the
-same Boundary/Pillar/Platform tiles the original 3-tile atlas had, in the
-same order -- the 6 new Corner/Internal slots were appended after.)
+Internal, Platform Internal, Ice, Bouncy -- the same layout tools/
+build_tileset.gd generates and game/levels/tag_tileset.tres reads from.
+(Slots 0-2 are the same Boundary/Pillar/Platform tiles the original 3-tile
+atlas had, in the same order -- the 6 Corner/Internal slots and the 2
+behavior slots (Ice/Bouncy, see player.gd) were each appended after, never
+inserted, so already-published levels keep decoding the same way.)
 
 To make this the game's real tile texture:
 
@@ -192,6 +194,12 @@ const TILE_ATLAS_PATH := "res://assets/tiles/tag_tiles.png"
 # page below, both of which pick a tile index via tile_index().
 const TILE_TYPE_NAMES := ["Boundary", "Pillar", "Platform"]
 const TILE_VARIANT_NAMES := ["Piece", "Corner", "Internal"]
+# Two behaviorally-real floor types (see player.gd's tile-behavior lookup,
+# build_tileset.gd's "behavior" custom data layer) -- single flat tiles
+# appended after the type/variant grid above (indices 9, 10), not part of
+# it: v1 scope is one art variant each, not the full Piece/Corner/Internal
+# treatment every other type gets.
+const EXTRA_TILE_NAMES := ["Ice", "Bouncy"]
 const TILE_TEXTURE_ZOOM := 34 # a 10x10 image needs a much bigger per-pixel
 # zoom than a 32x48 skin part to be comfortably paintable at all.
 
@@ -933,6 +941,23 @@ func _build_level_page() -> void:
 		)
 		level_toolbar.add_child(variant_btn)
 
+	level_toolbar.add_child(VSeparator.new())
+
+	# Ice/Bouncy (see EXTRA_TILE_NAMES) place directly via PAINT, same as the
+	# type swatches above -- single flat tile each, no variant row.
+	for e in EXTRA_TILE_NAMES.size():
+		var extra_idx := TILE_TYPE_NAMES.size() * TILE_VARIANT_NAMES.size() + e
+		var extra_btn := Button.new()
+		extra_btn.text = EXTRA_TILE_NAMES[e]
+		extra_btn.toggle_mode = true
+		extra_btn.button_group = level_tool_group
+		UIStyle.style_button(extra_btn, TileCanvas.TILE_COLORS[extra_idx], 8)
+		extra_btn.pressed.connect(func():
+			_tile_canvas.tool = TileCanvas.Tool.PAINT
+			_tile_canvas.current_tile_type = extra_idx
+		)
+		level_toolbar.add_child(extra_btn)
+
 	var erase_btn := Button.new()
 	erase_btn.text = "Erase"
 	erase_btn.toggle_mode = true
@@ -1059,7 +1084,8 @@ func _build_tiles_page() -> void:
 	# textures, one ButtonGroup shared across all of them so exactly one is
 	# ever the active canvas.
 	var tile_group := ButtonGroup.new()
-	_tile_select_buttons.resize(TILE_TYPE_NAMES.size() * TILE_VARIANT_NAMES.size())
+	var grid_total := TILE_TYPE_NAMES.size() * TILE_VARIANT_NAMES.size()
+	_tile_select_buttons.resize(grid_total + EXTRA_TILE_NAMES.size())
 	for t in TILE_TYPE_NAMES.size():
 		var type_label := _section_label(TILE_TYPE_NAMES[t].to_upper())
 		type_label.add_theme_font_size_override("font_size", 11)
@@ -1079,6 +1105,23 @@ func _build_tiles_page() -> void:
 			btn.pressed.connect(_show_tile.bind(idx))
 			variant_row.add_child(btn)
 			_tile_select_buttons[idx] = btn
+
+	select_box.add_child(_section_label("SPECIAL"))
+	var extra_row := HBoxContainer.new()
+	extra_row.add_theme_constant_override("separation", 4)
+	select_box.add_child(extra_row)
+	for e in EXTRA_TILE_NAMES.size():
+		var idx := grid_total + e
+		var btn := Button.new()
+		btn.text = EXTRA_TILE_NAMES[e]
+		btn.toggle_mode = true
+		btn.button_group = tile_group
+		btn.custom_minimum_size = Vector2(0, 36)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		UIStyle.style_button(btn, TileCanvas.TILE_COLORS[idx], 8)
+		btn.pressed.connect(_show_tile.bind(idx))
+		extra_row.add_child(btn)
+		_tile_select_buttons[idx] = btn
 
 	var canvas_panel := PanelContainer.new()
 	canvas_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1127,8 +1170,9 @@ func _build_tiles_page() -> void:
 
 ## Loads the atlas already baked into the build (flat, slightly-shaded
 ## placeholder colors today -- see build_tileset.gd) and slices it into one
-## Image per (type, variant) texture, so the Tiles page always opens with
-## something real on the canvas instead of a blank transparent square.
+## Image per (type, variant) texture plus the two EXTRA_TILE_NAMES slots, so
+## the Tiles page always opens with something real on the canvas instead of
+## a blank transparent square.
 ## Falls back to a flat-color square per slot if the atlas can't be loaded
 ## or is still the old narrower size for any reason (e.g. running this tool
 ## against a stripped-down or stale export), so the page is never left
@@ -1141,7 +1185,7 @@ func _load_tile_images() -> void:
 	var atlas_tex: Texture2D = load(TILE_ATLAS_PATH)
 	if atlas_tex:
 		atlas = atlas_tex.get_image()
-	var total := TILE_TYPE_NAMES.size() * TILE_VARIANT_NAMES.size()
+	var total := TILE_TYPE_NAMES.size() * TILE_VARIANT_NAMES.size() + EXTRA_TILE_NAMES.size()
 	for i in total:
 		var tile_img: Image
 		if atlas and not atlas.is_empty() and (i + 1) * TILE_TEXTURE_SIZE <= atlas.get_width():
