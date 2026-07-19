@@ -205,6 +205,21 @@ var _preview_hat_id := ""
 var _tile_canvas: TileCanvas
 const LEVEL_API_BASE := "https://codecade.co.za/tag/api/levels"
 
+# Multiple independent levels, same list-of-named-things pattern skins/hats/
+# trails already use -- "+ New Level" starts a fresh blank map, each entry
+# in the sidebar switches _tile_canvas to that map's own cells/spawn_points/
+# platforms (plain Dictionary/Array, mutated in place by TileCanvas, so
+# switching is just repointing _tile_canvas's own references, no explicit
+# save-back step needed the way PixelCanvas's Image-swapping tools need).
+var _custom_levels := {} # id -> {cells: Dictionary, spawn_points: Array, platforms: Array}
+var _level_names := {} # id -> display name
+var _custom_levels_list: VBoxContainer
+var _next_level_num := 1
+var _current_level_id := ""
+var _level_button_group := ButtonGroup.new()
+var _level_props_container: VBoxContainer
+var _level_props_content: VBoxContainer
+
 # ─── Tiles page (paint the actual texture of the built-in tile types) ───────
 const TILE_TEXTURE_SIZE := 10 # must match tools/build_tileset.gd's TILE_SIZE
 const TILE_ATLAS_PATH := "res://assets/tiles/tag_tiles.png"
@@ -746,9 +761,27 @@ func _clear_canvas_holder() -> void:
 ## larger button set wraps to as many rows as the panel needs instead of
 ## overflowing a single fixed-height HBoxContainer.
 func _build_shared_toolbar(container: Container) -> void:
+	# A bordered card instead of a bare row of buttons floating on the page
+	# background -- same panel treatment every other content well in the
+	# tool already uses (sidebar, right-hand color panel, ...), so the
+	# toolbar reads as one cohesive control surface instead of a loose
+	# strip. `flow`'s own generous separation keeps the now-visually-heavier
+	# button groups from feeling cramped against each other.
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_NEUTRAL, 0.05, 0.16, 12))
+	# Without this, PanelContainer only ever claims its child's minimum size
+	# inside `container` (an HBoxContainer) instead of the available width --
+	# HFlowContainer then has almost no width to actually flow within, and
+	# wraps to one button per row instead of the intended compact multi-
+	# column layout. Caught by an automated screenshot test, not visually --
+	# this would have shipped broken.
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	container.add_child(panel)
 	var flow := HFlowContainer.new()
 	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	container.add_child(flow)
+	flow.add_theme_constant_override("h_separation", 10)
+	flow.add_theme_constant_override("v_separation", 8)
+	panel.add_child(flow)
 
 	# Three dropdowns replace what used to be ~22 flat buttons here -- the
 	# rest (brush size, mirror/grid, opacity, zoom, undo/redo) stay inline
@@ -832,11 +865,20 @@ func _build_shared_toolbar(container: Container) -> void:
 	flow.add_child(transform_menu)
 
 	flow.add_child(VSeparator.new())
+	# toggle_mode + a shared group so the active brush size is actually
+	# visible at a glance -- these used to be plain momentary buttons with
+	# no lasting pressed state at all, the only control row here that
+	# didn't show what was currently selected (Mirror H/V, Grid, and every
+	# dropdown already did).
+	var size_group := ButtonGroup.new()
 	for size_px in [1, 2, 3, 4, 6, 10]:
 		var size_btn := Button.new()
 		size_btn.text = "%dpx" % size_px
 		size_btn.custom_minimum_size = Vector2(40, 0)
-		UIStyle.style_button(size_btn, UIStyle.COLOR_NEUTRAL, 8)
+		size_btn.toggle_mode = true
+		size_btn.button_group = size_group
+		size_btn.button_pressed = (size_px == _brush_size)
+		UIStyle.style_button(size_btn, UIStyle.COLOR_LOCAL, 8)
 		size_btn.pressed.connect(func():
 			_brush_size = size_px
 			_apply_tool_state()
@@ -935,12 +977,32 @@ func _apply_tool_state() -> void:
 		if _active_color_picker:
 			_current_canvas.paint_color = _active_color_picker.color
 
-## Builds the Level page's tile palette + tool row and the TileCanvas
-## itself -- same click/drag-paint interaction PixelCanvas uses for pixel
-## art, just operating on tile cells (see tile_canvas.gd).
+## Builds the Level page's levels sidebar, tile palette + tool row, the
+## TileCanvas itself, and the selected-object properties panel -- same
+## click/drag-paint interaction PixelCanvas uses for pixel art, just
+## operating on tile cells (see tile_canvas.gd).
 func _build_level_page() -> void:
+	var levels_panel := PanelContainer.new()
+	levels_panel.custom_minimum_size = Vector2(180, 0)
+	levels_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
+	level_page.add_child(levels_panel)
+	level_page.move_child(levels_panel, 0)
+	var levels_box := VBoxContainer.new()
+	levels_box.add_theme_constant_override("separation", 6)
+	levels_panel.add_child(levels_box)
+	levels_box.add_child(_section_label("LEVELS"))
+	_custom_levels_list = VBoxContainer.new()
+	_custom_levels_list.add_theme_constant_override("separation", 4)
+	levels_box.add_child(_custom_levels_list)
+	var add_level_btn := Button.new()
+	add_level_btn.text = "+ New Level"
+	UIStyle.style_button(add_level_btn, UIStyle.COLOR_SANDBOX, 8)
+	add_level_btn.pressed.connect(_on_add_level_pressed)
+	levels_box.add_child(add_level_btn)
+
 	_tile_canvas = TileCanvasScene.new()
 	level_canvas_center.add_child(_tile_canvas)
+	_tile_canvas.selection_changed.connect(_refresh_level_properties_panel)
 
 	# Type swatches pick which base tile (Boundary/Pillar/Platform) PAINT
 	# places; the variant row alongside them picks which of that type's 3
@@ -1041,6 +1103,22 @@ func _build_level_page() -> void:
 
 	level_toolbar.add_child(VSeparator.new())
 
+	# Click-and-drag manipulation of already-placed spawn points/platform
+	# endpoints, plus a numeric properties panel for the current grab (see
+	# _build_level_properties_panel below) -- grab a marker, drag it around
+	# or type exact coordinates, Delete/the Delete button removes it. Every
+	# other tool here only ever places new things; this is the one that
+	# edits what's already down.
+	var select_btn := Button.new()
+	select_btn.text = "Select"
+	select_btn.toggle_mode = true
+	select_btn.button_group = level_tool_group
+	UIStyle.style_button(select_btn, UIStyle.COLOR_SHOP, 8)
+	select_btn.pressed.connect(func(): _tile_canvas.tool = TileCanvas.Tool.EDIT)
+	level_toolbar.add_child(select_btn)
+
+	level_toolbar.add_child(VSeparator.new())
+
 	var clear_btn := Button.new()
 	clear_btn.text = "Clear"
 	UIStyle.style_button(clear_btn, UIStyle.COLOR_NEUTRAL, 8)
@@ -1050,7 +1128,29 @@ func _build_level_page() -> void:
 	UIStyle.style_button(publish_level_button, UIStyle.COLOR_SHOP)
 	publish_level_button.pressed.connect(_on_publish_level_pressed)
 
+	var level_right_box: VBoxContainer = level_name_edit.get_parent()
+	# Each handler reads level_name_edit.text directly rather than trusting
+	# that text_changed already ran -- text_changed covers live typing, but
+	# submitting/blurring should capture whatever the field actually shows
+	# right now regardless of how it got there.
+	level_name_edit.text_changed.connect(func(new_text: String):
+		if not _current_level_id.is_empty():
+			_level_names[_current_level_id] = new_text
+	)
+	level_name_edit.text_submitted.connect(func(new_text: String):
+		if not _current_level_id.is_empty():
+			_level_names[_current_level_id] = new_text
+		_rebuild_custom_levels_list()
+	)
+	level_name_edit.focus_exited.connect(func():
+		if not _current_level_id.is_empty():
+			_level_names[_current_level_id] = level_name_edit.text
+		_rebuild_custom_levels_list()
+	)
+	_build_level_properties_panel(level_right_box)
+
 	_apply_level_tile_type()
+	_on_add_level_pressed()
 
 ## Pushes the currently-selected (type, variant) pair onto the TileCanvas
 ## and switches it to PAINT mode -- called by both the type swatches and the
@@ -1059,6 +1159,192 @@ func _build_level_page() -> void:
 func _apply_level_tile_type() -> void:
 	_tile_canvas.tool = TileCanvas.Tool.PAINT
 	_tile_canvas.current_tile_type = tile_index(_level_selected_type, _level_selected_variant)
+
+func _on_add_level_pressed() -> void:
+	var id := "level_%d" % _next_level_num
+	_level_names[id] = "Level %d" % _next_level_num
+	_next_level_num += 1
+	_custom_levels[id] = {"cells": {}, "spawn_points": [], "platforms": []}
+	_show_level(id)
+	_rebuild_custom_levels_list()
+
+func _rebuild_custom_levels_list() -> void:
+	for child in _custom_levels_list.get_children():
+		child.queue_free()
+	for id in _custom_levels.keys():
+		_custom_levels_list.add_child(_build_level_entry(id))
+
+func _build_level_entry(id: String) -> Control:
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	var select_btn := Button.new()
+	select_btn.text = _level_names[id]
+	select_btn.toggle_mode = true
+	select_btn.button_group = _level_button_group
+	select_btn.button_pressed = (_current_level_id == id)
+	select_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	select_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+	select_btn.clip_text = true
+	UIStyle.style_button(select_btn, UIStyle.COLOR_SANDBOX, 8)
+	select_btn.pressed.connect(_show_level.bind(id))
+	box.add_child(select_btn)
+	box.add_child(_delete_button(func():
+		_custom_levels.erase(id)
+		_level_names.erase(id)
+		if _current_level_id == id:
+			_current_level_id = ""
+			if not _custom_levels.is_empty():
+				_show_level(_custom_levels.keys()[0])
+			else:
+				_on_add_level_pressed()
+				return # _on_add_level_pressed already rebuilds the list
+		_rebuild_custom_levels_list()
+	))
+	return box
+
+## Repoints the live TileCanvas at this level's own cells/spawn_points/
+## platforms -- since those are plain Dictionary/Array (mutated in place,
+## never reassigned wholesale by TileCanvas itself), further edits land
+## directly in _custom_levels[id] with no explicit save-back step needed.
+func _show_level(id: String) -> void:
+	if not _custom_levels.has(id):
+		return
+	_current_level_id = id
+	var data: Dictionary = _custom_levels[id]
+	_tile_canvas.cells = data["cells"]
+	_tile_canvas.spawn_points = data["spawn_points"]
+	_tile_canvas.platforms = data["platforms"]
+	_tile_canvas.deselect()
+	_tile_canvas.queue_redraw()
+	level_name_edit.text = _level_names.get(id, "")
+
+## Builds the (initially hidden) "SELECTED OBJECT" panel that appears below
+## Map Name/Publish whenever TileCanvas's EDIT tool has something grabbed --
+## the properties half of the Geometry-Dash-style edit flow (drag on the
+## canvas is the other half, see tile_canvas.gd's _drag_selection_to).
+func _build_level_properties_panel(right_box: VBoxContainer) -> void:
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 10)
+	right_box.add_child(spacer)
+	_level_props_container = VBoxContainer.new()
+	_level_props_container.add_theme_constant_override("separation", 6)
+	_level_props_container.visible = false
+	right_box.add_child(_level_props_container)
+	_level_props_container.add_child(_section_label("SELECTED OBJECT"))
+	_level_props_content = VBoxContainer.new()
+	_level_props_content.add_theme_constant_override("separation", 6)
+	_level_props_container.add_child(_level_props_content)
+
+## Rebuilds the properties panel's fields for whatever's now selected (or
+## hides it if nothing is) -- connected to TileCanvas.selection_changed,
+## which only fires when *what's* grabbed changes, not on every drag-frame
+## position update. That's deliberate: rebuilding these fields (destroying
+## and recreating the SpinBoxes) on every drag frame would also fire while
+## a field itself is being typed into (a SpinBox's own value_changed drives
+## the same canvas edit that would trigger a rebuild), stealing focus mid-
+## edit. The canvas itself already gives live visual feedback while
+## dragging; the numeric fields catch up once the drag ends and a new
+## selection event fires.
+func _refresh_level_properties_panel() -> void:
+	if not _level_props_container:
+		return
+	for child in _level_props_content.get_children():
+		child.queue_free()
+	if not _tile_canvas.has_selection():
+		_level_props_container.visible = false
+		return
+	_level_props_container.visible = true
+	match _tile_canvas.selected_kind():
+		TileCanvas.SelectionKind.SPAWN:
+			_level_props_content.add_child(_build_spawn_properties())
+		TileCanvas.SelectionKind.PLATFORM_START, TileCanvas.SelectionKind.PLATFORM_END:
+			_level_props_content.add_child(_build_platform_properties())
+
+## A Label + SpinBox row -- shared by the spawn/platform properties below.
+func _labeled_spinbox(label_text: String, value: float, on_changed: Callable, min_v: float = 0.0, max_v: float = 999.0, step: float = 1.0) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	var label := Label.new()
+	label.text = label_text
+	label.custom_minimum_size = Vector2(70, 0)
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(label)
+	var spin := SpinBox.new()
+	spin.min_value = min_v
+	spin.max_value = max_v
+	spin.step = step
+	spin.value = value
+	spin.custom_minimum_size = Vector2(90, 0)
+	spin.value_changed.connect(on_changed)
+	row.add_child(spin)
+	return row
+
+func _build_spawn_properties() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	var label := Label.new()
+	label.text = "Spawn Point"
+	label.add_theme_font_size_override("font_size", 13)
+	box.add_child(label)
+	var cell := _tile_canvas.get_selected_spawn()
+	box.add_child(_labeled_spinbox("X", cell.x, func(v: float):
+		var c := _tile_canvas.get_selected_spawn()
+		_tile_canvas.set_selected_spawn(Vector2i(int(v), c.y))
+	, 0, _tile_canvas.grid_size.x - 1))
+	box.add_child(_labeled_spinbox("Y", cell.y, func(v: float):
+		var c := _tile_canvas.get_selected_spawn()
+		_tile_canvas.set_selected_spawn(Vector2i(c.x, int(v)))
+	, 0, _tile_canvas.grid_size.y - 1))
+	box.add_child(_build_delete_selected_button())
+	return box
+
+func _build_platform_properties() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	var p := _tile_canvas.get_selected_platform()
+	var start: Vector2i = p.get("start", Vector2i.ZERO)
+	var end: Vector2i = p.get("end", Vector2i.ZERO)
+	var period: float = p.get("period_sec", TileCanvas.DEFAULT_PLATFORM_PERIOD_SEC)
+	var which := "start" if _tile_canvas.selected_kind() == TileCanvas.SelectionKind.PLATFORM_START else "end"
+
+	var title := Label.new()
+	title.text = "Platform (%s handle grabbed)" % which
+	title.add_theme_font_size_override("font_size", 13)
+	box.add_child(title)
+
+	box.add_child(_section_label("START"))
+	box.add_child(_labeled_spinbox("X", start.x, func(v: float):
+		var s: Vector2i = _tile_canvas.get_selected_platform().get("start", Vector2i.ZERO)
+		_tile_canvas.set_selected_platform_start(Vector2i(int(v), s.y))
+	, 0, _tile_canvas.grid_size.x - 1))
+	box.add_child(_labeled_spinbox("Y", start.y, func(v: float):
+		var s: Vector2i = _tile_canvas.get_selected_platform().get("start", Vector2i.ZERO)
+		_tile_canvas.set_selected_platform_start(Vector2i(s.x, int(v)))
+	, 0, _tile_canvas.grid_size.y - 1))
+
+	box.add_child(_section_label("END"))
+	box.add_child(_labeled_spinbox("X", end.x, func(v: float):
+		var e: Vector2i = _tile_canvas.get_selected_platform().get("end", Vector2i.ZERO)
+		_tile_canvas.set_selected_platform_end(Vector2i(int(v), e.y))
+	, 0, _tile_canvas.grid_size.x - 1))
+	box.add_child(_labeled_spinbox("Y", end.y, func(v: float):
+		var e: Vector2i = _tile_canvas.get_selected_platform().get("end", Vector2i.ZERO)
+		_tile_canvas.set_selected_platform_end(Vector2i(e.x, int(v)))
+	, 0, _tile_canvas.grid_size.y - 1))
+
+	box.add_child(_labeled_spinbox("Period (s)", period, func(v: float):
+		_tile_canvas.set_selected_platform_period(v)
+	, 0.5, 60.0, 0.5))
+
+	box.add_child(_build_delete_selected_button())
+	return box
+
+func _build_delete_selected_button() -> Button:
+	var del_btn := Button.new()
+	del_btn.text = "Delete"
+	UIStyle.style_button(del_btn, UIStyle.COLOR_RANKED, 8)
+	del_btn.pressed.connect(func(): _tile_canvas.delete_selected())
+	return del_btn
 
 ## Live-publish, same trust model as the skin/hat Publish buttons -- goes
 ## straight to the shared level catalog with no review step, immediately
@@ -1498,6 +1784,13 @@ func _build_big_preview() -> void:
 	_big_preview.skin_id = "red"
 	_big_preview.hat_id = ""
 	_big_preview.zoom = 5.0
+	# 4x render resolution -- at the default VIEWPORT_SIZE (56x72), stretching
+	# up to this preview's 260x340 display size is a ~4.6x non-integer
+	# scale, which reads as visibly uneven/jagged even with nearest
+	# filtering. Rendering more real pixels up front (see
+	# CharacterPreview.render_scale) brings that final stretch down to a
+	# mild ~1.16x, close enough to invisible.
+	_big_preview.render_scale = 4.0
 	_big_preview.custom_minimum_size = Vector2(260, 340)
 	big_preview_center.add_child(_big_preview)
 
