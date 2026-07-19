@@ -44,10 +44,21 @@ custom_minimum_size = Vector2(0, 38)
 text = "wss://server.codecade.co.za"
 placeholder_text = "Server address"
 
-[node name="ConnectButton" type="Button" parent="VBox"]
+[node name="ButtonRow" type="HBoxContainer" parent="VBox"]
 layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ConnectButton" type="Button" parent="VBox/ButtonRow"]
+layout_mode = 2
+size_flags_horizontal = 3
 custom_minimum_size = Vector2(0, 46)
 text = "Connect"
+
+[node name="SpectateButton" type="Button" parent="VBox/ButtonRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 46)
+text = "Watch"
 
 [node name="StatusLabel" type="Label" parent="VBox"]
 layout_mode = 2
