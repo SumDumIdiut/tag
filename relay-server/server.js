@@ -225,6 +225,89 @@ function applyEloUpdates(results) {
   saveRanks();
 }
 
+// ─── Accounts (username + password login) ──────────────────────────────────────
+// Deliberately a thin identity layer, not a replacement for clientId: every
+// other system in this file (ranks, selections, catalog createdBy, etc.) stays
+// keyed by clientId exactly as before. An account just resolves to one stable
+// "primaryClientId" -- logging into the same account from a second device
+// means that device adopts the first device's clientId going forward, so both
+// devices land on the same already-existing rows everywhere else. That's the
+// entire migration story: there is nothing else to migrate.
+const ACCOUNTS_JSON_PATH = path.join(DATA_DIR, 'accounts.json');
+const SESSIONS_JSON_PATH = path.join(DATA_DIR, 'sessions.json');
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+const MIN_PASSWORD_LEN = 8;
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days -- persisted (not memory-only) so a relay restart doesn't log everyone out
+const SCRYPT_KEYLEN = 64;
+
+function loadAccounts() {
+  try { return JSON.parse(fs.readFileSync(ACCOUNTS_JSON_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+let accounts = loadAccounts(); // accountId -> { username, usernameLower, salt, passwordHash, primaryClientId, createdAt }
+
+function saveAccounts() {
+  fs.writeFileSync(ACCOUNTS_JSON_PATH, JSON.stringify(accounts));
+}
+
+function loadSessions() {
+  try { return JSON.parse(fs.readFileSync(SESSIONS_JSON_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+let sessions = loadSessions(); // token -> { accountId, expiresAt }
+
+function saveSessions() {
+  fs.writeFileSync(SESSIONS_JSON_PATH, JSON.stringify(sessions));
+}
+
+// Node's built-in scrypt (no extra npm dependency, same "use what's already
+// there" preference as dev-panel.js's crypto.createHash key check) -- unlike
+// that key check, a human-chosen password needs an actual slow, salted KDF
+// rather than a bare hash, since passwords (unlike a random USB-key file) are
+// low-entropy and brute-forceable without one.
+function hashPassword(password, saltHex) {
+  return crypto.scryptSync(password, saltHex, SCRYPT_KEYLEN).toString('hex');
+}
+
+function verifyPassword(password, saltHex, expectedHashHex) {
+  const candidate = Buffer.from(hashPassword(password, saltHex), 'hex');
+  const expected = Buffer.from(expectedHashHex, 'hex');
+  if (candidate.length !== expected.length) return false;
+  return crypto.timingSafeEqual(candidate, expected);
+}
+
+function findAccountByUsername(usernameLower) {
+  for (const [accountId, account] of Object.entries(accounts)) {
+    if (account.usernameLower === usernameLower) return [accountId, account];
+  }
+  return null;
+}
+
+function createSession(accountId) {
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions[token] = { accountId, expiresAt: Date.now() + SESSION_TTL_MS };
+  saveSessions();
+  return token;
+}
+
+function getBearerToken(req) {
+  const header = req.headers['authorization'] || '';
+  const match = header.match(/^Bearer (.+)$/);
+  return match ? match[1] : null;
+}
+
+// Sweep expired sessions the same way the server directory sweeps dead
+// heartbeats below -- lazy cleanup, not correctness-critical (an expired
+// token is already rejected on use via the expiresAt check in /api/auth/me).
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+  for (const [token, s] of Object.entries(sessions)) {
+    if (s.expiresAt < now) { delete sessions[token]; changed = true; }
+  }
+  if (changed) saveSessions();
+}, SWEEP_INTERVAL_MS * 12); // every ~60s -- session expiry isn't time-sensitive like server heartbeats
+
 // ─── State ────────────────────────────────────────────────────────────────────
 const servers = new Map();       // serverId -> { id, name, maxPlayers, playerCount, createdAt, lastHeartbeat, controlSocket }
 const pendingTokens = new Map(); // token -> { playerSocket, timer }
@@ -515,6 +598,55 @@ app.post('/api/ranked/report-result', (req, res) => {
   }
   applyEloUpdates(clean);
   res.json({ ok: true });
+});
+
+// ─── HTTP: auth (accounts) ────────────────────────────────────────────────────
+// Optional -- playing with no account keeps working exactly as before this
+// existed (see game/main/login_screen.gd's fallback-on-any-failure behavior).
+// This is purely "make progress follow you across devices," not a gate on
+// playing at all.
+app.post('/api/auth/register', (req, res) => {
+  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+  const username = String(req.body.username || '').trim();
+  const password = String(req.body.password || '');
+  const clientId = String(req.body.clientId || '');
+  if (!USERNAME_RE.test(username)) return res.status(400).json({ error: 'username must be 3-20 letters, numbers, or underscores' });
+  if (password.length < MIN_PASSWORD_LEN) return res.status(400).json({ error: `password must be at least ${MIN_PASSWORD_LEN} characters` });
+  if (!CLIENT_ID_RE.test(clientId)) return res.status(400).json({ error: 'bad client id' });
+  const usernameLower = username.toLowerCase();
+  if (findAccountByUsername(usernameLower)) return res.status(400).json({ error: 'username already taken' });
+
+  const accountId = crypto.randomBytes(16).toString('hex');
+  const salt = crypto.randomBytes(16).toString('hex');
+  accounts[accountId] = {
+    username, usernameLower, salt,
+    passwordHash: hashPassword(password, salt),
+    primaryClientId: clientId,
+    createdAt: Date.now(),
+  };
+  saveAccounts();
+  res.json({ token: createSession(accountId), primaryClientId: clientId });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+  const usernameLower = String(req.body.username || '').trim().toLowerCase();
+  const password = String(req.body.password || '');
+  const found = findAccountByUsername(usernameLower);
+  if (!found || !verifyPassword(password, found[1].salt, found[1].passwordHash)) {
+    return res.status(401).json({ error: 'invalid username or password' });
+  }
+  const [accountId, account] = found;
+  res.json({ token: createSession(accountId), primaryClientId: account.primaryClientId });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const token = getBearerToken(req);
+  const session = token ? sessions[token] : null;
+  if (!session || session.expiresAt < Date.now()) return res.status(401).json({ error: 'not logged in' });
+  const account = accounts[session.accountId];
+  if (!account) return res.status(401).json({ error: 'account not found' });
+  res.json({ username: account.username, primaryClientId: account.primaryClientId });
 });
 
 let _indexHtmlCache = null;

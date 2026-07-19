@@ -113,6 +113,24 @@ func _ready() -> void:
 	client_id = _load_or_create_client_id()
 	_fetch_catalog()
 
+## Called by the login flow (see login_screen.gd) once an existing session is
+## confirmed valid server-side and resolves to a different clientId than this
+## device's own local one -- i.e. logging into an account whose progress
+## actually lives under another device's id. Re-fetches everything under the
+## new id so selections/custom content reflect the account's real history.
+## A no-op if the account's clientId happens to already match this device's
+## (e.g. this was the device that created the account in the first place).
+func override_client_id(new_id: String) -> void:
+	if new_id.is_empty() or new_id == client_id:
+		return
+	client_id = new_id
+	refresh_catalog()
+
+## This device's own local id, independent of whatever account may currently
+## be overriding client_id -- used by the login flow to revert on logout.
+func get_local_device_client_id() -> String:
+	return _load_or_create_client_id()
+
 ## Built-in skins plus every custom skin in the server's shared catalog, in a
 ## shape the shop UI can list directly. Custom entries may be present here
 ## before their texture has finished fetching (see get_texture) -- that's
