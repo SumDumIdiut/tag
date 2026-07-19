@@ -1,25 +1,32 @@
 extends Control
 
 # Standalone paint tool, exported as its own executable (TagArtTool.exe, see
-# export_presets.cfg's "Art Tool" preset). Four pages, switched at the top
+# export_presets.cfg's "Art Tool" preset). Five pages, switched at the top
 # like a dedicated app rather than one cramped screen: PAINT (create/edit
 # any number of independent custom skins and hats -- no pre-made defaults,
 # every one starts as a blank canvas), PREVIEW (a single large render of
 # any skin/hat combination, picked from real dropdowns), LEVEL (paint a
-# tile-based map and publish it live -- see game/levels/level_data.gd), and
-# TILES (paint the actual texture of the game's 3 built-in tile types --
-# boundary/pillar/platform -- which the Level page's TileCanvas currently
-# only ever renders as flat placeholder colors; see _build_tiles_page).
+# tile-based map and publish it live -- see game/levels/level_data.gd),
+# TILES (paint the actual texture of the game's built-in tile types --
+# boundary/pillar/platform, each with 3 art variants -- which the Level
+# page's TileCanvas currently only ever renders as flat placeholder colors;
+# see _build_tiles_page), and ICONS (paint the main menu's mode-bar badge
+# icons -- originally 100% procedural CanvasItem drawing with no image
+# asset at all; see _build_icons_page and ui/mode_icon.gd's atlas-with-
+# procedural-fallback loading).
 #
 # Custom skins/hats are unrelated to the game's built-in 8 colors -- they're
 # painted in real color directly, the same way the game's own in-shop
-# drawing tool works, not tinted from a shared template.
+# drawing tool works, not tinted from a shared template. Icons are the one
+# exception: they're baked/painted in white/grayscale and re-tinted per
+# usage at runtime (each mode bar has its own accent color), so painting
+# them in a specific hue would look wrong once multiplied by that tint.
 #
-# PAINT and TILES both drive their canvas through the same shared toolbar
-# builder (_build_shared_toolbar) and the same _current_canvas/_apply_tool_
-# state() mechanism the rest of this file already used for the Paint page,
-# so every tool (shapes, selection, mirror, transforms, palette, ...) works
-# identically in both places without duplicated logic.
+# PAINT, TILES, and ICONS all drive their canvas through the same shared
+# toolbar builder (_build_shared_toolbar) and the same _current_canvas/
+# _apply_tool_state() mechanism the rest of this file already used for the
+# Paint page, so every tool (shapes, selection, mirror, transforms,
+# palette, ...) works identically in all three without duplicated logic.
 
 const UIStyle := preload("res://ui/ui_style.gd")
 const CharacterPreviewScene := preload("res://ui/character_preview.gd")
@@ -69,6 +76,23 @@ To make this the game's real tile texture:
      image -- the tile size and tile order must stay exactly as they are
      here, or the regions will point at the wrong pixels).
   3. Commit both changed files.
+"""
+
+const ICON_INSTRUCTIONS_TEXT := """tag_icons.png is a horizontal strip, one 64x64 icon per slot, 6 slots in
+this exact order: Globe, Controller, Box, Bolt, Star, Tag -- the same
+layout tools/build_icon_atlas.gd generates and game/ui/mode_icon.gd reads
+from.
+
+These icons are re-tinted per usage at runtime (each mode bar applies its
+own accent color), so they should stay white/grayscale -- a specific hue
+here will look wrong once multiplied by a bar's own color.
+
+To make this the game's real menu icon set:
+
+  1. Copy this file to game/assets/icons/tag_icons.png, overwriting the
+     existing one.
+  2. Commit the changed file -- no rebuild step needed beyond that,
+     mode_icon.gd loads it directly at runtime.
 """
 
 @onready var paint_tab_button: Button = $VBox/PageTabRow/PaintTabButton
@@ -181,6 +205,24 @@ var _tile_select_buttons: Array[Button] = [] # index-matched to tile_index()
 var _level_selected_type := 0
 var _level_selected_variant := 2
 
+# ─── Icons page (paint the main menu's procedural mode-bar badge icons) ─────
+const ICON_TEXTURE_SIZE := 64 # must match tools/build_icon_atlas.gd's ICON_SIZE
+const ICON_ATLAS_PATH := "res://assets/icons/tag_icons.png"
+# Same order build_icon_atlas.gd bakes in and ui/mode_icon.gd's
+# ATLAS_ICON_ORDER reads by index.
+const ICON_TYPE_NAMES := ["Globe", "Controller", "Box", "Bolt", "Star", "Tag"]
+const ICON_TEXTURE_ZOOM := 6 # already 64x64 -- a much smaller per-pixel zoom
+# than tiles/skins need to stay comfortably on-screen.
+
+var icons_tab_button: Button
+var icons_page: HBoxContainer
+var icons_toolbar: Container
+var icons_canvas_holder: CenterContainer
+var icons_color_picker: ColorPicker
+var _icon_images: Array[Image] = [] # index-matched to ICON_TYPE_NAMES
+var _current_icon_index := -1
+var _icon_select_buttons: Array[Button] = []
+
 func _ready() -> void:
 	get_window().size = Vector2i(1300, 860)
 	get_window().title = "Tag Art Tool"
@@ -190,6 +232,7 @@ func _ready() -> void:
 	_build_shared_toolbar(toolbar)
 	_build_level_page()
 	_build_tiles_page()
+	_build_icons_page()
 	_active_color_picker = color_picker
 	color_picker.color_changed.connect(_on_color_picked_from_wheel)
 	export_button.pressed.connect(_on_export_pressed)
@@ -224,20 +267,29 @@ func _setup_page_tabs() -> void:
 	tiles_tab_button.text = "Tiles"
 	tab_row.add_child(tiles_tab_button)
 
+	icons_tab_button = Button.new()
+	icons_tab_button.custom_minimum_size = Vector2(140, 38)
+	icons_tab_button.toggle_mode = true
+	icons_tab_button.text = "Icons"
+	tab_row.add_child(icons_tab_button)
+
 	var tab_group := ButtonGroup.new()
 	paint_tab_button.button_group = tab_group
 	preview_tab_button.button_group = tab_group
 	level_tab_button.button_group = tab_group
 	tiles_tab_button.button_group = tab_group
+	icons_tab_button.button_group = tab_group
 	UIStyle.style_button(paint_tab_button, UIStyle.COLOR_SHOP, 10)
 	UIStyle.style_button(preview_tab_button, UIStyle.COLOR_ONLINE, 10)
 	UIStyle.style_button(level_tab_button, UIStyle.COLOR_SANDBOX, 10)
 	UIStyle.style_button(tiles_tab_button, UIStyle.COLOR_RANKED, 10)
+	UIStyle.style_button(icons_tab_button, UIStyle.COLOR_LOCAL, 10)
 	paint_tab_button.pressed.connect(func():
 		paint_page.visible = true
 		preview_page.visible = false
 		level_page.visible = false
 		tiles_page.visible = false
+		icons_page.visible = false
 		export_button.visible = true
 		_active_color_picker = color_picker
 		_apply_tool_state()
@@ -247,6 +299,7 @@ func _setup_page_tabs() -> void:
 		preview_page.visible = true
 		level_page.visible = false
 		tiles_page.visible = false
+		icons_page.visible = false
 		export_button.visible = true
 		_refresh_preview_selectors()
 		_refresh_big_preview()
@@ -256,6 +309,7 @@ func _setup_page_tabs() -> void:
 		preview_page.visible = false
 		level_page.visible = true
 		tiles_page.visible = false
+		icons_page.visible = false
 		export_button.visible = false
 	)
 	tiles_tab_button.pressed.connect(func():
@@ -263,8 +317,19 @@ func _setup_page_tabs() -> void:
 		preview_page.visible = false
 		level_page.visible = false
 		tiles_page.visible = true
+		icons_page.visible = false
 		export_button.visible = true
 		_active_color_picker = tiles_color_picker
+		_apply_tool_state()
+	)
+	icons_tab_button.pressed.connect(func():
+		paint_page.visible = false
+		preview_page.visible = false
+		level_page.visible = false
+		tiles_page.visible = false
+		icons_page.visible = true
+		export_button.visible = true
+		_active_color_picker = icons_color_picker
 		_apply_tool_state()
 	)
 
@@ -992,6 +1057,126 @@ func _show_tile(index: int) -> void:
 	_current_canvas = canvas
 	_apply_tool_state()
 
+## Builds the Icons page entirely in code, mirroring _build_tiles_page()
+## exactly: a left-hand list of the 6 procedural mode-bar icon types, a
+## canvas panel driven by the same _build_shared_toolbar/_current_canvas
+## machinery, and its own ColorPicker. Unlike Tiles/skins, icons are baked
+## and painted in white/grayscale (see the file header comment) since
+## they're re-tinted per usage at runtime -- the right-panel help text below
+## says so directly, since painting a specific hue here would silently look
+## wrong in-game rather than erroring anywhere obvious.
+func _build_icons_page() -> void:
+	var vbox: VBoxContainer = paint_page.get_parent()
+	icons_page = HBoxContainer.new()
+	icons_page.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	icons_page.add_theme_constant_override("separation", 12)
+	icons_page.visible = false
+	vbox.add_child(icons_page)
+	vbox.move_child(icons_page, tiles_page.get_index() + 1)
+
+	var select_panel := PanelContainer.new()
+	select_panel.custom_minimum_size = Vector2(180, 0)
+	select_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
+	icons_page.add_child(select_panel)
+	var select_box := VBoxContainer.new()
+	select_box.add_theme_constant_override("separation", 6)
+	select_panel.add_child(select_box)
+	select_box.add_child(_section_label("MENU ICONS"))
+
+	var icon_group := ButtonGroup.new()
+	_icon_select_buttons.clear()
+	for i in ICON_TYPE_NAMES.size():
+		var btn := Button.new()
+		btn.text = ICON_TYPE_NAMES[i]
+		btn.toggle_mode = true
+		btn.button_group = icon_group
+		btn.custom_minimum_size = Vector2(0, 40)
+		UIStyle.style_button(btn, UIStyle.COLOR_LOCAL, 10)
+		btn.pressed.connect(_show_icon.bind(i))
+		select_box.add_child(btn)
+		_icon_select_buttons.append(btn)
+
+	var canvas_panel := PanelContainer.new()
+	canvas_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	canvas_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	canvas_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
+	icons_page.add_child(canvas_panel)
+	var canvas_box := VBoxContainer.new()
+	canvas_panel.add_child(canvas_box)
+
+	icons_toolbar = HBoxContainer.new()
+	canvas_box.add_child(icons_toolbar)
+	_build_shared_toolbar(icons_toolbar)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	canvas_box.add_child(scroll)
+	icons_canvas_holder = CenterContainer.new()
+	icons_canvas_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	icons_canvas_holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.add_child(icons_canvas_holder)
+
+	var right_panel := PanelContainer.new()
+	right_panel.custom_minimum_size = Vector2(220, 0)
+	right_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
+	icons_page.add_child(right_panel)
+	var right_box := VBoxContainer.new()
+	right_box.add_theme_constant_override("separation", 8)
+	right_panel.add_child(right_box)
+	right_box.add_child(_section_label("COLOR"))
+	icons_color_picker = ColorPicker.new()
+	right_box.add_child(icons_color_picker)
+	icons_color_picker.color_changed.connect(func(color: Color):
+		if _current_canvas:
+			_current_canvas.paint_color = color
+	)
+	var icons_help := Label.new()
+	icons_help.text = "Icons are re-tinted per usage in-game -- each mode bar applies its own accent color on top of whatever's painted here. Stick to white/grayscale (like the built-in defaults) so that re-tinting still reads correctly; a specific hue here will look wrong once multiplied by a bar's own color."
+	icons_help.autowrap_mode = TextServer.AUTOWRAP_WORD
+	icons_help.add_theme_font_size_override("font_size", 12)
+	icons_help.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
+	right_box.add_child(icons_help)
+
+	_load_icon_images()
+	_show_icon(0)
+	_icon_select_buttons[0].button_pressed = true
+
+## Loads the atlas already baked into the build (tools/build_icon_atlas.gd)
+## and slices it into one Image per icon type, so the Icons page always
+## opens with the real built-in icon shapes instead of a blank transparent
+## square. Falls back to a blank (fully transparent) square per slot if the
+## atlas can't be loaded -- unlike tiles, there's no meaningful flat-color
+## placeholder for an icon shape, so blank is the honest fallback here.
+func _load_icon_images() -> void:
+	_icon_images.clear()
+	var atlas: Image = null
+	var atlas_tex: Texture2D = load(ICON_ATLAS_PATH)
+	if atlas_tex:
+		atlas = atlas_tex.get_image()
+	for i in ICON_TYPE_NAMES.size():
+		var icon_img: Image
+		if atlas and not atlas.is_empty() and (i + 1) * ICON_TEXTURE_SIZE <= atlas.get_width():
+			icon_img = atlas.get_region(Rect2i(i * ICON_TEXTURE_SIZE, 0, ICON_TEXTURE_SIZE, ICON_TEXTURE_SIZE))
+			icon_img.convert(Image.FORMAT_RGBA8)
+		else:
+			icon_img = Image.create(ICON_TEXTURE_SIZE, ICON_TEXTURE_SIZE, false, Image.FORMAT_RGBA8)
+			icon_img.fill(Color(0, 0, 0, 0))
+		_icon_images.append(icon_img)
+
+func _show_icon(index: int) -> void:
+	_current_icon_index = index
+	for i in _icon_select_buttons.size():
+		_icon_select_buttons[i].button_pressed = (i == index)
+	for child in icons_canvas_holder.get_children():
+		icons_canvas_holder.remove_child(child)
+		child.queue_free()
+	var canvas = PixelCanvasScene.new(_icon_images[index], ICON_TEXTURE_ZOOM)
+	icons_canvas_holder.add_child(canvas)
+	canvas.painted.connect(_on_painted)
+	canvas.color_picked.connect(_on_eyedropper_picked)
+	_current_canvas = canvas
+	_apply_tool_state()
+
 func _on_color_picked_from_wheel(color: Color) -> void:
 	if _current_canvas:
 		_current_canvas.paint_color = color
@@ -1115,6 +1300,18 @@ func _on_export_pressed() -> void:
 		if f3:
 			f3.store_string(TILE_INSTRUCTIONS_TEXT)
 		status_parts.append(tiles_out_dir)
+
+	if not _icon_images.is_empty():
+		var icons_out_dir := base_dir.path_join("edited_icons")
+		DirAccess.make_dir_recursive_absolute(icons_out_dir)
+		var atlas := Image.create(ICON_TEXTURE_SIZE * _icon_images.size(), ICON_TEXTURE_SIZE, false, Image.FORMAT_RGBA8)
+		for i in _icon_images.size():
+			atlas.blit_rect(_icon_images[i], Rect2i(Vector2i.ZERO, Vector2i(ICON_TEXTURE_SIZE, ICON_TEXTURE_SIZE)), Vector2i(i * ICON_TEXTURE_SIZE, 0))
+		atlas.save_png(icons_out_dir.path_join("tag_icons.png"))
+		var f4 := FileAccess.open(icons_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
+		if f4:
+			f4.store_string(ICON_INSTRUCTIONS_TEXT)
+		status_parts.append(icons_out_dir)
 
 	if status_parts.is_empty():
 		status_label.text = "Nothing to export yet -- create a skin or hat first."
