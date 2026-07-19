@@ -46,21 +46,17 @@ const CLIENT_ID_RE = /^[a-f0-9-]{8,64}$/i;
 
 // Mirrors SkinCatalog.PART_DEFS in game/cosmetics/skin_catalog.gd -- the
 // per-part canvas dimensions a drawn skin's upload must exactly match, kept
-// in sync by hand (same tradeoff already accepted for RANK_TIERS later).
-const PART_NAMES = ['head', 'torso', 'left_arm', 'right_arm', 'left_leg', 'right_leg'];
+// in sync by hand (same tradeoff already accepted for RANK_TIERS later). The
+// player model is a single square part now (see skin_catalog.gd's own
+// comment on why), so this is a one-entry map, not six.
+const PART_NAMES = ['body'];
 const PART_DIMENSIONS = {
-  head: { width: 24, height: 24 },
-  torso: { width: 14, height: 21 },
-  left_arm: { width: 6, height: 14 },
-  right_arm: { width: 6, height: 14 },
-  left_leg: { width: 4, height: 11 },
-  right_leg: { width: 4, height: 11 },
+  body: { width: 40, height: 40 },
 };
-// Taller than the head's own crop -- the head circle touches all four
-// edges of its own canvas, so a hat confined to that same box has no
+// Taller than the body's own crop -- a hat confined to that same box has no
 // actual headroom and just overlaps the face. The extra height lets a hat
-// stick up above the head's silhouette; only its bottom rows are meant to
-// overlap the head at all (see skin_catalog.gd's HAT_OVERLAP comment on
+// stick up above the body's silhouette; only its bottom rows are meant to
+// overlap the body at all (see skin_catalog.gd's HAT_OVERLAP comment on
 // the client, which this must stay in sync with).
 const HAT_DIMENSIONS = { width: 18, height: 16 };
 // A trail is a single small particle sprite the game stamps repeatedly

@@ -12,14 +12,9 @@ class_name RemoteAvatar
 @onready var visual: Node2D = $Visual
 @onready var name_label: Label = $NameLabel
 @onready var camera: Camera2D = $Camera2D
-@onready var _hat: Sprite2D = $Visual/Torso/Head/Hat
+@onready var _hat: Sprite2D = $Visual/Body/Hat
 @onready var _parts: Dictionary = {
-	"head": $Visual/Torso/Head,
-	"torso": $Visual/Torso,
-	"left_arm": $Visual/Torso/LeftArm,
-	"right_arm": $Visual/Torso/RightArm,
-	"left_leg": $Visual/Torso/LeftLeg,
-	"right_leg": $Visual/Torso/RightLeg,
+	"body": $Visual/Body,
 }
 var _rig := LimbPhysicsRig.new()
 var _trail_emitter: TrailEmitter
@@ -83,7 +78,7 @@ func _physics_process(delta: float) -> void:
 	global_position = global_position.lerp(extrapolated, LERP_WEIGHT)
 
 	_rig.update(delta, target_velocity, _last_on_floor, _last_is_dashing, _last_is_climbing, Player.MOVE_SPEED)
-	_rig.apply_to(_parts, _parts["torso"], visual)
+	_rig.apply_to(_parts["body"], visual)
 	_trail_emitter.update(delta, target_velocity.length())
 
 ## Sets which skin this avatar displays, by id -- called once by net_game.gd

@@ -162,14 +162,9 @@ var is_climbing := false
 var climb_exhausted_timer := 0.0
 
 @onready var _visual: Node2D = $Visual
-@onready var _hat: Sprite2D = $Visual/Torso/Head/Hat
+@onready var _hat: Sprite2D = $Visual/Body/Hat
 @onready var _parts: Dictionary = {
-	"head": $Visual/Torso/Head,
-	"torso": $Visual/Torso,
-	"left_arm": $Visual/Torso/LeftArm,
-	"right_arm": $Visual/Torso/RightArm,
-	"left_leg": $Visual/Torso/LeftLeg,
-	"right_leg": $Visual/Torso/RightLeg,
+	"body": $Visual/Body,
 }
 var _rig := LimbPhysicsRig.new()
 var _trail_emitter: TrailEmitter
@@ -179,10 +174,10 @@ var _was_tagged_it := false
 
 const TAG_IT_COLOR := Color(1.0, 0.85, 0.1, 1.0)
 
-# One-shot move events, distinct from the continuous per-frame limb-physics
+# One-shot move events, distinct from the continuous per-frame body-physics
 # update -- these apply an impulse (see LimbPhysicsRig.kick) once when a
 # specific move tech fires (a wall jump, a dash-jump cancel, ...), so the
-# limbs swing hard and settle back on their own instead of easing toward a
+# body swings hard and settles back on its own instead of easing toward a
 # target like everything else. `current_action` is never cleared back to ""
 # -- it always holds the most recently triggered action, and both the local
 # kick below and RemoteAvatar (over the network, see server_match.gd's
@@ -308,7 +303,7 @@ func _process(delta: float) -> void:
 	# detect the same event and kick its own copy of the rig in sync (see
 	# server_match.gd's state dict / RemoteAvatar.set_state).
 	_rig.update(delta, velocity, on_floor_now, is_dashing, is_climbing, MOVE_SPEED)
-	_rig.apply_to(_parts, _parts["torso"], _visual)
+	_rig.apply_to(_parts["body"], _visual)
 	_trail_emitter.update(delta, velocity.length())
 
 func apply_input(input: Dictionary, delta: float) -> void:

@@ -5,8 +5,9 @@
 //
 // Usage: node add-skin.js <path-to-png> "<Skin Name>"
 //
-// The image should already be roughly a 32x48 PNG (the in-game skin
-// silhouette size) -- this script does not resize it.
+// The image should already be roughly a VISUAL_WIDTH x VISUAL_HEIGHT square
+// PNG (see skin_catalog.gd -- the in-game skin canvas size) -- this script
+// does not resize it.
 
 const fs = require('fs');
 const path = require('path');
