@@ -28,6 +28,20 @@ func _ready() -> void:
 	host_button.pressed.connect(_on_host_pressed)
 	direct_connect_button.pressed.connect(_on_direct_connect_pressed)
 	back_button.pressed.connect(_on_back_pressed)
+	_build_friends_button()
+
+## Built in code rather than added to the .tscn -- inserted right before
+## Back, same "extend an existing hand-authored screen without touching its
+## node tree" approach the Art Tool's later pages already used.
+func _build_friends_button() -> void:
+	var friends_button := Button.new()
+	friends_button.text = "Friends"
+	friends_button.custom_minimum_size = back_button.custom_minimum_size
+	UIStyle.style_button(friends_button, UIStyle.COLOR_SHOP)
+	friends_button.pressed.connect(func(): get_tree().change_scene_to_file("res://main/friends_menu.tscn"))
+	var vbox: VBoxContainer = back_button.get_parent()
+	vbox.add_child(friends_button)
+	vbox.move_child(friends_button, back_button.get_index())
 
 func _on_quick_play_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/quick_play.tscn")

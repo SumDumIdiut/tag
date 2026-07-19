@@ -121,7 +121,11 @@ func _handle_control_message(raw: PackedByteArray) -> void:
 func _send_heartbeat() -> void:
 	if _control == null or _control.get_ready_state() != WebSocketPeer.STATE_OPEN or _server_id.is_empty():
 		return
-	_send_json(_control, {"type": "heartbeat", "playerCount": NetworkManager.get_player_count()})
+	_send_json(_control, {
+		"type": "heartbeat",
+		"playerCount": NetworkManager.get_player_count(),
+		"clientIds": NetworkManager.get_connected_client_ids(),
+	})
 
 func _send_json(peer: WebSocketPeer, data: Dictionary) -> void:
 	peer.send_text(JSON.stringify(data))

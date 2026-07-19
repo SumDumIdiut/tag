@@ -331,7 +331,7 @@ function saveProgression() {
 }
 
 function getProgressionEntry(clientId) {
-  if (!progression[clientId]) progression[clientId] = { xp: 0, achievements: [] };
+  if (!progression[clientId]) progression[clientId] = { xp: 0, achievements: [], username: null };
   return progression[clientId];
 }
 
@@ -366,6 +366,7 @@ function applyProgressionUpdates(results) {
   const n = results.length;
   for (const r of results) {
     const entry = getProgressionEntry(r.clientId);
+    if (r.username) entry.username = r.username;
     entry.xp += XP_BASE + Math.max(0, n - r.place) * XP_PLACEMENT_BONUS;
     const rank = getRankEntry(r.clientId); // already updated by applyEloUpdates, called before this
     for (const ach of ACHIEVEMENTS) {
@@ -378,6 +379,32 @@ function applyProgressionUpdates(results) {
   saveProgression();
 }
 
+
+// ─── Friends ──────────────────────────────────────────────────────────────────
+// A player's own clientId doubles as their friend code -- already a stable,
+// shareable string (SkinCatalog.client_id client-side), so there's nothing
+// new to generate or manage. Adding a friend is instant and symmetric (no
+// request/accept step) -- consistent with every other low-friction, no-
+// review trust decision already made elsewhere in this file.
+const FRIENDS_JSON_PATH = path.join(DATA_DIR, 'friends.json');
+const MAX_FRIENDS_PER_CLIENT = 100;
+
+function loadFriends() {
+  try { return JSON.parse(fs.readFileSync(FRIENDS_JSON_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+let friends = loadFriends(); // clientId -> [friendClientId, ...]
+
+function saveFriends() {
+  fs.writeFileSync(FRIENDS_JSON_PATH, JSON.stringify(friends));
+}
+
+function addFriendPair(a, b) {
+  if (!friends[a]) friends[a] = [];
+  if (!friends[b]) friends[b] = [];
+  if (!friends[a].includes(b)) friends[a].push(b);
+  if (!friends[b].includes(a)) friends[b].push(a);
+}
 
 const servers = new Map();       // serverId -> { id, name, maxPlayers, playerCount, createdAt, lastHeartbeat, controlSocket }
 const pendingTokens = new Map(); // token -> { playerSocket, timer }
@@ -664,7 +691,7 @@ app.post('/api/ranked/report-result', (req, res) => {
     if (!r || !CLIENT_ID_RE.test(String(r.clientId || ''))) return res.status(400).json({ error: 'bad clientId in results' });
     const place = parseInt(r.place, 10);
     if (!Number.isFinite(place) || place < 1) return res.status(400).json({ error: 'bad place in results' });
-    clean.push({ clientId: String(r.clientId), itTime: Number(r.itTime) || 0, place });
+    clean.push({ clientId: String(r.clientId), itTime: Number(r.itTime) || 0, place, username: r.username ? sanitizeName(r.username) : null });
   }
   applyEloUpdates(clean);
   applyProgressionUpdates(clean);
@@ -732,6 +759,44 @@ app.get('/api/auth/me', (req, res) => {
   const account = accounts[session.accountId];
   if (!account) return res.status(401).json({ error: 'account not found' });
   res.json({ username: account.username, primaryClientId: account.primaryClientId });
+});
+
+// ─── HTTP: friends ────────────────────────────────────────────────────────────
+app.post('/api/friends/:clientId/add', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+  const clientId = req.params.clientId;
+  const friendCode = String(req.body.friendCode || '');
+  if (!CLIENT_ID_RE.test(friendCode)) return res.status(400).json({ error: 'bad friend code' });
+  if (friendCode === clientId) return res.status(400).json({ error: "can't add yourself" });
+  if ((friends[clientId] || []).length >= MAX_FRIENDS_PER_CLIENT) {
+    return res.status(400).json({ error: `max ${MAX_FRIENDS_PER_CLIENT} friends` });
+  }
+  addFriendPair(clientId, friendCode);
+  saveFriends();
+  res.json({ ok: true });
+});
+
+// Cross-references each friend's clientId against every live server's own
+// heartbeat-reported roster (servers Map, see the heartbeat handler below)
+// to answer "is my friend online, and where" -- purely a live, in-memory
+// lookup, nothing persisted beyond the friend list itself.
+app.get('/api/friends/:clientId', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  const list = friends[req.params.clientId] || [];
+  const liveServers = [...servers.values()];
+  const out = list.map(friendId => {
+    const server = liveServers.find(s => (s.clientIds || []).includes(friendId));
+    const progressionEntry = progression[friendId];
+    return {
+      clientId: friendId,
+      username: (progressionEntry && progressionEntry.username) || null,
+      online: !!server,
+      serverId: server ? server.id : null,
+      serverName: server ? server.name : null,
+    };
+  });
+  res.json(out);
 });
 
 let _indexHtmlCache = null;
@@ -821,6 +886,12 @@ function handleHostControl(ws) {
       const s = servers.get(serverId);
       s.lastHeartbeat = Date.now();
       s.playerCount = Math.max(0, parseInt(msg.playerCount, 10) || 0);
+      // Roster of who's currently connected here, so /api/friends/:clientId
+      // can answer "is my friend online, and where" -- silently dropped
+      // (not an error) if malformed, same tolerance-for-a-bad-field
+      // approach as playerCount above, since a heartbeat's job is to keep
+      // the server listed, not to hard-fail on one odd field.
+      s.clientIds = Array.isArray(msg.clientIds) ? msg.clientIds.filter(id => CLIENT_ID_RE.test(String(id))).slice(0, 64) : [];
     } else if (msg.type === 'unregister') {
       if (serverId) servers.delete(serverId);
     }
