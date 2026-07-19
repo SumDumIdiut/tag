@@ -16,12 +16,19 @@ const UpdatePromptScene := preload("res://ui/update_prompt.gd")
 # instead. skin/hat pick which real in-game character (see CharacterPreview)
 # fronts each bar -- built-in skin colors line up 1:1 with the bar accents.
 const MODES := [
-	{"label": "ONLINE", "icon": "globe", "color": UIStyle.COLOR_ONLINE, "skin": "green", "hat": "", "scene": "res://main/online_menu.tscn"},
-	{"label": "LOCAL", "icon": "controller", "color": UIStyle.COLOR_LOCAL, "skin": "blue", "hat": "", "scene": "res://main/local_menu.tscn"},
-	{"label": "SANDBOX", "icon": "box", "color": UIStyle.COLOR_SANDBOX, "skin": "teal", "hat": "", "scene": "res://main/movement_test.tscn"},
+	{"key": "online", "label": "ONLINE", "icon": "globe", "color": UIStyle.COLOR_ONLINE, "skin": "green", "hat": "", "scene": "res://main/online_menu.tscn"},
+	{"key": "local", "label": "LOCAL", "icon": "controller", "color": UIStyle.COLOR_LOCAL, "skin": "blue", "hat": "", "scene": "res://main/local_menu.tscn"},
+	{"key": "sandbox", "label": "SANDBOX", "icon": "box", "color": UIStyle.COLOR_SANDBOX, "skin": "teal", "hat": "", "scene": "res://main/movement_test.tscn"},
 ]
 
 const BAR_SIZE := Vector2(190, 360)
+# A whole-button custom image an artist painted for this mode (see the Art
+# Tool's Icons page "Mode Button Art" section) -- if it exists, it replaces
+# the entire procedural box (glow/portrait/label) below, background and all.
+# "%s" is mode["key"]. Never required: falls back to the procedural bar for
+# any mode that doesn't have one yet, same "never hard-fail on missing
+# custom content" rule the rest of the project already follows.
+const MODE_BUTTON_ART_PATH := "res://assets/icons/mode_buttons/%s.png"
 
 @onready var mode_bar: HBoxContainer = $VBox/ModeBar
 
@@ -55,6 +62,21 @@ func _build_bar(mode: Dictionary) -> Button:
 	btn.clip_contents = true
 	UIStyle.style_button(btn, color, 18)
 	btn.pressed.connect(_on_mode_pressed.bind(mode["scene"]))
+
+	var art_path := MODE_BUTTON_ART_PATH % mode["key"]
+	if ResourceLoader.exists(art_path):
+		var tex: Texture2D = load(art_path)
+		if tex:
+			# A friend's whole-button painting (see the Art Tool's Icons page)
+			# -- replaces the procedural glow/portrait/label box below
+			# entirely, full-bleed over the button's own clickable area.
+			var art := TextureRect.new()
+			art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			art.texture = tex
+			art.stretch_mode = TextureRect.STRETCH_SCALE
+			art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			btn.add_child(art)
+			return btn
 
 	# A soft radial glow behind the character, in the bar's own color --
 	# gives the portrait a bit of depth/stage-lighting instead of sitting
@@ -95,20 +117,6 @@ func _build_bar(mode: Dictionary) -> Button:
 	label.add_theme_color_override("font_color", Color.WHITE)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layout.add_child(label)
-
-	# Small corner badge -- keeps a symbolic glyph alongside the character
-	# portrait for instant recognition, without competing with it for focus.
-	var badge_wrap := Control.new()
-	badge_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge_wrap.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	badge_wrap.position = Vector2(-46, 14)
-	badge_wrap.custom_minimum_size = Vector2(30, 32)
-	btn.add_child(badge_wrap)
-	var badge := ModeIconScene.new()
-	badge.icon_type = mode["icon"]
-	badge.icon_color = color
-	badge.custom_minimum_size = Vector2(26, 32)
-	badge_wrap.add_child(badge)
 
 	return btn
 

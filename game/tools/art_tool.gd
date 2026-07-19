@@ -10,10 +10,17 @@ extends Control
 # TILES (paint the actual texture of the game's built-in tile types --
 # boundary/pillar/platform, each with 3 art variants -- which the Level
 # page's TileCanvas currently only ever renders as flat placeholder colors;
-# see _build_tiles_page), and ICONS (paint the main menu's mode-bar badge
-# icons -- originally 100% procedural CanvasItem drawing with no image
-# asset at all; see _build_icons_page and ui/mode_icon.gd's atlas-with-
-# procedural-fallback loading).
+# see _build_tiles_page), and ICONS, which covers two independent things
+# sharing one canvas/toolbar: small mode-bar badge icons (originally 100%
+# procedural CanvasItem drawing with no image asset at all; see
+# ui/mode_icon.gd's atlas-with-procedural-fallback loading) and whole
+# mode-button art (an entire main-menu button -- background, character,
+# label, everything -- painted as one 190x360 image per mode, replacing the
+# procedural box outright when present; see main_menu.gd's
+# MODE_BUTTON_ART_PATH). Both support Import Image (loads a PNG from disk
+# into the clipboard) plus the existing Selection > Stamp/Move tools for
+# composing from other elements without a dedicated drag-and-drop layer
+# system.
 #
 # Custom skins/hats are unrelated to the game's built-in 8 colors -- they're
 # painted in real color directly, the same way the game's own in-shop
@@ -103,6 +110,23 @@ To make this the game's real menu icon set:
      existing one.
   2. Commit the changed file -- no rebuild step needed beyond that,
      mode_icon.gd loads it directly at runtime.
+"""
+
+const MODE_BUTTON_INSTRUCTIONS_TEXT := """Each file here is one main-menu mode button's ENTIRE art -- background,
+character, label, everything -- painted at 190x360, the exact size
+main_menu.gd renders that button at.
+
+To make one of these the game's real button art:
+
+  1. Copy the file to game/assets/icons/mode_buttons/<key>.png, where
+     <key> is online.png, local.png, or sandbox.png (matching the file's
+     own name here).
+  2. Commit the file -- no rebuild step needed, main_menu.gd checks for
+     it at runtime and uses it in place of the procedural glow/portrait/
+     label box automatically.
+
+A mode with no file here just keeps using the procedural fallback -- you
+don't need to paint all three at once.
 """
 
 @onready var paint_tab_button: Button = $VBox/PageTabRow/PaintTabButton
@@ -242,6 +266,22 @@ var icons_color_picker: ColorPicker
 var _icon_images: Array[Image] = [] # index-matched to ICON_TYPE_NAMES
 var _current_icon_index := -1
 var _icon_select_buttons: Array[Button] = []
+
+# Whole-button custom art for the main menu's 3 mode bars (Online/Local/
+# Sandbox) -- an alternative to the small badge-icon-on-a-procedural-box
+# system above: paint the entire button (background, character, label, all
+# of it) as one image, same canvas size the real button renders at, so
+# what's painted here is exactly what shows up in-game. Matches
+# main_menu.gd's MODES key order exactly -- "online"/"local"/"sandbox".
+const MODE_BUTTON_KEYS := ["online", "local", "sandbox"]
+const MODE_BUTTON_NAMES := ["Online", "Local", "Sandbox"]
+const MODE_BUTTON_SIZE := Vector2i(190, 360) # matches main_menu.gd's BAR_SIZE exactly
+const MODE_BUTTON_ART_DIR := "res://assets/icons/mode_buttons"
+const MODE_BUTTON_ZOOM := 2 # 190x360 is already large -- a much smaller per-pixel zoom than a 64x64 icon needs
+var _button_art_images: Array[Image] = [] # index-matched to MODE_BUTTON_KEYS
+var _current_button_art_index := -1
+var _button_art_select_buttons: Array[Button] = []
+var _import_file_dialog: FileDialog
 
 func _ready() -> void:
 	get_window().size = Vector2i(1300, 860)
@@ -1249,6 +1289,26 @@ func _build_icons_page() -> void:
 		select_box.add_child(btn)
 		_icon_select_buttons.append(btn)
 
+	var button_art_spacer := Control.new()
+	button_art_spacer.custom_minimum_size = Vector2(0, 8)
+	select_box.add_child(button_art_spacer)
+
+	# Same ButtonGroup as the icon buttons above -- one shared canvas, so
+	# picking a mode button here correctly deselects whichever icon was
+	# active (and vice versa).
+	select_box.add_child(_section_label("MODE BUTTON ART"))
+	_button_art_select_buttons.clear()
+	for i in MODE_BUTTON_NAMES.size():
+		var btn := Button.new()
+		btn.text = MODE_BUTTON_NAMES[i]
+		btn.toggle_mode = true
+		btn.button_group = icon_group
+		btn.custom_minimum_size = Vector2(0, 40)
+		UIStyle.style_button(btn, UIStyle.COLOR_SANDBOX, 10)
+		btn.pressed.connect(_show_button_art.bind(i))
+		select_box.add_child(btn)
+		_button_art_select_buttons.append(btn)
+
 	var canvas_panel := PanelContainer.new()
 	canvas_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	canvas_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1290,7 +1350,23 @@ func _build_icons_page() -> void:
 	icons_help.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
 	right_box.add_child(icons_help)
 
+	var import_spacer := Control.new()
+	import_spacer.custom_minimum_size = Vector2(0, 4)
+	right_box.add_child(import_spacer)
+	var import_btn := Button.new()
+	import_btn.text = "Import Image..."
+	UIStyle.style_button(import_btn, UIStyle.COLOR_NEUTRAL, 8)
+	import_btn.pressed.connect(_on_import_image_pressed)
+	right_box.add_child(import_btn)
+	var import_help := Label.new()
+	import_help.text = "Loads a PNG from disk into the clipboard -- use Selection > Stamp to place it anywhere on the current canvas, then Select + Move to drag it into position. Works on any page's canvas, including whole mode-button art below."
+	import_help.autowrap_mode = TextServer.AUTOWRAP_WORD
+	import_help.add_theme_font_size_override("font_size", 12)
+	import_help.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
+	right_box.add_child(import_help)
+
 	_load_icon_images()
+	_load_button_art_images()
 	_show_icon(0)
 	_icon_select_buttons[0].button_pressed = true
 
@@ -1318,17 +1394,92 @@ func _load_icon_images() -> void:
 
 func _show_icon(index: int) -> void:
 	_current_icon_index = index
+	_current_button_art_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = (i == index)
+	for i in _button_art_select_buttons.size():
+		_button_art_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
 	var canvas = PixelCanvasScene.new(_icon_images[index], ICON_TEXTURE_ZOOM)
 	icons_canvas_holder.add_child(canvas)
 	canvas.painted.connect(_on_painted)
+	# Defensive: several tools (shape drag, undo/redo) reassign the canvas's
+	# own `image` to a new Image object rather than mutating the original in
+	# place, which would silently desync _icon_images[index] from what's
+	# actually on screen the next time this icon is re-selected. Keeping the
+	# backing array's reference live on every paint avoids that.
+	canvas.painted.connect(func(): _icon_images[index] = canvas.image)
 	canvas.color_picked.connect(_on_eyedropper_picked)
 	_current_canvas = canvas
 	_apply_tool_state()
+
+## Loads each mode's whole-button art (see MODE_BUTTON_KEYS/main_menu.gd's
+## MODE_BUTTON_ART_PATH) if it's already been painted and committed, else a
+## blank transparent MODE_BUTTON_SIZE canvas -- same "always something real
+## or an honest blank canvas" rule _load_icon_images() follows.
+func _load_button_art_images() -> void:
+	_button_art_images.clear()
+	for key in MODE_BUTTON_KEYS:
+		var path := "%s/%s.png" % [MODE_BUTTON_ART_DIR, key]
+		var img: Image
+		if ResourceLoader.exists(path):
+			var tex: Texture2D = load(path)
+			img = tex.get_image() if tex else null
+			if img:
+				img.convert(Image.FORMAT_RGBA8)
+		if not img:
+			img = Image.create(MODE_BUTTON_SIZE.x, MODE_BUTTON_SIZE.y, false, Image.FORMAT_RGBA8)
+			img.fill(Color(0, 0, 0, 0))
+		_button_art_images.append(img)
+
+func _show_button_art(index: int) -> void:
+	_current_button_art_index = index
+	_current_icon_index = -1
+	for i in _icon_select_buttons.size():
+		_icon_select_buttons[i].button_pressed = false
+	for i in _button_art_select_buttons.size():
+		_button_art_select_buttons[i].button_pressed = (i == index)
+	for child in icons_canvas_holder.get_children():
+		icons_canvas_holder.remove_child(child)
+		child.queue_free()
+	var canvas = PixelCanvasScene.new(_button_art_images[index], MODE_BUTTON_ZOOM)
+	icons_canvas_holder.add_child(canvas)
+	canvas.painted.connect(_on_painted)
+	canvas.painted.connect(func(): _button_art_images[index] = canvas.image)
+	canvas.color_picked.connect(_on_eyedropper_picked)
+	_current_canvas = canvas
+	_apply_tool_state()
+
+## Opens a native file picker for a PNG and loads it straight into the
+## active canvas's clipboard -- from there Selection > Stamp places it (see
+## PixelCanvas.Tool.STAMP), and Select + Move drags it into its final
+## position, reusing tools this page already has rather than building a
+## separate drag-and-drop layer system. No resizing: an imported image is
+## used at its real pixel size, so a whole-button-sized import can be
+## stamped as-is onto the (also whole-button-sized) mode button canvas.
+func _on_import_image_pressed() -> void:
+	if not _current_canvas:
+		return
+	if not _import_file_dialog:
+		_import_file_dialog = FileDialog.new()
+		_import_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+		_import_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
+		_import_file_dialog.add_filter("*.png", "PNG Image")
+		_import_file_dialog.size = Vector2i(700, 500)
+		_import_file_dialog.file_selected.connect(_on_import_file_selected)
+		add_child(_import_file_dialog)
+	_import_file_dialog.popup_centered()
+
+func _on_import_file_selected(path: String) -> void:
+	var img := Image.new()
+	if img.load(path) != OK:
+		status_label.text = "Couldn't load \"%s\" as a PNG." % path.get_file()
+		return
+	img.convert(Image.FORMAT_RGBA8)
+	_current_canvas.clipboard = img
+	status_label.text = "Imported \"%s\" -- use Selection > Stamp to place it, or Paste." % path.get_file()
 
 func _on_color_picked_from_wheel(color: Color) -> void:
 	if _current_canvas:
@@ -1477,6 +1628,19 @@ func _on_export_pressed() -> void:
 		if f4:
 			f4.store_string(ICON_INSTRUCTIONS_TEXT)
 		status_parts.append(icons_out_dir)
+
+	if not _button_art_images.is_empty():
+		# One file per mode (not one shared atlas the way icons/tiles are) --
+		# each mode button is its own independent whole-button image, so
+		# there's no fixed-slot strip layout to keep in sync here.
+		var buttons_out_dir := base_dir.path_join("edited_icons/mode_buttons")
+		DirAccess.make_dir_recursive_absolute(buttons_out_dir)
+		for i in _button_art_images.size():
+			_button_art_images[i].save_png(buttons_out_dir.path_join("%s.png" % MODE_BUTTON_KEYS[i]))
+		var f5 := FileAccess.open(buttons_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
+		if f5:
+			f5.store_string(MODE_BUTTON_INSTRUCTIONS_TEXT)
+		status_parts.append(buttons_out_dir)
 
 	if status_parts.is_empty():
 		status_label.text = "Nothing to export yet -- create a skin, hat, or trail first."
