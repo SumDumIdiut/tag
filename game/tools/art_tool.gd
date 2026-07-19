@@ -1,16 +1,25 @@
 extends Control
 
 # Standalone paint tool, exported as its own executable (TagArtTool.exe, see
-# export_presets.cfg's "Art Tool" preset). Three pages, switched at the top
+# export_presets.cfg's "Art Tool" preset). Four pages, switched at the top
 # like a dedicated app rather than one cramped screen: PAINT (create/edit
 # any number of independent custom skins and hats -- no pre-made defaults,
 # every one starts as a blank canvas), PREVIEW (a single large render of
-# any skin/hat combination, picked from real dropdowns), and LEVEL (paint a
-# tile-based map and publish it live -- see game/levels/level_data.gd).
+# any skin/hat combination, picked from real dropdowns), LEVEL (paint a
+# tile-based map and publish it live -- see game/levels/level_data.gd), and
+# TILES (paint the actual texture of the game's 3 built-in tile types --
+# boundary/pillar/platform -- which the Level page's TileCanvas currently
+# only ever renders as flat placeholder colors; see _build_tiles_page).
 #
 # Custom skins/hats are unrelated to the game's built-in 8 colors -- they're
 # painted in real color directly, the same way the game's own in-shop
 # drawing tool works, not tinted from a shared template.
+#
+# PAINT and TILES both drive their canvas through the same shared toolbar
+# builder (_build_shared_toolbar) and the same _current_canvas/_apply_tool_
+# state() mechanism the rest of this file already used for the Paint page,
+# so every tool (shapes, selection, mirror, transforms, palette, ...) works
+# identically in both places without duplicated logic.
 
 const UIStyle := preload("res://ui/ui_style.gd")
 const CharacterPreviewScene := preload("res://ui/character_preview.gd")
@@ -41,6 +50,22 @@ they add it with one command:
     node add-hat.js path/to/your-hat.png "Hat Name"
 
 and it's live for everyone immediately, no build or restart needed.
+"""
+
+const TILE_INSTRUCTIONS_TEXT := """tag_tiles.png is a horizontal strip, one 10x10 tile per type in this
+exact order: Boundary, Pillar, Platform -- the same layout
+tools/build_tileset.gd generates and game/levels/tag_tileset.tres reads
+from.
+
+To make this the game's real tile texture:
+
+  1. Copy this file to game/assets/tiles/tag_tiles.png, overwriting the
+     existing one.
+  2. Re-run tools/build_tileset.gd from inside the Godot editor (it
+     regenerates tag_tileset.tres's atlas regions/collision from the new
+     image -- the tile size and tile order must stay exactly as they are
+     here, or the regions will point at the wrong pixels).
+  3. Commit both changed files.
 """
 
 @onready var paint_tab_button: Button = $VBox/PageTabRow/PaintTabButton
@@ -80,8 +105,22 @@ var _current_id := ""
 var _current_canvas: PixelCanvas = null
 
 var _part_group := ButtonGroup.new()
-var _tool_group: ButtonGroup = null
 var _current_tool := 0 # PixelCanvas.Tool.BRUSH
+# Toolbar-level tool settings -- shared by both the Paint and Tiles pages'
+# toolbars (_build_shared_toolbar) and reapplied to whichever canvas is
+# active by _apply_tool_state(), rather than living on PixelCanvas
+# instances themselves, so switching between parts/tiles mid-edit doesn't
+# reset the brush size or mirror mode the user just set up.
+var _brush_size := 1
+var _brush_alpha := 1.0
+var _mirror_h := false
+var _mirror_v := false
+var _show_grid := false
+# Which ColorPicker currently feeds _apply_tool_state() -- the Paint and
+# Tiles pages each have their own (only one is ever visible/relevant at a
+# time), set by _setup_page_tabs()'s tab handlers.
+var _active_color_picker: ColorPicker = null
+var tiles_color_picker: ColorPicker
 
 var _custom_skins := {} # id -> {part_name -> Image}
 var _skin_names := {} # id -> display name
@@ -101,14 +140,34 @@ var _preview_hat_id := ""
 var _tile_canvas: TileCanvas
 const LEVEL_API_BASE := "https://codecade.co.za/tag/api/levels"
 
+# ─── Tiles page (paint the actual texture of the built-in tile types) ───────
+const TILE_TEXTURE_SIZE := 10 # must match tools/build_tileset.gd's TILE_SIZE
+const TILE_ATLAS_PATH := "res://assets/tiles/tag_tiles.png"
+# Same names/order tile_canvas.gd's TILE_COLORS and build_tileset.gd's TILES
+# both already use -- keeping the order identical is what makes index i
+# here line up with atlas slot i in the exported strip.
+const TILE_TYPE_NAMES := ["Boundary", "Pillar", "Platform"]
+const TILE_TEXTURE_ZOOM := 34 # a 10x10 image needs a much bigger per-pixel
+# zoom than a 32x48 skin part to be comfortably paintable at all.
+
+var tiles_tab_button: Button
+var tiles_page: HBoxContainer
+var tiles_toolbar: Container
+var tiles_canvas_holder: CenterContainer
+var _tile_images: Array[Image] = [] # index-matched to TILE_TYPE_NAMES
+var _current_tile_index := -1
+var _tile_select_buttons: Array[Button] = []
+
 func _ready() -> void:
 	get_window().size = Vector2i(1300, 860)
 	get_window().title = "Tag Art Tool"
 	UIStyle.add_background(self)
 	_setup_page_tabs()
 	_build_sidebar()
-	_build_toolbar()
+	_build_shared_toolbar(toolbar)
 	_build_level_page()
+	_build_tiles_page()
+	_active_color_picker = color_picker
 	color_picker.color_changed.connect(_on_color_picked_from_wheel)
 	export_button.pressed.connect(_on_export_pressed)
 	UIStyle.style_button(export_button, UIStyle.COLOR_SHOP)
@@ -131,23 +190,40 @@ func _on_update_check_completed(result: Dictionary) -> void:
 	prompt.setup(result.version, result.download_url)
 
 func _setup_page_tabs() -> void:
+	# TilesTabButton/TilesPage aren't in the .tscn -- built and inserted
+	# alongside the other three entirely in code, right next to the tab row/
+	# page container that already own the other tabs, so there's nothing
+	# scene-file-specific about how this one is wired in.
+	var tab_row: HBoxContainer = paint_tab_button.get_parent()
+	tiles_tab_button = Button.new()
+	tiles_tab_button.custom_minimum_size = Vector2(140, 38)
+	tiles_tab_button.toggle_mode = true
+	tiles_tab_button.text = "Tiles"
+	tab_row.add_child(tiles_tab_button)
+
 	var tab_group := ButtonGroup.new()
 	paint_tab_button.button_group = tab_group
 	preview_tab_button.button_group = tab_group
 	level_tab_button.button_group = tab_group
+	tiles_tab_button.button_group = tab_group
 	UIStyle.style_button(paint_tab_button, UIStyle.COLOR_SHOP, 10)
 	UIStyle.style_button(preview_tab_button, UIStyle.COLOR_ONLINE, 10)
 	UIStyle.style_button(level_tab_button, UIStyle.COLOR_SANDBOX, 10)
+	UIStyle.style_button(tiles_tab_button, UIStyle.COLOR_RANKED, 10)
 	paint_tab_button.pressed.connect(func():
 		paint_page.visible = true
 		preview_page.visible = false
 		level_page.visible = false
+		tiles_page.visible = false
 		export_button.visible = true
+		_active_color_picker = color_picker
+		_apply_tool_state()
 	)
 	preview_tab_button.pressed.connect(func():
 		paint_page.visible = false
 		preview_page.visible = true
 		level_page.visible = false
+		tiles_page.visible = false
 		export_button.visible = true
 		_refresh_preview_selectors()
 		_refresh_big_preview()
@@ -156,7 +232,17 @@ func _setup_page_tabs() -> void:
 		paint_page.visible = false
 		preview_page.visible = false
 		level_page.visible = true
+		tiles_page.visible = false
 		export_button.visible = false
+	)
+	tiles_tab_button.pressed.connect(func():
+		paint_page.visible = false
+		preview_page.visible = false
+		level_page.visible = false
+		tiles_page.visible = true
+		export_button.visible = true
+		_active_color_picker = tiles_color_picker
+		_apply_tool_state()
 	)
 
 ## No pre-loaded defaults -- both lists start empty; "+ New Skin"/"+ New
@@ -432,54 +518,102 @@ func _clear_canvas_holder() -> void:
 		child.queue_free()
 	_current_canvas = null
 
-func _build_toolbar() -> void:
-	var brush_btn := _tool_button("Brush", 0)
-	var eraser_btn := _tool_button("Eraser", 1)
-	var fill_btn := _tool_button("Fill", 2)
-	var eyedrop_btn := _tool_button("Eyedrop", 3)
-	for b in [brush_btn, eraser_btn, fill_btn, eyedrop_btn]:
-		toolbar.add_child(b)
-	brush_btn.button_pressed = true
+## Builds the full tool suite into `container` (the Paint page's `toolbar`
+## or the Tiles page's `tiles_toolbar`) -- one call site, shared by both
+## pages, so every tool (shapes, selection, mirror, transforms, palette
+## actions, zoom) works identically everywhere instead of being
+## reimplemented per page. Wrapped in an HFlowContainer so the now much
+## larger button set wraps to as many rows as the panel needs instead of
+## overflowing a single fixed-height HBoxContainer.
+func _build_shared_toolbar(container: Container) -> void:
+	var flow := HFlowContainer.new()
+	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	container.add_child(flow)
 
-	toolbar.add_child(VSeparator.new())
+	var group := ButtonGroup.new()
+	var tool_defs := [
+		["Brush", PixelCanvas.Tool.BRUSH],
+		["Eraser", PixelCanvas.Tool.ERASER],
+		["Fill", PixelCanvas.Tool.FILL],
+		["Eyedrop", PixelCanvas.Tool.EYEDROPPER],
+		["Line", PixelCanvas.Tool.LINE],
+		["Rect", PixelCanvas.Tool.RECT],
+		["Rect Fill", PixelCanvas.Tool.RECT_FILL],
+		["Ellipse", PixelCanvas.Tool.ELLIPSE],
+		["Ellipse Fill", PixelCanvas.Tool.ELLIPSE_FILL],
+		["Select", PixelCanvas.Tool.SELECT],
+		["Move", PixelCanvas.Tool.MOVE],
+		["Stamp", PixelCanvas.Tool.STAMP],
+	]
+	for i in tool_defs.size():
+		var btn := _tool_button(tool_defs[i][0], tool_defs[i][1], group)
+		flow.add_child(btn)
+		if i == 0:
+			btn.button_pressed = true
 
-	for size_px in [1, 2, 3]:
+	flow.add_child(VSeparator.new())
+	for size_px in [1, 2, 3, 4, 6, 10]:
 		var size_btn := Button.new()
 		size_btn.text = "%dpx" % size_px
-		size_btn.custom_minimum_size = Vector2(44, 0)
+		size_btn.custom_minimum_size = Vector2(40, 0)
 		UIStyle.style_button(size_btn, UIStyle.COLOR_NEUTRAL, 8)
 		size_btn.pressed.connect(func():
-			if _current_canvas:
-				_current_canvas.brush_size = size_px
+			_brush_size = size_px
+			_apply_tool_state()
 		)
-		toolbar.add_child(size_btn)
+		flow.add_child(size_btn)
 
-	toolbar.add_child(VSeparator.new())
+	flow.add_child(VSeparator.new())
+	flow.add_child(_toggle_button("Mirror H", func(v: bool): _mirror_h = v))
+	flow.add_child(_toggle_button("Mirror V", func(v: bool): _mirror_v = v))
+	flow.add_child(_toggle_button("Grid", func(v: bool): _show_grid = v))
 
-	var undo_btn := Button.new()
-	undo_btn.text = "Undo"
-	UIStyle.style_button(undo_btn, UIStyle.COLOR_NEUTRAL, 8)
-	undo_btn.pressed.connect(func():
-		if _current_canvas:
-			_current_canvas.undo()
+	flow.add_child(VSeparator.new())
+	var alpha_label := Label.new()
+	alpha_label.text = "Opacity"
+	alpha_label.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
+	flow.add_child(alpha_label)
+	var alpha_slider := HSlider.new()
+	alpha_slider.min_value = 0.1
+	alpha_slider.max_value = 1.0
+	alpha_slider.step = 0.05
+	alpha_slider.value = 1.0
+	alpha_slider.custom_minimum_size = Vector2(90, 0)
+	alpha_slider.value_changed.connect(func(v: float):
+		_brush_alpha = v
+		_apply_tool_state()
 	)
-	var redo_btn := Button.new()
-	redo_btn.text = "Redo"
-	UIStyle.style_button(redo_btn, UIStyle.COLOR_NEUTRAL, 8)
-	redo_btn.pressed.connect(func():
-		if _current_canvas:
-			_current_canvas.redo()
-	)
-	toolbar.add_child(undo_btn)
-	toolbar.add_child(redo_btn)
+	flow.add_child(alpha_slider)
 
-func _tool_button(label: String, tool_id: int) -> Button:
+	flow.add_child(VSeparator.new())
+	flow.add_child(_action_button("Flip H", func(): if _current_canvas: _current_canvas.flip_horizontal()))
+	flow.add_child(_action_button("Flip V", func(): if _current_canvas: _current_canvas.flip_vertical()))
+	flow.add_child(_action_button("Rot CW", func(): if _current_canvas: _current_canvas.rotate_90_cw()))
+	flow.add_child(_action_button("Rot CCW", func(): if _current_canvas: _current_canvas.rotate_90_ccw()))
+
+	flow.add_child(VSeparator.new())
+	flow.add_child(_action_button("Copy", func(): if _current_canvas: _current_canvas.copy_selection()))
+	flow.add_child(_action_button("Cut", func(): if _current_canvas: _current_canvas.cut_selection()))
+	flow.add_child(_action_button("Paste", func(): if _current_canvas: _current_canvas.paste()))
+	flow.add_child(_action_button("Deselect", func(): if _current_canvas: _current_canvas.clear_selection()))
+
+	flow.add_child(VSeparator.new())
+	flow.add_child(_action_button("Clear", func(): if _current_canvas: _current_canvas.clear_canvas()))
+	flow.add_child(_action_button("Invert", func(): if _current_canvas: _current_canvas.invert_colors()))
+
+	flow.add_child(VSeparator.new())
+	flow.add_child(_action_button("Zoom -", func(): if _current_canvas: _current_canvas.set_zoom(_current_canvas.zoom - 2)))
+	flow.add_child(_action_button("Zoom +", func(): if _current_canvas: _current_canvas.set_zoom(_current_canvas.zoom + 2)))
+
+	flow.add_child(VSeparator.new())
+	flow.add_child(_action_button("Undo", func(): if _current_canvas: _current_canvas.undo()))
+	flow.add_child(_action_button("Redo", func(): if _current_canvas: _current_canvas.redo()))
+
+func _tool_button(label: String, tool_id: int, group: ButtonGroup) -> Button:
 	var btn := Button.new()
 	btn.text = label
 	btn.toggle_mode = true
-	if not _tool_group:
-		_tool_group = ButtonGroup.new()
-	btn.button_group = _tool_group
+	btn.button_group = group
 	UIStyle.style_button(btn, UIStyle.COLOR_LOCAL, 8)
 	btn.pressed.connect(func():
 		_current_tool = tool_id
@@ -487,11 +621,42 @@ func _tool_button(label: String, tool_id: int) -> Button:
 	)
 	return btn
 
+## A momentary toggle button (Mirror H/V, Grid) -- `on_toggle` receives the
+## new pressed state; `_apply_tool_state()` is called right after so the
+## change is reflected on `_current_canvas` immediately, not just on the
+## next paint stroke.
+func _toggle_button(label: String, on_toggle: Callable) -> Button:
+	var btn := Button.new()
+	btn.text = label
+	btn.toggle_mode = true
+	UIStyle.style_button(btn, UIStyle.COLOR_NEUTRAL, 8)
+	btn.toggled.connect(func(pressed: bool):
+		on_toggle.call(pressed)
+		_apply_tool_state()
+	)
+	return btn
+
+## A plain one-shot action button (Flip/Rotate/Copy/Clear/Zoom/Undo/...) --
+## `on_press` takes no arguments, matching Button.pressed's signature.
+func _action_button(label: String, on_press: Callable) -> Button:
+	var btn := Button.new()
+	btn.text = label
+	btn.custom_minimum_size = Vector2(64, 0)
+	UIStyle.style_button(btn, UIStyle.COLOR_NEUTRAL, 8)
+	btn.pressed.connect(on_press)
+	return btn
+
 func _apply_tool_state() -> void:
 	if _current_canvas:
 		_current_canvas.tool = _current_tool
 		_current_canvas.erasing = false
-		_current_canvas.paint_color = color_picker.color
+		_current_canvas.brush_size = _brush_size
+		_current_canvas.brush_alpha = _brush_alpha
+		_current_canvas.mirror_h = _mirror_h
+		_current_canvas.mirror_v = _mirror_v
+		_current_canvas.show_grid = _show_grid
+		if _active_color_picker:
+			_current_canvas.paint_color = _active_color_picker.color
 
 ## Builds the Level page's tile palette + tool row and the TileCanvas
 ## itself -- same click/drag-paint interaction PixelCanvas uses for pixel
@@ -576,12 +741,133 @@ func _on_publish_level_pressed() -> void:
 	else:
 		status_label.text = "Publish failed for \"%s\" -- check your connection." % level_name
 
+## Builds the Tiles page entirely in code (no .tscn changes -- see the file
+## header): a left-hand list of the 3 built-in tile types, a canvas panel
+## driven by the exact same _build_shared_toolbar/_current_canvas machinery
+## the Paint page uses, and its own ColorPicker (the Paint page's is hidden
+## while this page is showing, so it needs an independent one to stay
+## usable -- see _active_color_picker).
+func _build_tiles_page() -> void:
+	var vbox: VBoxContainer = paint_page.get_parent()
+	tiles_page = HBoxContainer.new()
+	tiles_page.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tiles_page.add_theme_constant_override("separation", 12)
+	tiles_page.visible = false
+	vbox.add_child(tiles_page)
+	vbox.move_child(tiles_page, level_page.get_index() + 1)
+
+	var select_panel := PanelContainer.new()
+	select_panel.custom_minimum_size = Vector2(180, 0)
+	select_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
+	tiles_page.add_child(select_panel)
+	var select_box := VBoxContainer.new()
+	select_box.add_theme_constant_override("separation", 6)
+	select_panel.add_child(select_box)
+	select_box.add_child(_section_label("TILE TYPES"))
+
+	var tile_group := ButtonGroup.new()
+	_tile_select_buttons.clear()
+	for i in TILE_TYPE_NAMES.size():
+		var btn := Button.new()
+		btn.text = TILE_TYPE_NAMES[i]
+		btn.toggle_mode = true
+		btn.button_group = tile_group
+		btn.custom_minimum_size = Vector2(0, 40)
+		UIStyle.style_button(btn, TileCanvas.TILE_COLORS[i], 10)
+		btn.pressed.connect(_show_tile.bind(i))
+		select_box.add_child(btn)
+		_tile_select_buttons.append(btn)
+
+	var canvas_panel := PanelContainer.new()
+	canvas_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	canvas_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	canvas_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
+	tiles_page.add_child(canvas_panel)
+	var canvas_box := VBoxContainer.new()
+	canvas_panel.add_child(canvas_box)
+
+	tiles_toolbar = HBoxContainer.new()
+	canvas_box.add_child(tiles_toolbar)
+	_build_shared_toolbar(tiles_toolbar)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	canvas_box.add_child(scroll)
+	tiles_canvas_holder = CenterContainer.new()
+	tiles_canvas_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tiles_canvas_holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.add_child(tiles_canvas_holder)
+
+	var right_panel := PanelContainer.new()
+	right_panel.custom_minimum_size = Vector2(220, 0)
+	right_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
+	tiles_page.add_child(right_panel)
+	var right_box := VBoxContainer.new()
+	right_box.add_theme_constant_override("separation", 8)
+	right_panel.add_child(right_box)
+	right_box.add_child(_section_label("COLOR"))
+	tiles_color_picker = ColorPicker.new()
+	right_box.add_child(tiles_color_picker)
+	tiles_color_picker.color_changed.connect(func(color: Color):
+		if _current_canvas:
+			_current_canvas.paint_color = color
+	)
+	var tiles_help := Label.new()
+	tiles_help.text = "Paint each tile at its native 10x10 size -- zoomed in for editing, this is exactly how it tiles across every platform in-game."
+	tiles_help.autowrap_mode = TextServer.AUTOWRAP_WORD
+	tiles_help.add_theme_font_size_override("font_size", 12)
+	tiles_help.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
+	right_box.add_child(tiles_help)
+
+	_load_tile_images()
+	_show_tile(0)
+	_tile_select_buttons[0].button_pressed = true
+
+## Loads the atlas already baked into the build (flat colors today -- see
+## build_tileset.gd) and slices it into one Image per tile type, so the
+## Tiles page always opens with something real on the canvas instead of a
+## blank transparent square. Falls back to a flat-color square per type if
+## the atlas can't be loaded for any reason (e.g. running this tool against
+## a stripped-down export), so the page is never left totally broken.
+func _load_tile_images() -> void:
+	_tile_images.clear()
+	# load() (not Image.load_from_file) so this also works from the exported
+	# .pck TagArtTool.exe actually ships as, not just when run from source.
+	var atlas: Image = null
+	var atlas_tex: Texture2D = load(TILE_ATLAS_PATH)
+	if atlas_tex:
+		atlas = atlas_tex.get_image()
+	for i in TILE_TYPE_NAMES.size():
+		var tile_img: Image
+		if atlas and not atlas.is_empty() and (i + 1) * TILE_TEXTURE_SIZE <= atlas.get_width():
+			tile_img = atlas.get_region(Rect2i(i * TILE_TEXTURE_SIZE, 0, TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE))
+			tile_img.convert(Image.FORMAT_RGBA8)
+		else:
+			tile_img = Image.create(TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE, false, Image.FORMAT_RGBA8)
+			tile_img.fill(TileCanvas.TILE_COLORS[i])
+		_tile_images.append(tile_img)
+
+func _show_tile(index: int) -> void:
+	_current_tile_index = index
+	for i in _tile_select_buttons.size():
+		_tile_select_buttons[i].button_pressed = (i == index)
+	for child in tiles_canvas_holder.get_children():
+		tiles_canvas_holder.remove_child(child)
+		child.queue_free()
+	var canvas = PixelCanvasScene.new(_tile_images[index], TILE_TEXTURE_ZOOM)
+	tiles_canvas_holder.add_child(canvas)
+	canvas.painted.connect(_on_painted)
+	canvas.color_picked.connect(_on_eyedropper_picked)
+	_current_canvas = canvas
+	_apply_tool_state()
+
 func _on_color_picked_from_wheel(color: Color) -> void:
 	if _current_canvas:
 		_current_canvas.paint_color = color
 
 func _on_eyedropper_picked(color: Color) -> void:
-	color_picker.color = color
+	if _active_color_picker:
+		_active_color_picker.color = color
 
 func _on_painted() -> void:
 	if preview_page.visible:
@@ -686,6 +972,18 @@ func _on_export_pressed() -> void:
 		if f2:
 			f2.store_string(HAT_INSTRUCTIONS_TEXT)
 		status_parts.append(hats_out_dir)
+
+	if not _tile_images.is_empty():
+		var tiles_out_dir := base_dir.path_join("edited_tiles")
+		DirAccess.make_dir_recursive_absolute(tiles_out_dir)
+		var atlas := Image.create(TILE_TEXTURE_SIZE * _tile_images.size(), TILE_TEXTURE_SIZE, false, Image.FORMAT_RGBA8)
+		for i in _tile_images.size():
+			atlas.blit_rect(_tile_images[i], Rect2i(Vector2i.ZERO, Vector2i(TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE)), Vector2i(i * TILE_TEXTURE_SIZE, 0))
+		atlas.save_png(tiles_out_dir.path_join("tag_tiles.png"))
+		var f3 := FileAccess.open(tiles_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
+		if f3:
+			f3.store_string(TILE_INSTRUCTIONS_TEXT)
+		status_parts.append(tiles_out_dir)
 
 	if status_parts.is_empty():
 		status_label.text = "Nothing to export yet -- create a skin or hat first."
