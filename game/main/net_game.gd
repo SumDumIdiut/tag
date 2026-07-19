@@ -55,6 +55,16 @@ func _ready() -> void:
 		_apply_skin(peer_id)
 		_apply_hat(peer_id)
 
+	# my_peer_id == -1 means we're spectating (see NetworkManager.start_
+	# spectator) -- there's no local avatar to own the camera, so fall back
+	# to following whichever roster entry came first instead of leaving no
+	# camera active at all.
+	if my_peer_id == -1 and not avatars.is_empty():
+		var followed: RemoteAvatar = avatars[avatars.keys()[0]]
+		followed.camera.enabled = true
+		followed.camera.make_current()
+		hud.text = "Spectating"
+
 ## A custom skin's image can still be in flight (relayed from the server,
 ## see NetworkManager) when a match starts -- SkinCatalog.get_part_textures()
 ## just returns {} for a not-yet-known custom id, so avatar.set_skin() no-ops
@@ -104,6 +114,12 @@ func _on_hat_received(hat_id: String) -> void:
 			_apply_hat(peer_id)
 
 func _physics_process(_delta: float) -> void:
+	# A spectator (my_peer_id == -1, see setup()/start_spectator()) has no
+	# Player on the server to apply input to at all -- the server would just
+	# no-op it (not in any _peer_lobby entry), but there's no reason to
+	# spend a network message every tick doing nothing.
+	if my_peer_id == -1:
+		return
 	# No client-side prediction/reconciliation at all -- just capture and
 	# send input every tick. Every avatar (see _on_match_state), including
 	# your own, only ever renders confirmed server state, dead-reckoned the

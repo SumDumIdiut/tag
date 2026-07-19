@@ -21,6 +21,9 @@ signal disconnected_from_server
 ## send_chat_message()/lobby_room.gd. Lobby-only by design (not in-match),
 ## to keep the tight tag-gameplay netcode path untouched by this.
 signal chat_message_received(username: String, text: String)
+## Fires on a peer that tried start_spectator() when no match is currently
+## in progress on that server to watch.
+signal spectate_failed
 
 const DEFAULT_PORT := 9000
 const MAX_LOBBY_PLAYERS := 8
@@ -45,6 +48,11 @@ var _peer_hat_id := {}   # peer_id -> String, "" means no hat
 var _peer_client_id := {} # peer_id -> String, the anonymous cosmetics/ranked identity -- server-side only, never broadcast to other clients
 var _peer_lobby := {}    # peer_id -> lobby_id
 var _matches := {}       # lobby_id -> ServerMatch
+var _spectators := {}    # lobby_id -> Array[peer_id], read-only observers of an in-progress match
+var _peer_spectating_lobby := {} # peer_id -> lobby_id, for disconnect cleanup
+
+# ---- Client-side state only ----
+var _pending_as_spectator := false # set by start_spectator(), consumed by _on_connected_to_server()
 
 func _ready() -> void:
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
@@ -75,6 +83,13 @@ func get_connected_client_ids() -> Array:
 		return []
 	return _peer_client_id.values()
 
+## Called by ServerMatch every physics tick to also push state to anyone
+## watching lobby_id's match read-only (see _server_register_spectator).
+func get_spectators(lobby_id: int) -> Array:
+	if not is_server:
+		return []
+	return _spectators.get(lobby_id, [])
+
 ## WebSockets (not ENet/raw UDP) specifically because this needs to be
 ## reachable through a Cloudflare Tunnel -- Cloudflare's edge can proxy a
 ## WebSocket connection to an arbitrary public hostname, but can't carry
@@ -101,11 +116,30 @@ func start_server(port: int = DEFAULT_PORT) -> bool:
 func start_client(address: String, display_name: String) -> void:
 	username = display_name
 	is_server = false
+	_pending_as_spectator = false
 	var url := _normalize_address(address)
 	var peer := WebSocketMultiplayerPeer.new()
 	var err := peer.create_client(url)
 	if err != OK:
 		push_error("NetworkManager: failed to create client peer (%s)" % err)
+		connection_failed.emit()
+		return
+	multiplayer.multiplayer_peer = peer
+
+## Connects the same way start_client() does, but registers as a read-only
+## spectator instead of a simulated player once connected (see
+## _on_connected_to_server()) -- never sends input, never occupies a Player
+## slot. Attaches to whichever match on this server is currently in
+## progress; emits spectate_failed if none is.
+func start_spectator(address: String) -> void:
+	is_server = false
+	_pending_as_spectator = true
+	var url := _normalize_address(address)
+	var peer := WebSocketMultiplayerPeer.new()
+	var err := peer.create_client(url)
+	if err != OK:
+		push_error("NetworkManager: failed to create client peer (%s)" % err)
+		_pending_as_spectator = false
 		connection_failed.emit()
 		return
 	multiplayer.multiplayer_peer = peer
@@ -126,7 +160,11 @@ func disconnect_from_server() -> void:
 
 func _on_connected_to_server() -> void:
 	my_peer_id = multiplayer.get_unique_id()
-	rpc_id(1, "_server_register_player", username, SkinCatalog.selected_skin_id, SkinCatalog.selected_hat_id, SkinCatalog.client_id)
+	if _pending_as_spectator:
+		_pending_as_spectator = false
+		rpc_id(1, "_server_register_spectator")
+	else:
+		rpc_id(1, "_server_register_player", username, SkinCatalog.selected_skin_id, SkinCatalog.selected_hat_id, SkinCatalog.client_id)
 	connected_to_server.emit()
 
 func _on_connection_failed() -> void:
@@ -146,6 +184,10 @@ func _on_peer_disconnected(id: int) -> void:
 	if lobby_id != -1:
 		_remove_peer_from_lobby(id, lobby_id)
 	_peer_lobby.erase(id)
+	var spectating_lobby_id: int = _peer_spectating_lobby.get(id, -1)
+	if spectating_lobby_id != -1 and _spectators.has(spectating_lobby_id):
+		_spectators[spectating_lobby_id].erase(id)
+	_peer_spectating_lobby.erase(id)
 
 # ==================== Server-side RPC endpoints (client -> server) ====================
 
@@ -167,6 +209,41 @@ func _server_register_player(display_name: String, skin_id: String, hat_id: Stri
 		_join_ranked_lobby(sender)
 	else:
 		_send_lobby_list(sender)
+
+## Attaches the sender to whichever lobby on this server currently has a
+## match running -- there's no per-lobby "Watch" targeting from the server
+## browser (it only knows about servers, not individual lobbies), so a
+## spectator just gets whatever's live. Never touches _players/_peer_lobby;
+## a spectator is not a lobby member and never becomes one.
+@rpc("any_peer", "reliable")
+func _server_register_spectator() -> void:
+	if not is_server:
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if _peer_lobby.has(sender) or _peer_spectating_lobby.has(sender):
+		return
+	var target_lobby_id := -1
+	for lobby in _lobbies.values():
+		if lobby.in_match:
+			target_lobby_id = lobby.id
+			break
+	if target_lobby_id == -1 or not _matches.has(target_lobby_id):
+		rpc_id(sender, "_client_spectate_failed")
+		return
+	var match_instance: ServerMatch = _matches[target_lobby_id]
+	# roster is only populated once ServerMatch._finish_setup() completes --
+	# briefly empty while a custom level is still being fetched (see
+	# server_match.gd's _fetch_custom_arena). Reject rather than send a
+	# match-started payload with no one in it; there's no second chance to
+	# resend once this RPC has gone out.
+	if match_instance.roster.is_empty():
+		rpc_id(sender, "_client_spectate_failed")
+		return
+	if not _spectators.has(target_lobby_id):
+		_spectators[target_lobby_id] = []
+	_spectators[target_lobby_id].append(sender)
+	_peer_spectating_lobby[sender] = target_lobby_id
+	rpc_id(sender, "_client_match_started", target_lobby_id, -1, match_instance.roster, level_id)
 
 func _sanitize_username(raw: String) -> String:
 	var trimmed := raw.strip_edges()
@@ -264,11 +341,25 @@ func _remove_peer_from_lobby(peer_id: int, lobby_id: int) -> void:
 		if _matches.has(lobby_id):
 			_matches[lobby_id].teardown()
 			_matches.erase(lobby_id)
+		_end_spectating_for_lobby(lobby_id)
 	else:
 		if lobby.host_peer == peer_id:
 			lobby.host_peer = lobby.members.keys()[0]
 		_send_lobby_state(lobby_id)
 	_broadcast_lobby_list()
+
+## Tells every spectator of lobby_id's match that it's over -- a match
+## ending because every real player left has no ranking to report (empty
+## Array default), a ranked round's real end (see notify_match_ended) passes
+## its actual ranking through instead. Drops their spectator registration
+## either way, so no dead match instance is left silently pushing no state.
+func _end_spectating_for_lobby(lobby_id: int, ranking: Array = []) -> void:
+	if not _spectators.has(lobby_id):
+		return
+	for spectator_peer_id in _spectators[lobby_id]:
+		rpc_id(spectator_peer_id, "_client_match_ended", ranking)
+		_peer_spectating_lobby.erase(spectator_peer_id)
+	_spectators.erase(lobby_id)
 
 @rpc("any_peer", "reliable")
 func _server_set_ready(ready: bool) -> void:
@@ -405,6 +496,7 @@ func notify_match_ended(lobby_id: int, ranking: Array) -> void:
 		rpc_id(entry.peer_id, "_client_match_ended", ranking)
 		_peer_lobby.erase(entry.peer_id)
 	_report_ranked_result(ranking)
+	_end_spectating_for_lobby(lobby_id, ranking)
 	if _matches.has(lobby_id):
 		_matches[lobby_id].teardown()
 		_matches.erase(lobby_id)
@@ -456,6 +548,10 @@ func _client_match_ended(ranking: Array) -> void:
 @rpc("authority", "reliable")
 func _client_receive_chat_message(sender_username: String, text: String) -> void:
 	chat_message_received.emit(sender_username, text)
+
+@rpc("authority", "reliable")
+func _client_spectate_failed() -> void:
+	spectate_failed.emit()
 
 # ==================== Client-facing API (called by UI) ====================
 
