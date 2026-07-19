@@ -12,14 +12,15 @@ class_name LevelData
 #
 # {"tiles": [[x, y, tile_type], ...], "spawn_points": [[x, y], ...],
 #  "platforms": [{"start": [x, y], "end": [x, y], "period_sec": n}, ...]}
-# tile_type is 0-8, matching tag_tileset.tres's 9 atlas-x tiles (all at
-# atlas-y 0): 3 base types (boundary/pillar/platform) x 3 art variants
-# (Piece/Corner/Internal), encoded variant-major as variant_index * 3 +
-# type_index -- see build_tileset.gd's TILES/VARIANT_NAMES, the source of
-# truth for this ordering. (Values 0/1/2 are deliberately still exactly
-# Boundary/Pillar/Platform's Piece variant, same as the original 3-tile
-# format, so every level published before variants existed still decodes
-# to the same tiles it always did.) tiles/spawn_points coordinates:
+# tile_type is 0-10, matching tag_tileset.tres's 11 atlas-x tiles (all at
+# atlas-y 0): 0-8 are 3 base types (boundary/pillar/platform) x 3 art
+# variants (Piece/Corner/Internal), encoded variant-major as variant_index *
+# 3 + type_index -- see build_tileset.gd's TILES/VARIANT_NAMES, the source
+# of truth for this ordering. 9-10 are Ice/Bouncy, appended after (see
+# art_tool.gd's EXTRA_TILE_NAMES). (Values 0/1/2 are deliberately still
+# exactly Boundary/Pillar/Platform's Piece variant, same as the original
+# 3-tile format, so every level published before variants existed still
+# decodes to the same tiles it always did.) tiles/spawn_points coordinates:
 # tile-grid cells for tiles, world/pixel position for spawn points
 # (straight into Marker2D.position). "platforms" is optional (older/
 # simpler levels just omit it) -- start/end are tile-grid cells too, the
@@ -59,7 +60,13 @@ static func is_valid(data: Dictionary) -> bool:
 		var tile_type = entry[2]
 		if typeof(tile_type) != TYPE_FLOAT and typeof(tile_type) != TYPE_INT:
 			return false
-		if int(tile_type) < 0 or int(tile_type) > 8:
+		# 11 atlas tiles: 3 base types x 3 art variants (indices 0-8) plus the
+		# 2 special behavior tiles appended after them, Ice and Bouncy
+		# (indices 9-10, see art_tool.gd's EXTRA_TILE_NAMES). Mirrors the same
+		# fix in relay-server/server.js's isValidLevelData -- this was also
+		# still capped at 8, meaning the Art Tool refused to even publish a
+		# level containing an Ice or Bouncy tile in the first place.
+		if int(tile_type) < 0 or int(tile_type) > 10:
 			return false
 	for entry in spawns:
 		if typeof(entry) != TYPE_ARRAY or entry.size() < 2:

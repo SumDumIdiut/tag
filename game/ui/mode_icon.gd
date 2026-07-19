@@ -64,12 +64,18 @@ func _sync_atlas_rect_size() -> void:
 
 ## Adds a child TextureRect sliced to this icon_type's atlas region if the
 ## atlas file and that icon_type are both available; leaves _atlas_rect null
-## (so _draw()'s procedural fallback runs instead) otherwise.
+## (so _draw()'s procedural fallback runs instead) otherwise. Checks a
+## downloaded GameAssetOverrides atlas first (see game_asset_updater.gd),
+## then the one baked into this build at CI time.
 func _try_setup_atlas() -> void:
 	var idx := ATLAS_ICON_ORDER.find(icon_type)
-	if idx < 0 or not ResourceLoader.exists(ATLAS_PATH):
+	if idx < 0:
 		return
-	var tex: Texture2D = load(ATLAS_PATH)
+	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.ICONS_OVERRIDE_PATH)
+	if not tex:
+		if not ResourceLoader.exists(ATLAS_PATH):
+			return
+		tex = load(ATLAS_PATH)
 	if not tex:
 		return
 	var atlas_tex := AtlasTexture.new()

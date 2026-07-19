@@ -5,6 +5,8 @@ const CharacterPreviewScene := preload("res://ui/character_preview.gd")
 const UIStyle := preload("res://ui/ui_style.gd")
 const UpdateCheckerScript := preload("res://net/update_checker.gd")
 const UpdatePromptScene := preload("res://ui/update_prompt.gd")
+const GameAssetUpdaterScript := preload("res://net/game_asset_updater.gd")
+const GameAssetUpdatePromptScene := preload("res://ui/game_asset_update_prompt.gd")
 
 # Three top-level destinations, each fanning out to its own related
 # sub-screens instead of a flat list of five unrelated modes: ONLINE now
@@ -39,6 +41,7 @@ func _ready() -> void:
 	_build_shop_button()
 	_build_account_button()
 	_check_for_update()
+	_check_for_asset_update()
 
 func _check_for_update() -> void:
 	var checker := UpdateCheckerScript.new("Tag.exe")
@@ -53,6 +56,36 @@ func _on_update_check_completed(result: Dictionary) -> void:
 	add_child(prompt)
 	prompt.setup(result.version, result.download_url)
 
+## Separate from the whole-binary check above -- tiles/icons/mode-button-art
+## published from the Art Tool (see game_asset_updater.gd) don't need a new
+## release or a relaunch, just a couple small PNGs applied live.
+func _check_for_asset_update() -> void:
+	var updater := GameAssetUpdaterScript.new()
+	add_child(updater)
+	updater.check_completed.connect(_on_asset_check_completed)
+	updater.check()
+
+func _on_asset_check_completed(result: Dictionary) -> void:
+	if not result.get("available", false):
+		return
+	var prompt := GameAssetUpdatePromptScene.new()
+	add_child(prompt)
+	prompt.setup(result.categories, result.manifest)
+	# Mode button art is picked up immediately -- rebuild the bar so a
+	# freshly downloaded whole-button painting shows up without needing to
+	# leave and come back to the main menu. Icon-atlas/tile changes are
+	# already live for anything built after the download (see
+	# GameAssetOverrides) but don't need an explicit refresh here since
+	# nothing on this screen renders through them directly.
+	prompt.applied.connect(_rebuild_mode_bar)
+
+func _rebuild_mode_bar() -> void:
+	for child in mode_bar.get_children():
+		mode_bar.remove_child(child)
+		child.queue_free()
+	for mode in MODES:
+		mode_bar.add_child(_build_bar(mode))
+
 func _build_bar(mode: Dictionary) -> Button:
 	var color: Color = mode["color"]
 	var btn := Button.new()
@@ -63,20 +96,25 @@ func _build_bar(mode: Dictionary) -> Button:
 	UIStyle.style_button(btn, color, 18)
 	btn.pressed.connect(_on_mode_pressed.bind(mode["scene"]))
 
-	var art_path := MODE_BUTTON_ART_PATH % mode["key"]
-	if ResourceLoader.exists(art_path):
-		var tex: Texture2D = load(art_path)
-		if tex:
-			# A friend's whole-button painting (see the Art Tool's Icons page)
-			# -- replaces the procedural glow/portrait/label box below
-			# entirely, full-bleed over the button's own clickable area.
-			var art := TextureRect.new()
-			art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			art.texture = tex
-			art.stretch_mode = TextureRect.STRETCH_SCALE
-			art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-			btn.add_child(art)
-			return btn
+	# A downloaded override (see game_asset_updater.gd) takes priority over
+	# whatever got baked into this build at CI time, same "newest wins"
+	# rule the icon atlas follows in mode_icon.gd.
+	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.mode_button_override_path(mode["key"]))
+	if not tex:
+		var art_path := MODE_BUTTON_ART_PATH % mode["key"]
+		if ResourceLoader.exists(art_path):
+			tex = load(art_path)
+	if tex:
+		# A friend's whole-button painting (see the Art Tool's Icons page) --
+		# replaces the procedural glow/portrait/label box below entirely,
+		# full-bleed over the button's own clickable area.
+		var art := TextureRect.new()
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		art.texture = tex
+		art.stretch_mode = TextureRect.STRETCH_SCALE
+		art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		btn.add_child(art)
+		return btn
 
 	# A soft radial glow behind the character, in the bar's own color --
 	# gives the portrait a bit of depth/stage-lighting instead of sitting
