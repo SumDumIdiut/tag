@@ -159,7 +159,6 @@ var tiles_color_picker: ColorPicker
 
 var _custom_skins := {} # id -> {part_name -> Image}
 var _skin_names := {} # id -> display name
-var _skin_expanded := {} # id -> bool
 var _custom_skins_list: VBoxContainer
 var _next_skin_num := 1
 
@@ -408,9 +407,8 @@ func _on_add_skin_pressed() -> void:
 	for part_name in SkinCatalog.PART_NAMES:
 		parts[part_name] = _blank_image(SkinCatalog.PART_DEFS[part_name].rect.size)
 	_custom_skins[id] = parts
-	_skin_expanded[id] = true
 	_rebuild_custom_skins_list()
-	_show_part(parts, "torso", "skin", id)
+	_show_part(parts, "body", "skin", id)
 
 func _on_add_hat_pressed() -> void:
 	var id := "hat_%d" % _next_hat_num
@@ -438,31 +436,26 @@ func _rebuild_custom_skins_list() -> void:
 	for id in _custom_skins.keys():
 		_custom_skins_list.add_child(_build_skin_entry(id))
 
+## A skin is a single square part now (see SkinCatalog.PART_NAMES) --
+## this mirrors _build_hat_entry's shape exactly instead of the old
+## expand-to-reveal-6-part-buttons layout that made sense when a skin was a
+## 6-part rig.
 func _build_skin_entry(id: String) -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", 4)
-	var expand_btn := Button.new()
-	var expanded: bool = _skin_expanded.get(id, false)
-	expand_btn.text = ("▾  " if expanded else "▸  ") + _skin_names[id]
-	expand_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	expand_btn.size_flags_horizontal = SIZE_EXPAND_FILL
-	UIStyle.style_button(expand_btn, UIStyle.COLOR_SANDBOX, 8)
-	expand_btn.pressed.connect(func():
-		var now_expanded: bool = not _skin_expanded.get(id, false)
-		_skin_expanded[id] = now_expanded
-		if now_expanded:
-			# Fixes "nothing loads when you click the dropdown" -- expanding
-			# used to only reveal the part buttons underneath without ever
-			# actually loading one onto the canvas, so the first click
-			# looked like it did nothing. Expanding now immediately opens
-			# this skin's torso, same as clicking any of its part buttons.
-			_show_part(_custom_skins[id], "torso", "skin", id)
-		_rebuild_custom_skins_list()
-	)
-	header.add_child(expand_btn)
+	var select_btn := Button.new()
+	select_btn.text = _skin_names[id]
+	select_btn.toggle_mode = true
+	select_btn.button_group = _part_group
+	select_btn.button_pressed = (_current_context == "skin" and _current_id == id)
+	select_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	select_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+	UIStyle.style_button(select_btn, UIStyle.COLOR_SANDBOX, 8)
+	select_btn.pressed.connect(_show_part.bind(_custom_skins[id], "body", "skin", id))
+	header.add_child(select_btn)
 	var publish_btn := Button.new()
 	publish_btn.text = "Publish"
 	publish_btn.custom_minimum_size = Vector2(72, 0)
@@ -472,35 +465,22 @@ func _build_skin_entry(id: String) -> Control:
 	header.add_child(_delete_button(func():
 		_custom_skins.erase(id)
 		_skin_names.erase(id)
-		_skin_expanded.erase(id)
 		if _current_context == "skin" and _current_id == id:
 			_clear_canvas()
 		_rebuild_custom_skins_list()
 	))
 	box.add_child(header)
 
-	if expanded:
-		var name_edit := LineEdit.new()
-		name_edit.text = _skin_names[id]
-		name_edit.placeholder_text = "Skin name"
-		name_edit.text_submitted.connect(func(new_text: String):
-			var trimmed := new_text.strip_edges()
-			if not trimmed.is_empty():
-				_skin_names[id] = trimmed
-			_rebuild_custom_skins_list()
-		)
-		box.add_child(name_edit)
-
-		for part_name in SkinCatalog.PART_NAMES:
-			var part_btn := Button.new()
-			part_btn.text = "     " + part_name.capitalize().replace("_", " ")
-			part_btn.toggle_mode = true
-			part_btn.button_group = _part_group
-			part_btn.button_pressed = (_current_context == "skin" and _current_id == id and _current_key == part_name)
-			part_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			UIStyle.style_button(part_btn, UIStyle.COLOR_SHOP, 6)
-			part_btn.pressed.connect(_show_part.bind(_custom_skins[id], part_name, "skin", id))
-			box.add_child(part_btn)
+	var name_edit := LineEdit.new()
+	name_edit.text = _skin_names[id]
+	name_edit.placeholder_text = "Skin name"
+	name_edit.text_submitted.connect(func(new_text: String):
+		var trimmed := new_text.strip_edges()
+		if not trimmed.is_empty():
+			_skin_names[id] = trimmed
+		_rebuild_custom_skins_list()
+	)
+	box.add_child(name_edit)
 
 	return box
 
@@ -1438,18 +1418,14 @@ func _safe_filename(display_name: String, fallback_id: String) -> String:
 	var safe := display_name.strip_edges().to_lower().replace(" ", "_")
 	return safe if not safe.is_empty() else fallback_id
 
-## Blits a custom skin's 6 parts into one 32x48 image at their real
-## in-game positions (see SkinCatalog.PART_DEFS) -- the exact format the
+## Blits a custom skin's single body part into a whole-canvas image at its
+## real in-game position (see SkinCatalog.PART_DEFS) -- the exact format the
 ## game's existing admin ingestion tool (relay-server/add-skin.js) already
 ## expects, so a custom skin needs no new server-side code to go live.
-## Head is composited last (not PART_NAMES order): its crop overlaps the top
-## corners of both arms' rects, and painting arms afterward would clip arm
-## pixels into the exported head region -- this same image gets re-sliced
-## by PART_DEFS later, so that corruption would be permanent, not cosmetic.
 func _composite_whole_skin(parts: Dictionary) -> Image:
 	var whole := Image.create(SkinCatalog.VISUAL_WIDTH, SkinCatalog.VISUAL_HEIGHT, false, Image.FORMAT_RGBA8)
 	whole.fill(Color(0, 0, 0, 0))
-	for part_name in ["torso", "left_arm", "right_arm", "left_leg", "right_leg", "head"]:
+	for part_name in SkinCatalog.PART_NAMES:
 		if not parts.has(part_name):
 			continue
 		var rect: Rect2i = SkinCatalog.PART_DEFS[part_name].rect

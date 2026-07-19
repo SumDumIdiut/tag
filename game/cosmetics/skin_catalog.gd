@@ -11,34 +11,25 @@ extends Node
 # lives locally is an anonymous client id (there's no account/login system
 # here) used to remember your selections across sessions/machines.
 
-const VISUAL_WIDTH := 32
-# 10px taller than the original 48 -- headroom for the enlarged head circle
-# below to fit without its top clipping off-canvas. Torso/arms/legs are
-# unchanged in size, just shifted down by that same 10px so their geometry
-# and the rig's own pivot offsets (player.tscn et al) stay identical; only
-# head's rect/pivot below reflect real new geometry.
-const VISUAL_HEIGHT := 58
+# The player model is a single square (see PART_NAMES/PART_DEFS below) --
+# gameplay never depended on the old 6-part humanoid rig at all (movement,
+# tag detection, and collision always ran purely on the CharacterBody2D/
+# CollisionShape2D in player.tscn, never on the limb sprites), so this was a
+# visual/content change only. VISUAL_WIDTH/HEIGHT double as the square's own
+# side length.
+const VISUAL_WIDTH := 40
+const VISUAL_HEIGHT := 40
 const CLIENT_ID_PATH := "user://client_id.txt"
 const API_BASE := "https://codecade.co.za/tag/api/skins"
 
-const PART_NAMES := ["head", "torso", "left_arm", "right_arm", "left_leg", "right_leg"]
+const PART_NAMES := ["body"]
 
-# Canvas-space (32x58, same space the old single-texture painter used) rect +
-# pivot per rig part. `rect` is the tight crop for that part's own texture;
-# `pivot` is the joint point the rig (player.tscn et al) positions/rotates
-# that part's node around -- torso's pivot is its neck attach point (torso is
-# the rig's parent node), each limb's pivot is where it actually attaches to
-# the torso, head's pivot is its own neck. Head's rect deliberately overlaps
-# torso's top 2 rows (pivot sits exactly on the circle's bottom edge) for a
-# seamless neck join, the same small overlap the original smaller head used
-# -- everything else (torso/arms/legs) only barely touches, same as before.
+# A single part covering the whole canvas -- `rect` is its crop (the entire
+# square), `pivot` is its center, kept only for parity with the old
+# per-part-rig shape (nothing currently reads .pivot; player.tscn/
+# remote_avatar.tscn just position the Body sprite directly).
 const PART_DEFS := {
-	"torso": {"rect": Rect2i(9, 27, 14, 21), "pivot": Vector2(16, 27)},
-	"head": {"rect": Rect2i(4, 5, 24, 24), "pivot": Vector2(16, 29)},
-	"left_arm": {"rect": Rect2i(3, 29, 6, 14), "pivot": Vector2(9, 29)},
-	"right_arm": {"rect": Rect2i(23, 29, 6, 14), "pivot": Vector2(23, 29)},
-	"left_leg": {"rect": Rect2i(11, 46, 4, 11), "pivot": Vector2(13, 46)},
-	"right_leg": {"rect": Rect2i(17, 46, 4, 11), "pivot": Vector2(19, 46)},
+	"body": {"rect": Rect2i(0, 0, VISUAL_WIDTH, VISUAL_HEIGHT), "pivot": Vector2(VISUAL_WIDTH / 2.0, VISUAL_HEIGHT / 2.0)},
 }
 
 const BUILTIN_SKINS := [
@@ -54,15 +45,13 @@ const BUILTIN_SKINS := [
 
 const HAT_API_BASE := "https://codecade.co.za/tag/api/hats"
 
-# The head is a circle inscribed in its own crop (touches all four
-# edges -- see _paint_character_image's head ellipse), so there's no real
-# headroom left *inside* that box for a hat to occupy without just sitting
-# on top of the face. Hats get their own, taller canvas instead: the bottom
-# HAT_OVERLAP rows deliberately overlap the head's own topmost rows (the
-# Hat node, a child of Head, is offset further up than Head's own offset --
-# see player.tscn) so a hat visually rests into the round top of the head,
-# while the rest of the canvas is free space for it to stick up above the
-# head's silhouette the way an actual hat does.
+# The body square has no headroom of its own for a hat to occupy without
+# just sitting on top of the face, so hats get their own, taller canvas
+# instead: the bottom HAT_OVERLAP rows deliberately overlap the square's own
+# topmost rows (the Hat node, a child of Body, is offset further up than
+# Body's own top edge -- see player.tscn) so a hat visually rests into the
+# top of the square, while the rest of the canvas is free space for it to
+# stick up above the body's silhouette the way an actual hat does.
 const HAT_WIDTH := 18
 const HAT_HEIGHT := 16
 const HAT_OVERLAP := 6
@@ -250,18 +239,11 @@ func get_part_textures(id: String) -> Dictionary:
 ## that resolves to) rather than a separate whole-image paint, so the flat
 ## preview thumbnail (shop cards, roster previews) always matches whatever
 ## the live rig actually renders.
-# Head drawn last (not PART_NAMES order) -- its crop is wide/tall enough to
-# overlap the top corners of both arms' rects, and painting arms afterward
-# would clip into the head's rounded silhouette in this flat thumbnail (the
-# live rig has no such conflict, each part is its own independently
-# positioned sprite there).
-const _COMPOSE_ORDER := ["torso", "left_arm", "right_arm", "left_leg", "right_leg", "head"]
-
 func _compose_whole_texture(id: String) -> ImageTexture:
 	var parts := get_part_textures(id)
 	var whole := Image.create(VISUAL_WIDTH, VISUAL_HEIGHT, false, Image.FORMAT_RGBA8)
 	whole.fill(Color(0, 0, 0, 0))
-	for part_name in _COMPOSE_ORDER:
+	for part_name in PART_NAMES:
 		if not parts.has(part_name):
 			continue
 		var rect: Rect2i = PART_DEFS[part_name].rect
@@ -361,17 +343,17 @@ func _builtin_color(id: String) -> Color:
 			return s.color
 	return Color.WHITE
 
-## A simple procedural humanoid -- head, body, arms, legs, eyes -- rather
-## than a flat color block. Used for the shop's flat preview thumbnail; the
-## in-game rig uses _make_character_parts (below) instead, cropped from this
-## same painted image so both stay visually identical.
+## A simple beveled square with eyes, rather than a flat color block. Used
+## for the shop's flat preview thumbnail; the in-game rig uses
+## _make_character_parts (below) instead, cropped from this same painted
+## image so both stay visually identical.
 func _make_character_texture(color: Color) -> ImageTexture:
 	return ImageTexture.create_from_image(_paint_character_image(color))
 
-## Same painted humanoid as above, but returned as {part_name -> Texture2D}
-## (see PART_DEFS) instead of one whole-body texture -- the rig
-## (player.tscn et al) needs each part as its own Sprite2D so it can be
-## posed/animated independently.
+## Same painted square as above, but returned as {part_name -> Texture2D}
+## (see PART_DEFS) instead of one whole-body texture -- kept as a dict
+## (rather than a single Texture2D) purely for interface parity with the
+## old multi-part rig; it's a one-entry dict now.
 func _make_character_parts(color: Color) -> Dictionary:
 	return _slice_whole_image(ImageTexture.create_from_image(_paint_character_image(color)))
 
@@ -383,6 +365,12 @@ func _slice_whole_image(whole: Texture2D) -> Dictionary:
 		parts[part_name] = ImageTexture.create_from_image(img.get_region(rect))
 	return parts
 
+## Square-with-bevel, not a flat swatch -- a lighter top/left edge and a
+## darker bottom/right edge read as a simple beveled block (the same trick
+## the old humanoid's shaded limbs/highlighted head used to suggest depth),
+## plus two eyes so it still reads as a character rather than furniture.
+const CHARACTER_BORDER := 3
+
 func _paint_character_image(color: Color) -> Image:
 	var img := Image.create(VISUAL_WIDTH, VISUAL_HEIGHT, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
@@ -391,27 +379,21 @@ func _paint_character_image(color: Color) -> Image:
 	var highlight := color.lightened(CHARACTER_HIGHLIGHT_AMOUNT)
 	var eye_color := Color(0.05, 0.05, 0.08)
 
-	# Legs
-	_fill_rect(img, 11, 46, 15, 57, shade)
-	_fill_rect(img, 17, 46, 21, 57, shade)
-	# Arms (drawn before the body so the body's edge overlaps the shoulder
-	# seam instead of leaving a gap)
-	_fill_rect(img, 3, 29, 9, 43, shade)
-	_fill_rect(img, 23, 29, 29, 43, shade)
-	# Body/torso
-	_fill_rect(img, 9, 27, 23, 48, color)
-	# Head
-	_fill_ellipse(img, 16.0, 17.0, 12.0, 12.0, highlight)
-	# Eyes
-	_fill_ellipse(img, 10.7, 15.7, 2.1, 2.1, eye_color)
-	_fill_ellipse(img, 21.3, 15.7, 2.1, 2.1, eye_color)
+	_fill_rect(img, 0, 0, VISUAL_WIDTH, VISUAL_HEIGHT, color)
+	_fill_rect(img, 0, 0, VISUAL_WIDTH, CHARACTER_BORDER, highlight)
+	_fill_rect(img, 0, 0, CHARACTER_BORDER, VISUAL_HEIGHT, highlight)
+	_fill_rect(img, 0, VISUAL_HEIGHT - CHARACTER_BORDER, VISUAL_WIDTH, VISUAL_HEIGHT, shade)
+	_fill_rect(img, VISUAL_WIDTH - CHARACTER_BORDER, 0, VISUAL_WIDTH, VISUAL_HEIGHT, shade)
+	_fill_ellipse(img, VISUAL_WIDTH * 0.35, VISUAL_HEIGHT * 0.42, 2.6, 2.6, eye_color)
+	_fill_ellipse(img, VISUAL_WIDTH * 0.65, VISUAL_HEIGHT * 0.42, 2.6, 2.6, eye_color)
 
 	return img
 
-## Same shapes as _paint_character_image, but with the three tintable
-## regions (torso/arms+legs/head) marked with TEMPLATE_BASE/SHADE/HIGHLIGHT
-## instead of a real color -- eyes stay their real fixed near-black, since
-## that region is never tinted by skin color anyway (see bake's multiply
+## Same shape as _paint_character_image, but with the three tintable
+## regions (fill/highlight-edge/shade-edge) marked with TEMPLATE_BASE/SHADE/
+## HIGHLIGHT instead of a real color -- eyes stay their real fixed
+## near-black, since that region is never tinted by skin color anyway (see
+## bake's multiply
 ## fallback below, which keeps near-black near-black for any skin color).
 ## tools/extract_templates.gd calls this once to produce the editable files
 ## under game/assets/character_templates/; tools/bake_character_art.gd
@@ -421,14 +403,13 @@ func paint_character_template() -> Image:
 	img.fill(Color(0, 0, 0, 0))
 	var eye_color := Color(0.05, 0.05, 0.08)
 
-	_fill_rect(img, 11, 46, 15, 57, TEMPLATE_SHADE)
-	_fill_rect(img, 17, 46, 21, 57, TEMPLATE_SHADE)
-	_fill_rect(img, 3, 29, 9, 43, TEMPLATE_SHADE)
-	_fill_rect(img, 23, 29, 29, 43, TEMPLATE_SHADE)
-	_fill_rect(img, 9, 27, 23, 48, TEMPLATE_BASE)
-	_fill_ellipse(img, 16.0, 17.0, 12.0, 12.0, TEMPLATE_HIGHLIGHT)
-	_fill_ellipse(img, 10.7, 15.7, 2.1, 2.1, eye_color)
-	_fill_ellipse(img, 21.3, 15.7, 2.1, 2.1, eye_color)
+	_fill_rect(img, 0, 0, VISUAL_WIDTH, VISUAL_HEIGHT, TEMPLATE_BASE)
+	_fill_rect(img, 0, 0, VISUAL_WIDTH, CHARACTER_BORDER, TEMPLATE_HIGHLIGHT)
+	_fill_rect(img, 0, 0, CHARACTER_BORDER, VISUAL_HEIGHT, TEMPLATE_HIGHLIGHT)
+	_fill_rect(img, 0, VISUAL_HEIGHT - CHARACTER_BORDER, VISUAL_WIDTH, VISUAL_HEIGHT, TEMPLATE_SHADE)
+	_fill_rect(img, VISUAL_WIDTH - CHARACTER_BORDER, 0, VISUAL_WIDTH, VISUAL_HEIGHT, TEMPLATE_SHADE)
+	_fill_ellipse(img, VISUAL_WIDTH * 0.35, VISUAL_HEIGHT * 0.42, 2.6, 2.6, eye_color)
+	_fill_ellipse(img, VISUAL_WIDTH * 0.65, VISUAL_HEIGHT * 0.42, 2.6, 2.6, eye_color)
 
 	return img
 

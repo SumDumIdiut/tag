@@ -31,7 +31,6 @@ var _images := {} # part_name (or "hat") -> Image, the artist's in-progress work
 var _current_canvas: PixelCanvas = null
 var _current_color: Color = PALETTE[2]
 var _erasing := false
-var _part_group := ButtonGroup.new()
 var _color_group := ButtonGroup.new()
 
 func setup(mode: String) -> void:
@@ -50,10 +49,12 @@ func _ready() -> void:
 	_build_palette()
 
 	if _mode == "skin":
+		# A skin is a single square part now (see SkinCatalog.PART_NAMES) --
+		# straight to canvas, no per-part tab bar needed, same as hat/trail.
 		for part_name in SkinCatalog.PART_NAMES:
 			_images[part_name] = _blank_image(SkinCatalog.PART_DEFS[part_name].rect.size)
-			_build_part_tab_button(part_name)
-		_show_part("head")
+		part_tabs.visible = false
+		_show_part(SkinCatalog.PART_NAMES[0])
 		name_edit.text = "My Skin"
 		upload_button.text = "Upload Skin"
 	elif _mode == "hat":
@@ -108,16 +109,6 @@ func _apply_tool_to_canvas() -> void:
 		return
 	_current_canvas.erasing = _erasing
 	_current_canvas.paint_color = _current_color
-
-func _build_part_tab_button(part_name: String) -> void:
-	var btn := Button.new()
-	btn.text = part_name.capitalize().replace("_", " ")
-	btn.toggle_mode = true
-	btn.button_group = _part_group
-	btn.button_pressed = (part_name == "head")
-	btn.pressed.connect(_show_part.bind(part_name))
-	UIStyle.style_button(btn, UIStyle.COLOR_SHOP, 8)
-	part_tabs.add_child(btn)
 
 func _show_part(part_name: String) -> void:
 	for child in canvas_holder.get_children():
