@@ -3,9 +3,9 @@ class_name CharacterPreview
 
 # A genuine live character portrait for menu buttons, instead of a flat
 # vector icon -- renders the actual in-game rig (same RemoteAvatar puppet
-# used for every other player on screen, same LimbPhysicsRig idle sway) in
-# its own SubViewport, isolated from the rest of the UI's 2D world. Nearest
-# filtering on the container keeps the pixel art crisp when blown up to
+# used for every other player on screen) in its own SubViewport, isolated
+# from the rest of the UI's 2D world. Nearest filtering on the container
+# keeps the pixel art crisp when blown up to
 # button size, matching every other piece of character art in the game.
 
 const REMOTE_AVATAR_SCENE := preload("res://player/remote_avatar.tscn")

@@ -192,7 +192,6 @@ var _floor_grip_mult := 1.0
 @onready var _parts: Dictionary = {
 	"body": $Visual/Body,
 }
-var _rig := LimbPhysicsRig.new()
 var _trail_emitter: TrailEmitter
 
 var _was_on_floor_visual := false
@@ -200,20 +199,19 @@ var _was_tagged_it := false
 
 const TAG_IT_COLOR := Color(1.0, 0.85, 0.1, 1.0)
 
-# One-shot move events, distinct from the continuous per-frame body-physics
-# update -- these apply an impulse (see LimbPhysicsRig.kick) once when a
-# specific move tech fires (a wall jump, a dash-jump cancel, ...), so the
-# body swings hard and settles back on its own instead of easing toward a
-# target like everything else. `current_action` is never cleared back to ""
-# -- it always holds the most recently triggered action, and both the local
-# kick below and RemoteAvatar (over the network, see server_match.gd's
-# state dict) detect a fresh trigger by comparing `current_action_id`
-# against the last id they actually consumed, not by string content. That
-# makes this robust to the SAME action firing twice in a row (e.g. rapid
-# wall-jumping) and to state updates arriving over an unreliable channel --
-# any later update still carries the correct not-yet-consumed id, so a
-# dropped packet just delays the kick instead of losing the trigger
-# entirely.
+# One-shot move-tech events (a wall jump, a dash-jump cancel, ...). The
+# square isn't animated by physics (no more per-limb/per-body pendulum
+# rig), but `current_action`/`current_action_id` stay as a generic "this
+# event just fired" signal -- still sent over the network (see
+# server_match.gd's state dict), just with no visual consumer right now.
+# `current_action` is never cleared back to "" -- it always holds the most
+# recently triggered action, and a consumer detects a fresh trigger by
+# comparing `current_action_id` against the last id it actually consumed,
+# not by string content. That makes this robust to the SAME action firing
+# twice in a row (e.g. rapid wall-jumping) and to state updates arriving
+# over an unreliable channel -- any later update still carries the correct
+# not-yet-consumed id, so a dropped packet just delays detection instead of
+# losing the trigger entirely.
 var current_action := ""
 var current_action_id := 0
 var _last_played_action_id := 0
@@ -221,7 +219,6 @@ var _last_played_action_id := 0
 func _trigger_action(action_name: String) -> void:
 	current_action = action_name
 	current_action_id += 1
-	_rig.kick(action_name)
 
 func _ready() -> void:
 	if _visual:
@@ -283,7 +280,6 @@ func set_tagged_it(active: bool) -> void:
 	# fires when the status actually flips, but guard anyway so a caller
 	# re-asserting "still it" doesn't restart the flinch kick.
 	if active and not _was_tagged_it:
-		_rig.kick("tag_reaction")
 		SFX.play("tag")
 	_was_tagged_it = active
 
@@ -323,13 +319,6 @@ func _process(delta: float) -> void:
 			target_scale = Vector2(1.1, 0.9)
 	_visual.scale = _visual.scale.lerp(target_scale, clampf(delta * 12.0, 0.0, 1.0))
 
-	# Trigger events (wall jump, dash jump, tag) apply their kick immediately
-	# in _trigger_action()/set_tagged_it() -- current_action_id here is only
-	# so a networked RemoteAvatar watching this same peer_id's state can
-	# detect the same event and kick its own copy of the rig in sync (see
-	# server_match.gd's state dict / RemoteAvatar.set_state).
-	_rig.update(delta, velocity, on_floor_now, is_dashing, is_climbing, MOVE_SPEED)
-	_rig.apply_to(_parts["body"], _visual)
 	_trail_emitter.update(delta, velocity.length())
 
 func apply_input(input: Dictionary, delta: float) -> void:

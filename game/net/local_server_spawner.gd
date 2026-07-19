@@ -57,7 +57,14 @@ func spawn(server_name: String, username: String, extra_args: PackedStringArray 
 		failed.emit("Couldn't find a free local port.")
 		return
 
+	# --headless (a real engine flag, not a custom one like --server below) --
+	# this spawned copy is only ever driving server logic, never rendering
+	# anything for anyone to look at, so there's no reason for a second game
+	# window to visibly pop up over the host's own client every time they
+	# host/quick-play/queue ranked. Already proven safe for this exact scene
+	# (server_main.tscn) throughout local testing all session.
 	var args := PackedStringArray([
+		"--headless",
 		"--server",
 		"--port=%d" % port,
 		"--name=%s" % server_name,
