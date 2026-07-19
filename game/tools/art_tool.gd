@@ -152,6 +152,7 @@ don't need to paint all three at once.
 @onready var publish_level_button: Button = $VBox/LevelPage/LevelRightPanel/LevelRightBox/PublishLevelButton
 
 @onready var status_label: Label = $VBox/BottomRow/StatusLabel
+@onready var publish_key_edit: LineEdit = $VBox/BottomRow/PublishKeyEdit
 @onready var export_button: Button = $VBox/BottomRow/ExportButton
 
 # Which part/hat canvas is currently open for editing -- `_current_id` is
@@ -204,6 +205,8 @@ var _preview_hat_id := ""
 
 var _tile_canvas: TileCanvas
 const LEVEL_API_BASE := "https://codecade.co.za/tag/api/levels"
+const GAME_ASSETS_API_BASE := "https://codecade.co.za/tag/api/game-assets"
+const PUBLISH_KEY_PATH := "user://asset_publish_key.txt"
 
 # Multiple independent levels, same list-of-named-things pattern skins/hats/
 # trails already use -- "+ New Level" starts a fresh blank map, each entry
@@ -312,6 +315,8 @@ func _ready() -> void:
 	color_picker.color_changed.connect(_on_color_picked_from_wheel)
 	export_button.pressed.connect(_on_export_pressed)
 	UIStyle.style_button(export_button, UIStyle.COLOR_SHOP)
+	_load_publish_key()
+	publish_key_edit.text_changed.connect(_save_publish_key)
 	_build_big_preview()
 	canvas_holder.visible = false
 	empty_state_label.visible = true
@@ -1875,9 +1880,50 @@ func _refresh_big_preview() -> void:
 		if hat_parts.has("design"):
 			_big_preview.set_hat_override(ImageTexture.create_from_image(hat_parts["design"]))
 
+func _load_publish_key() -> void:
+	if FileAccess.file_exists(PUBLISH_KEY_PATH):
+		var f := FileAccess.open(PUBLISH_KEY_PATH, FileAccess.READ)
+		if f:
+			publish_key_edit.text = f.get_as_text().strip_edges()
+
+func _save_publish_key(_new_text: String) -> void:
+	var f := FileAccess.open(PUBLISH_KEY_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(publish_key_edit.text.strip_edges())
+
+## Pushes one of the game's own built-in art categories (tiles/icons/
+## mode_buttons -- NOT the player-cosmetic skins/hats/trails, which already
+## publish live through their own per-entry Publish buttons above) straight
+## to the relay, gated by the key in publish_key_edit -- see relay-server/
+## server.js's "HTTP: game assets" section. `body` is the request payload
+## the category's endpoint expects: {imageBase64} for tiles/icons, {images}
+## (a key->base64 dict) for mode_buttons.
+func _publish_game_asset(category: String, body: Dictionary) -> Dictionary:
+	var key := publish_key_edit.text.strip_edges()
+	if key.is_empty():
+		return {"ok": false, "error": "Enter a publish key first."}
+	body["key"] = key
+	var req := HTTPRequest.new()
+	add_child(req)
+	var err := req.request(
+		"%s/%s/publish" % [GAME_ASSETS_API_BASE, category], ["Content-Type: application/json"], HTTPClient.METHOD_POST, JSON.stringify(body)
+	)
+	if err != OK:
+		req.queue_free()
+		return {"ok": false, "error": "Couldn't start the request."}
+	var response: Array = await req.request_completed
+	req.queue_free()
+	var response_body: String = (response[3] as PackedByteArray).get_string_from_utf8()
+	var parsed = JSON.parse_string(response_body)
+	if response[1] == 200 and typeof(parsed) == TYPE_DICTIONARY:
+		return {"ok": true, "version": parsed.get("version", 0)}
+	var error_msg: String = parsed.get("error", "publish failed") if typeof(parsed) == TYPE_DICTIONARY else "publish failed"
+	return {"ok": false, "error": error_msg}
+
 func _on_export_pressed() -> void:
 	var base_dir := OS.get_executable_path().get_base_dir()
 	var status_parts: Array[String] = []
+	var publish_parts: Array[String] = []
 
 	if not _custom_skins.is_empty():
 		var skins_out_dir := base_dir.path_join("edited_skins")
@@ -1931,6 +1977,10 @@ func _on_export_pressed() -> void:
 			f3.store_string(TILE_INSTRUCTIONS_TEXT)
 		status_parts.append(tiles_out_dir)
 
+		status_label.text = "Publishing tiles..."
+		var tiles_result := await _publish_game_asset("tiles", {"imageBase64": Marshalls.raw_to_base64(atlas.save_png_to_buffer())})
+		publish_parts.append("tiles (v%d)" % tiles_result.get("version", 0) if tiles_result.get("ok", false) else "tiles failed: %s" % tiles_result.get("error", ""))
+
 	if not _icon_images.is_empty():
 		var icons_out_dir := base_dir.path_join("edited_icons")
 		DirAccess.make_dir_recursive_absolute(icons_out_dir)
@@ -1942,6 +1992,10 @@ func _on_export_pressed() -> void:
 		if f4:
 			f4.store_string(ICON_INSTRUCTIONS_TEXT)
 		status_parts.append(icons_out_dir)
+
+		status_label.text = "Publishing icons..."
+		var icons_result := await _publish_game_asset("icons", {"imageBase64": Marshalls.raw_to_base64(atlas.save_png_to_buffer())})
+		publish_parts.append("icons (v%d)" % icons_result.get("version", 0) if icons_result.get("ok", false) else "icons failed: %s" % icons_result.get("error", ""))
 
 	if not _button_art_images.is_empty():
 		# One file per mode (not one shared atlas the way icons/tiles are) --
@@ -1956,10 +2010,32 @@ func _on_export_pressed() -> void:
 			f5.store_string(MODE_BUTTON_INSTRUCTIONS_TEXT)
 		status_parts.append(buttons_out_dir)
 
+		# Unlike the tiles/icons atlas (a fixed-layout strip that must always
+		# publish whole), mode button art is 3 fully independent images -- only
+		# send the ones actually painted (or already loaded from a prior
+		# override), so exporting after touching up just one mode doesn't
+		# publish the other two's still-blank canvases over whatever's live.
+		var images_payload := {}
+		for i in _button_art_images.size():
+			if _image_has_content(_button_art_images[i]):
+				images_payload[MODE_BUTTON_KEYS[i]] = Marshalls.raw_to_base64(_button_art_images[i].save_png_to_buffer())
+		if not images_payload.is_empty():
+			status_label.text = "Publishing mode button art..."
+			var buttons_result := await _publish_game_asset("mode_buttons", {"images": images_payload})
+			publish_parts.append("mode buttons (v%d)" % buttons_result.get("version", 0) if buttons_result.get("ok", false) else "mode buttons failed: %s" % buttons_result.get("error", ""))
+
 	if status_parts.is_empty():
 		status_label.text = "Nothing to export yet -- create a skin, hat, or trail first."
-	else:
+	elif publish_parts.is_empty():
 		status_label.text = "Exported to: " + ", ".join(status_parts)
+	else:
+		status_label.text = "Exported to: %s. Published live: %s." % [", ".join(status_parts), ", ".join(publish_parts)]
+
+## Any non-fully-transparent pixel counts as "actually painted" -- a freshly
+## created blank canvas (see _load_button_art_images) is 100% alpha=0.
+func _image_has_content(img: Image) -> bool:
+	var used_rect := img.get_used_rect()
+	return used_rect.size.x > 0 and used_rect.size.y > 0
 
 func _safe_filename(display_name: String, fallback_id: String) -> String:
 	var safe := display_name.strip_edges().to_lower().replace(" ", "_")

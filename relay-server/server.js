@@ -92,6 +92,24 @@ const MAX_PLATFORM_PERIOD_SEC = 60.0;
 // limit never reaches this handler at all, so this can't usefully exceed it).
 const MAX_LEVEL_UPLOAD_BYTES = 150 * 1024;
 
+// Live-updatable *built-in* game art -- distinct from the player-drawn
+// custom skins/hats/trails/levels above (those are opt-in per-player
+// cosmetics anyone can publish freely). These three are the game's own
+// default look (tile textures, menu badge icons, whole mode-button art),
+// shared by every player -- so unlike the cosmetic uploads, publishing here
+// is gated by ASSET_PUBLISH_KEY (see verifyAssetKey below), not just rate
+// limiting. See game/tools/art_tool.gd's Export Edits button (the one place
+// that calls these) and game/net/game_asset_updater.gd on the client side
+// (checks the manifest on launch, offers to download whatever changed).
+const GAME_ASSETS_DIR = path.join(DATA_DIR, 'game_assets');
+const GAME_ASSETS_MANIFEST_PATH = path.join(DATA_DIR, 'game_assets_manifest.json');
+const ASSET_PUBLISH_KEY = process.env.ASSET_PUBLISH_KEY || '';
+const GAME_ASSET_CATEGORIES = ['tiles', 'icons', 'mode_buttons'];
+const MODE_BUTTON_KEYS = ['online', 'local', 'sandbox']; // mirrors art_tool.gd's MODE_BUTTON_KEYS
+// Atlases (tiles/icons) and 3 whole mode-button images together comfortably
+// clear this with room to spare, well under the 1mb express.json cap above.
+const MAX_ASSET_UPLOAD_BYTES = 400 * 1024;
+
 // Reads a PNG's declared width/height straight from its IHDR chunk (always
 // the first chunk, always 8-byte signature + 4-byte length + 4-byte "IHDR"
 // + data) rather than pulling in an image-decoding dependency -- this trusts
@@ -110,6 +128,28 @@ fs.mkdirSync(SKIN_IMAGE_DIR, { recursive: true });
 fs.mkdirSync(LEVEL_DATA_DIR, { recursive: true });
 const MATCHES_DIR = path.join(DATA_DIR, 'matches'); // one file per match, mirrors SKIN_IMAGE_DIR/LEVEL_DATA_DIR's one-file-per-id pattern
 fs.mkdirSync(MATCHES_DIR, { recursive: true });
+fs.mkdirSync(path.join(GAME_ASSETS_DIR, 'mode_buttons'), { recursive: true });
+
+function loadGameAssetsManifest() {
+  try { return JSON.parse(fs.readFileSync(GAME_ASSETS_MANIFEST_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+let gameAssetsManifest = loadGameAssetsManifest(); // category -> { version, updatedAt }
+
+function saveGameAssetsManifest() {
+  fs.writeFileSync(GAME_ASSETS_MANIFEST_PATH, JSON.stringify(gameAssetsManifest));
+}
+
+// Constant-time against timing attacks (same approach as verifyPassword
+// above), and fails closed: an unset key on the server rejects every
+// publish rather than accepting an empty key from the caller.
+function verifyAssetKey(candidateKey) {
+  if (!ASSET_PUBLISH_KEY) return false;
+  const a = Buffer.from(String(candidateKey || ''));
+  const b = Buffer.from(ASSET_PUBLISH_KEY);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
 
 // One-time migration from the old combined per-client format
 // ({ clientId: { selected, custom: [{id, name}] } }), from back when any
@@ -486,7 +526,7 @@ app.get('/api/servers', (req, res) => {
 });
 
 // ─── HTTP: skins ──────────────────────────────────────────────────────────────
-app.use(express.json({ limit: '256kb' }));
+app.use(express.json({ limit: '1mb' })); // was 256kb -- game-asset atlas publishes (see "HTTP: game assets" below) run bigger than any single skin/hat upload
 
 // The shared catalog of server-curated + player-drawn custom skins -- every
 // client sees the same list. Hats, trails, and levels live in the same
@@ -731,10 +771,12 @@ function isValidLevelData(data) {
   for (const t of tiles) {
     if (!Array.isArray(t) || t.length < 3) return false;
     if (typeof t[0] !== 'number' || typeof t[1] !== 'number' || typeof t[2] !== 'number') return false;
-    // 9 atlas tiles (3 base types x 3 art variants -- see build_tileset.gd),
-    // not 3; this used to cap at 2, silently rejecting a publish that used
-    // any Corner/Internal variant tile.
-    if (t[2] < 0 || t[2] > 8) return false;
+    // 11 atlas tiles: 3 base types x 3 art variants (indices 0-8, see
+    // build_tileset.gd) plus 2 special behavior tiles appended after them,
+    // Ice and Bouncy (indices 9-10, see tile_index()/EXTRA_TILE_NAMES in
+    // art_tool.gd). This was previously capped at 8, silently rejecting any
+    // publish that placed an Ice or Bouncy tile.
+    if (t[2] < 0 || t[2] > 10) return false;
   }
   for (const s of spawns) {
     if (!Array.isArray(s) || s.length < 2) return false;
@@ -795,6 +837,73 @@ app.get('/api/levels/data/:levelId', (req, res) => {
   res.set('Content-Type', 'application/json');
   res.set('Cache-Control', 'public, max-age=86400');
   fs.createReadStream(dataPath).pipe(res);
+});
+
+// ─── HTTP: game assets (built-in art, not player cosmetics) ───────────────────
+// One version counter per category, bumped on every publish -- the client's
+// GameAssetUpdater compares these against what it last downloaded (see
+// game/net/game_asset_updater.gd) and only fetches a category that actually
+// changed.
+app.get('/api/game-assets/manifest', (req, res) => {
+  res.json(gameAssetsManifest);
+});
+
+app.post('/api/game-assets/:category/publish', (req, res) => {
+  const category = req.params.category;
+  if (!GAME_ASSET_CATEGORIES.includes(category)) return res.status(404).json({ error: 'unknown category' });
+  if (!verifyAssetKey(req.body.key)) return res.status(401).json({ error: 'bad or missing publish key' });
+  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+
+  if (category === 'mode_buttons') {
+    const images = req.body.images;
+    if (!images || typeof images !== 'object') return res.status(400).json({ error: 'images required' });
+    const decoded = {};
+    for (const key of MODE_BUTTON_KEYS) {
+      if (!images[key]) continue;
+      let bytes;
+      try { bytes = Buffer.from(String(images[key]), 'base64'); } catch { return res.status(400).json({ error: `bad image data for ${key}` }); }
+      if (bytes.length === 0 || bytes.length > MAX_ASSET_UPLOAD_BYTES || !pngDimensions(bytes)) {
+        return res.status(400).json({ error: `image too large, empty, or not a PNG for ${key}` });
+      }
+      decoded[key] = bytes;
+    }
+    if (Object.keys(decoded).length === 0) return res.status(400).json({ error: 'no valid images provided' });
+    for (const [key, bytes] of Object.entries(decoded)) {
+      fs.writeFileSync(path.join(GAME_ASSETS_DIR, 'mode_buttons', key + '.png'), bytes);
+    }
+  } else {
+    let bytes;
+    try { bytes = Buffer.from(String(req.body.imageBase64 || ''), 'base64'); } catch { return res.status(400).json({ error: 'bad image data' }); }
+    if (bytes.length === 0 || bytes.length > MAX_ASSET_UPLOAD_BYTES || !pngDimensions(bytes)) {
+      return res.status(400).json({ error: 'image too large, empty, or not a PNG' });
+    }
+    fs.writeFileSync(path.join(GAME_ASSETS_DIR, category + '.png'), bytes);
+  }
+
+  const prevVersion = (gameAssetsManifest[category] && gameAssetsManifest[category].version) || 0;
+  gameAssetsManifest[category] = { version: prevVersion + 1, updatedAt: Date.now() };
+  saveGameAssetsManifest();
+  res.json({ ok: true, version: gameAssetsManifest[category].version });
+});
+
+app.get('/api/game-assets/:category/download', (req, res) => {
+  const category = req.params.category;
+  if (!GAME_ASSET_CATEGORIES.includes(category) || category === 'mode_buttons') return res.status(404).end();
+  const imgPath = path.join(GAME_ASSETS_DIR, category + '.png');
+  if (!fs.existsSync(imgPath)) return res.status(404).end();
+  res.set('Content-Type', 'image/png');
+  res.set('Cache-Control', 'no-cache'); // small file, checked rarely (once per launch), always want the latest
+  fs.createReadStream(imgPath).pipe(res);
+});
+
+app.get('/api/game-assets/mode_buttons/:key/download', (req, res) => {
+  const key = req.params.key;
+  if (!MODE_BUTTON_KEYS.includes(key)) return res.status(404).end();
+  const imgPath = path.join(GAME_ASSETS_DIR, 'mode_buttons', key + '.png');
+  if (!fs.existsSync(imgPath)) return res.status(404).end();
+  res.set('Content-Type', 'image/png');
+  res.set('Cache-Control', 'no-cache');
+  fs.createReadStream(imgPath).pipe(res);
 });
 
 // ─── HTTP: ranked ─────────────────────────────────────────────────────────────
