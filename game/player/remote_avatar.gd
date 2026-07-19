@@ -16,7 +16,6 @@ class_name RemoteAvatar
 @onready var _parts: Dictionary = {
 	"body": $Visual/Body,
 }
-var _rig := LimbPhysicsRig.new()
 var _trail_emitter: TrailEmitter
 
 const LERP_WEIGHT := 0.35
@@ -42,16 +41,6 @@ var target_velocity: Vector2 = Vector2.ZERO
 var target_facing: int = 1
 var _time_since_update := 0.0
 var _was_it := false
-# The limb rig integrates every physics frame (see _physics_process below),
-# not just when a new set_state() arrives -- state updates only land once
-# per network tick, but the spring simulation needs to keep advancing every
-# frame in between for the motion to actually look continuous rather than
-# stepping. These hold the last state a real update reported, for
-# _physics_process to keep feeding the rig from in the meantime.
-var _last_on_floor := true
-var _last_is_dashing := false
-var _last_is_climbing := false
-var _last_action_id := 0
 
 func _ready() -> void:
 	if name_label:
@@ -77,8 +66,6 @@ func _physics_process(delta: float) -> void:
 	var extrapolated := target_position + target_velocity * minf(_time_since_update, MAX_EXTRAPOLATION_SEC)
 	global_position = global_position.lerp(extrapolated, LERP_WEIGHT)
 
-	_rig.update(delta, target_velocity, _last_on_floor, _last_is_dashing, _last_is_climbing, Player.MOVE_SPEED)
-	_rig.apply_to(_parts["body"], visual)
 	_trail_emitter.update(delta, target_velocity.length())
 
 ## Sets which skin this avatar displays, by id -- called once by net_game.gd
@@ -126,7 +113,11 @@ func set_hat_texture_override(tex: Texture2D) -> void:
 	if _hat:
 		_hat.texture = tex
 
-func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_climbing: bool, on_floor: bool, action: String, action_id: int, is_it: bool) -> void:
+## `on_floor`/`action`/`action_id` are still part of the state dict shape
+## server_match.gd sends (see player.gd's current_action/current_action_id
+## comment) but have no visual consumer here anymore -- the square isn't
+## animated by physics, so there's no rig left to feed or kick with them.
+func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, _is_climbing: bool, _on_floor: bool, _action: String, _action_id: int, is_it: bool) -> void:
 	target_position = pos
 	target_velocity = vel
 	target_facing = facing
@@ -139,18 +130,8 @@ func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, is_cli
 		var flip := absf(visual.scale.x) * (1.0 if facing >= 0 else -1.0)
 		visual.scale.x = flip
 	# Rising edge only -- state updates arrive every network tick, so without
-	# this a still-"it" peer would restart the flinch kick on every single
-	# update instead of applying it once when tag actually happens.
+	# this a still-"it" peer would replay the tag SFX on every single update
+	# instead of once when tag actually happens.
 	if is_it and not _was_it:
-		_rig.kick("tag_reaction")
 		SFX.play("tag")
 	_was_it = is_it
-	# A fresh wall-jump/dash-jump id is likewise a one-shot kick, not a
-	# continuous state -- see player.gd's current_action_id comment for why
-	# this compares ids instead of "did the action string change."
-	if action_id != _last_action_id:
-		_last_action_id = action_id
-		_rig.kick(action)
-	_last_on_floor = on_floor
-	_last_is_dashing = is_dashing
-	_last_is_climbing = is_climbing
