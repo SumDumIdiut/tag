@@ -30,6 +30,7 @@ func _ready() -> void:
 	for mode in MODES:
 		mode_bar.add_child(_build_bar(mode))
 	_build_shop_button()
+	_build_account_button()
 	_check_for_update()
 
 func _check_for_update() -> void:
@@ -147,6 +148,34 @@ func _build_shop_button() -> void:
 	var icon := ModeIconScene.new()
 	icon.icon_type = "tag"
 	icon.icon_color = UIStyle.COLOR_SHOP
+	icon.custom_minimum_size = Vector2(18, 20)
+	icon_wrap.add_child(icon)
+
+	add_child(btn)
+
+## Mirrors _build_shop_button()'s corner-button treatment, opposite corner --
+## logging in is optional and never gates play (see login_screen.gd), so it
+## gets the same "always available, doesn't compete with the three real
+## mode bars" placement as Customize.
+func _build_account_button() -> void:
+	var btn := Button.new()
+	btn.text = "  Account"
+	btn.custom_minimum_size = Vector2(150, 44)
+	btn.focus_mode = Control.FOCUS_ALL
+	UIStyle.style_button(btn, UIStyle.COLOR_ONLINE, 10)
+	btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	btn.position = Vector2(20, 24)
+	btn.pressed.connect(_on_mode_pressed.bind("res://main/login_screen.tscn"))
+
+	var icon_wrap := Control.new()
+	icon_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon_wrap.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	icon_wrap.position = Vector2(14, -10)
+	icon_wrap.custom_minimum_size = Vector2(20, 20)
+	btn.add_child(icon_wrap)
+	var icon := ModeIconScene.new()
+	icon.icon_type = "star"
+	icon.icon_color = UIStyle.COLOR_ONLINE
 	icon.custom_minimum_size = Vector2(18, 20)
 	icon_wrap.add_child(icon)
 
