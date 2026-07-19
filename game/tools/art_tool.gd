@@ -417,7 +417,7 @@ func _build_sidebar() -> void:
 	part_list.add_child(_custom_skins_list)
 	var add_skin_btn := Button.new()
 	add_skin_btn.text = "+ New Skin"
-	UIStyle.style_button(add_skin_btn, UIStyle.COLOR_ONLINE, 8)
+	UIStyle.style_button(add_skin_btn, UIStyle.COLOR_ONLINE, 8, false)
 	add_skin_btn.pressed.connect(_on_add_skin_pressed)
 	part_list.add_child(add_skin_btn)
 
@@ -431,7 +431,7 @@ func _build_sidebar() -> void:
 	part_list.add_child(_custom_hats_list)
 	var add_hat_btn := Button.new()
 	add_hat_btn.text = "+ New Hat"
-	UIStyle.style_button(add_hat_btn, UIStyle.COLOR_RANKED, 8)
+	UIStyle.style_button(add_hat_btn, UIStyle.COLOR_RANKED, 8, false)
 	add_hat_btn.pressed.connect(_on_add_hat_pressed)
 	part_list.add_child(add_hat_btn)
 
@@ -445,7 +445,7 @@ func _build_sidebar() -> void:
 	part_list.add_child(_custom_trails_list)
 	var add_trail_btn := Button.new()
 	add_trail_btn.text = "+ New Trail"
-	UIStyle.style_button(add_trail_btn, UIStyle.COLOR_LOCAL, 8)
+	UIStyle.style_button(add_trail_btn, UIStyle.COLOR_LOCAL, 8, false)
 	add_trail_btn.pressed.connect(_on_add_trail_pressed)
 	part_list.add_child(add_trail_btn)
 
@@ -516,13 +516,13 @@ func _build_skin_entry(id: String) -> Control:
 	select_btn.button_pressed = (_current_context == "skin" and _current_id == id)
 	select_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	select_btn.size_flags_horizontal = SIZE_EXPAND_FILL
-	UIStyle.style_button(select_btn, UIStyle.COLOR_SANDBOX, 8)
+	UIStyle.style_button(select_btn, UIStyle.COLOR_SANDBOX, 8, false)
 	select_btn.pressed.connect(_show_part.bind(_custom_skins[id], "body", "skin", id))
 	header.add_child(select_btn)
 	var publish_btn := Button.new()
 	publish_btn.text = "Publish"
 	publish_btn.custom_minimum_size = Vector2(72, 0)
-	UIStyle.style_button(publish_btn, UIStyle.COLOR_ONLINE, 8)
+	UIStyle.style_button(publish_btn, UIStyle.COLOR_ONLINE, 8, false)
 	publish_btn.pressed.connect(_on_publish_skin_pressed.bind(id, publish_btn))
 	header.add_child(publish_btn)
 	header.add_child(_delete_button(func():
@@ -566,13 +566,13 @@ func _build_hat_entry(id: String) -> Control:
 	select_btn.button_pressed = (_current_context == "hat" and _current_id == id)
 	select_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	select_btn.size_flags_horizontal = SIZE_EXPAND_FILL
-	UIStyle.style_button(select_btn, UIStyle.COLOR_SANDBOX, 8)
+	UIStyle.style_button(select_btn, UIStyle.COLOR_SANDBOX, 8, false)
 	select_btn.pressed.connect(_show_part.bind(_custom_hats[id], "design", "hat", id))
 	header.add_child(select_btn)
 	var publish_btn := Button.new()
 	publish_btn.text = "Publish"
 	publish_btn.custom_minimum_size = Vector2(72, 0)
-	UIStyle.style_button(publish_btn, UIStyle.COLOR_ONLINE, 8)
+	UIStyle.style_button(publish_btn, UIStyle.COLOR_ONLINE, 8, false)
 	publish_btn.pressed.connect(_on_publish_hat_pressed.bind(id, publish_btn))
 	header.add_child(publish_btn)
 	header.add_child(_delete_button(func():
@@ -616,13 +616,13 @@ func _build_trail_entry(id: String) -> Control:
 	select_btn.button_pressed = (_current_context == "trail" and _current_id == id)
 	select_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	select_btn.size_flags_horizontal = SIZE_EXPAND_FILL
-	UIStyle.style_button(select_btn, UIStyle.COLOR_SANDBOX, 8)
+	UIStyle.style_button(select_btn, UIStyle.COLOR_SANDBOX, 8, false)
 	select_btn.pressed.connect(_show_part.bind(_custom_trails[id], "design", "trail", id))
 	header.add_child(select_btn)
 	var publish_btn := Button.new()
 	publish_btn.text = "Publish"
 	publish_btn.custom_minimum_size = Vector2(72, 0)
-	UIStyle.style_button(publish_btn, UIStyle.COLOR_ONLINE, 8)
+	UIStyle.style_button(publish_btn, UIStyle.COLOR_ONLINE, 8, false)
 	publish_btn.pressed.connect(_on_publish_trail_pressed.bind(id, publish_btn))
 	header.add_child(publish_btn)
 	header.add_child(_delete_button(func():
@@ -651,7 +651,7 @@ func _delete_button(on_delete: Callable) -> Button:
 	var btn := Button.new()
 	btn.text = "x"
 	btn.custom_minimum_size = Vector2(28, 0)
-	UIStyle.style_button(btn, UIStyle.COLOR_RANKED, 8)
+	UIStyle.style_button(btn, UIStyle.COLOR_RANKED, 8, false)
 	btn.pressed.connect(on_delete)
 	return btn
 
@@ -908,6 +908,7 @@ func _build_shared_toolbar(container: Container) -> void:
 	alpha_slider.step = 0.05
 	alpha_slider.value = 1.0
 	alpha_slider.custom_minimum_size = Vector2(90, 0)
+	UIStyle.style_slider(alpha_slider, UIStyle.COLOR_LOCAL)
 	alpha_slider.value_changed.connect(func(v: float):
 		_brush_alpha = v
 		_apply_tool_state()
@@ -1016,7 +1017,7 @@ func _build_level_page() -> void:
 	levels_box.add_child(_custom_levels_list)
 	var add_level_btn := Button.new()
 	add_level_btn.text = "+ New Level"
-	UIStyle.style_button(add_level_btn, UIStyle.COLOR_SANDBOX, 8)
+	UIStyle.style_button(add_level_btn, UIStyle.COLOR_SANDBOX, 8, false)
 	add_level_btn.pressed.connect(_on_add_level_pressed)
 	levels_box.add_child(add_level_btn)
 
@@ -1205,7 +1206,7 @@ func _build_level_entry(id: String) -> Control:
 	select_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	select_btn.size_flags_horizontal = SIZE_EXPAND_FILL
 	select_btn.clip_text = true
-	UIStyle.style_button(select_btn, UIStyle.COLOR_SANDBOX, 8)
+	UIStyle.style_button(select_btn, UIStyle.COLOR_SANDBOX, 8, false)
 	select_btn.pressed.connect(_show_level.bind(id))
 	box.add_child(select_btn)
 	box.add_child(_delete_button(func():
@@ -1447,7 +1448,7 @@ func _build_tiles_page() -> void:
 			btn.button_group = tile_group
 			btn.custom_minimum_size = Vector2(0, 36)
 			btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			UIStyle.style_button(btn, TileCanvas.TILE_COLORS[idx], 8)
+			UIStyle.style_button(btn, TileCanvas.TILE_COLORS[idx], 8, false)
 			btn.pressed.connect(_show_tile.bind(idx))
 			variant_row.add_child(btn)
 			_tile_select_buttons[idx] = btn
@@ -1464,7 +1465,7 @@ func _build_tiles_page() -> void:
 		btn.button_group = tile_group
 		btn.custom_minimum_size = Vector2(0, 36)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		UIStyle.style_button(btn, TileCanvas.TILE_COLORS[idx], 8)
+		UIStyle.style_button(btn, TileCanvas.TILE_COLORS[idx], 8, false)
 		btn.pressed.connect(_show_tile.bind(idx))
 		extra_row.add_child(btn)
 		_tile_select_buttons[idx] = btn
@@ -1590,7 +1591,7 @@ func _build_icons_page() -> void:
 		btn.toggle_mode = true
 		btn.button_group = icon_group
 		btn.custom_minimum_size = Vector2(0, 40)
-		UIStyle.style_button(btn, UIStyle.COLOR_LOCAL, 10)
+		UIStyle.style_button(btn, UIStyle.COLOR_LOCAL, 10, false)
 		btn.pressed.connect(_show_icon.bind(i))
 		select_box.add_child(btn)
 		_icon_select_buttons.append(btn)
@@ -1610,7 +1611,7 @@ func _build_icons_page() -> void:
 		btn.toggle_mode = true
 		btn.button_group = icon_group
 		btn.custom_minimum_size = Vector2(0, 40)
-		UIStyle.style_button(btn, UIStyle.COLOR_SANDBOX, 10)
+		UIStyle.style_button(btn, UIStyle.COLOR_SANDBOX, 10, false)
 		btn.pressed.connect(_show_button_art.bind(i))
 		select_box.add_child(btn)
 		_button_art_select_buttons.append(btn)
