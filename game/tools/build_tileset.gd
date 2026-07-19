@@ -41,7 +41,18 @@ const TILES := [
 	{"name": "boundary internal", "color": Color(0.58, 0.58, 0.63, 1)},
 	{"name": "pillar internal", "color": Color(0.68, 0.58, 0.42, 1)},
 	{"name": "platform internal", "color": Color(0.73, 0.73, 0.78, 1)},
+	# Two behaviorally-real floor types, appended after the 9 above rather
+	# than woven into the type/variant grid -- each is a single flat tile,
+	# not a 3-variant Piece/Corner/Internal set (v1 scope, see player.gd's
+	# tile-behavior lookup), and appending (never renumbering/inserting)
+	# keeps every index 0-8 above meaning exactly what it always has for
+	# already-published levels. "behavior" is this tile's value in the new
+	# custom data layer below -- every other tile leaves it at the default
+	# empty string, meaning "ordinary floor, flat GROUND_FRICTION/no effect".
+	{"name": "ice", "color": Color(0.65, 0.85, 0.95, 1), "behavior": "ice"},
+	{"name": "bouncy", "color": Color(0.95, 0.35, 0.55, 1), "behavior": "bouncy"},
 ]
+const BEHAVIOR_LAYER_NAME := "behavior"
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://assets/tiles"))
@@ -51,6 +62,18 @@ func _ready() -> void:
 		atlas.fill_rect(Rect2i(i * TILE_SIZE, 0, TILE_SIZE, TILE_SIZE), TILES[i].color)
 	atlas.save_png(OUT_ATLAS)
 	print("wrote atlas: ", OUT_ATLAS)
+
+	# The atlas' pixel width changes whenever TILES.size() changes (adding a
+	# tile widens it) -- a .import file left over from a previous, different-
+	# sized run would make the reload below still report the OLD dimensions,
+	# and TileSetAtlasSource.create_tile() further down would then reject any
+	# tile index only valid at the new width ("outside the texture"). Forcing
+	# a fresh import (deleting the cached .import metadata, if any) before
+	# reloading keeps this idempotent even when the atlas itself resizes, not
+	# just when it's recolored in place.
+	var import_meta_path := OUT_ATLAS + ".import"
+	if FileAccess.file_exists(import_meta_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(import_meta_path))
 
 	# Loaded back rather than kept as the in-memory ImageTexture just built
 	# -- assigning that directly would make the saved TileSet embed a raw
@@ -70,6 +93,15 @@ func _ready() -> void:
 	# to detect anything itself, so the mask stays empty.
 	tileset.set_physics_layer_collision_layer(phys_layer_idx, 1)
 	tileset.set_physics_layer_collision_mask(phys_layer_idx, 0)
+
+	# Per-tile behavior flag (see player.gd's post-move floor-tile lookup) --
+	# a String rather than an enum/int so a friend adding a new behavior
+	# later doesn't need this build script to know its numeric value ahead
+	# of time, just a matching string in both places.
+	tileset.add_custom_data_layer()
+	var behavior_layer_idx := tileset.get_custom_data_layers_count() - 1
+	tileset.set_custom_data_layer_name(behavior_layer_idx, BEHAVIOR_LAYER_NAME)
+	tileset.set_custom_data_layer_type(behavior_layer_idx, TYPE_STRING)
 
 	var source := TileSetAtlasSource.new()
 	source.texture = tex
@@ -91,6 +123,9 @@ func _ready() -> void:
 		var tile_data := source.get_tile_data(coords, 0)
 		tile_data.add_collision_polygon(phys_layer_idx)
 		tile_data.set_collision_polygon_points(phys_layer_idx, 0, full_tile_poly)
+		var behavior: String = TILES[i].get("behavior", "")
+		if not behavior.is_empty():
+			tile_data.set_custom_data(BEHAVIOR_LAYER_NAME, behavior)
 
 	var err := ResourceSaver.save(tileset, OUT_TILESET)
 	print("wrote tileset: ", OUT_TILESET, " err=", err)

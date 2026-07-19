@@ -15,14 +15,16 @@ const LevelData := preload("res://levels/level_data.gd")
 # real in-game tile size, not an arbitrary editor-only value.
 const TILE_SIZE_PX := 10
 
-# Same 9 colors tag_tiles.png's atlas uses (see build_tileset.gd's TILES),
-# so the painted grid reads as a preview of the real tiles rather than
-# arbitrary editor colors. Index = variant_index * 3 + type_index (variant-
-# major -- see build_tileset.gd's comment on why: it keeps indices 0/1/2
-# exactly Boundary/Pillar/Platform's Piece variant, matching the original
-# 3-tile atlas for backward compatibility with already-placed/published
-# data), type order always [Boundary, Pillar, Platform], variant order
-# always [Piece, Corner, Internal].
+# Same colors tag_tiles.png's atlas uses (see build_tileset.gd's TILES), so
+# the painted grid reads as a preview of the real tiles rather than
+# arbitrary editor colors. Indices 0-8: variant_index * 3 + type_index
+# (variant-major -- see build_tileset.gd's comment on why: it keeps indices
+# 0/1/2 exactly Boundary/Pillar/Platform's Piece variant, matching the
+# original 3-tile atlas for backward compatibility with already-placed/
+# published data), type order always [Boundary, Pillar, Platform], variant
+# order always [Piece, Corner, Internal]. Indices 9-10 (Ice/Bouncy) are
+# appended flat, outside that type/variant grid entirely -- see
+# TILE_TYPE_NAMES below, they're not part of it.
 const TILE_COLORS := [
 	Color(0.5, 0.5, 0.55), # 0: boundary piece
 	Color(0.6, 0.5, 0.35), # 1: pillar piece
@@ -33,6 +35,8 @@ const TILE_COLORS := [
 	Color(0.58, 0.58, 0.63), # 6: boundary internal
 	Color(0.68, 0.58, 0.42), # 7: pillar internal
 	Color(0.73, 0.73, 0.78), # 8: platform internal
+	Color(0.65, 0.85, 0.95), # 9: ice
+	Color(0.95, 0.35, 0.55), # 10: bouncy
 ]
 const EMPTY_COLOR := Color(0.09, 0.09, 0.14)
 const GRID_LINE_COLOR := Color(1, 1, 1, 0.04)
