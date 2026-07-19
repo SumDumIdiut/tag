@@ -80,6 +80,12 @@ const MAX_LEVELS_PER_CLIENT = 5;
 const MAX_LEVEL_TILES = 6000;
 const MIN_LEVEL_SPAWN_POINTS = 2;
 const MAX_LEVEL_SPAWN_POINTS = 16;
+// Mirrors LevelData's own MAX_PLATFORMS/MIN_PERIOD_SEC/MAX_PERIOD_SEC in
+// game/levels/level_data.gd -- kept in sync by hand, same tradeoff already
+// accepted for PART_DIMENSIONS/tile caps above.
+const MAX_LEVEL_PLATFORMS = 20;
+const MIN_PLATFORM_PERIOD_SEC = 0.5;
+const MAX_PLATFORM_PERIOD_SEC = 60.0;
 // A full 6000-tile level's JSON is ~85-90KB -- this just needs to comfortably
 // clear that with room to spare, while staying under the global
 // express.json({limit: '256kb'}) body-parser cap below (a request over that
@@ -718,18 +724,31 @@ app.get('/api/trails/image/:trailId', (req, res) => {
 // weird places" no matter how it was crafted.
 function isValidLevelData(data) {
   if (!data || typeof data !== 'object') return false;
-  const { tiles, spawn_points: spawns } = data;
+  const { tiles, spawn_points: spawns, platforms } = data;
   if (!Array.isArray(tiles) || !Array.isArray(spawns)) return false;
   if (tiles.length > MAX_LEVEL_TILES) return false;
   if (spawns.length < MIN_LEVEL_SPAWN_POINTS || spawns.length > MAX_LEVEL_SPAWN_POINTS) return false;
   for (const t of tiles) {
     if (!Array.isArray(t) || t.length < 3) return false;
     if (typeof t[0] !== 'number' || typeof t[1] !== 'number' || typeof t[2] !== 'number') return false;
-    if (t[2] < 0 || t[2] > 2) return false;
+    // 9 atlas tiles (3 base types x 3 art variants -- see build_tileset.gd),
+    // not 3; this used to cap at 2, silently rejecting a publish that used
+    // any Corner/Internal variant tile.
+    if (t[2] < 0 || t[2] > 8) return false;
   }
   for (const s of spawns) {
     if (!Array.isArray(s) || s.length < 2) return false;
     if (typeof s[0] !== 'number' || typeof s[1] !== 'number') return false;
+  }
+  if (platforms !== undefined) {
+    if (!Array.isArray(platforms) || platforms.length > MAX_LEVEL_PLATFORMS) return false;
+    for (const p of platforms) {
+      if (!p || typeof p !== 'object') return false;
+      const { start, end, period_sec: period } = p;
+      if (!Array.isArray(start) || start.length < 2 || typeof start[0] !== 'number' || typeof start[1] !== 'number') return false;
+      if (!Array.isArray(end) || end.length < 2 || typeof end[0] !== 'number' || typeof end[1] !== 'number') return false;
+      if (typeof period !== 'number' || period < MIN_PLATFORM_PERIOD_SEC || period > MAX_PLATFORM_PERIOD_SEC) return false;
+    }
   }
   return true;
 }
@@ -750,6 +769,12 @@ app.post('/api/levels/:clientId/upload', (req, res) => {
 
   const name = sanitizeName(req.body.name);
   const data = { tiles: req.body.tiles, spawn_points: req.body.spawn_points };
+  // platforms is optional -- only include it at all if the client actually
+  // sent one, so older/simpler level uploads keep publishing exactly the
+  // same {tiles, spawn_points}-only JSON they always did.
+  if (Array.isArray(req.body.platforms) && req.body.platforms.length > 0) {
+    data.platforms = req.body.platforms;
+  }
   if (!isValidLevelData(data)) return res.status(400).json({ error: 'invalid level data' });
   const json = JSON.stringify(data);
   if (Buffer.byteLength(json) > MAX_LEVEL_UPLOAD_BYTES) return res.status(400).json({ error: 'level too large' });
