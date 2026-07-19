@@ -45,6 +45,7 @@ var _ranked_lobby_id := -1 # the single reserved lobby a ranked server auto-fill
 var _peer_username := {} # peer_id -> String
 var _peer_skin_id := {}  # peer_id -> String
 var _peer_hat_id := {}   # peer_id -> String, "" means no hat
+var _peer_trail_id := {} # peer_id -> String, "" means no trail
 var _peer_client_id := {} # peer_id -> String, the anonymous cosmetics/ranked identity -- server-side only, never broadcast to other clients
 var _peer_lobby := {}    # peer_id -> lobby_id
 var _matches := {}       # lobby_id -> ServerMatch
@@ -164,7 +165,7 @@ func _on_connected_to_server() -> void:
 		_pending_as_spectator = false
 		rpc_id(1, "_server_register_spectator")
 	else:
-		rpc_id(1, "_server_register_player", username, SkinCatalog.selected_skin_id, SkinCatalog.selected_hat_id, SkinCatalog.client_id)
+		rpc_id(1, "_server_register_player", username, SkinCatalog.selected_skin_id, SkinCatalog.selected_hat_id, SkinCatalog.selected_trail_id, SkinCatalog.client_id)
 	connected_to_server.emit()
 
 func _on_connection_failed() -> void:
@@ -179,6 +180,7 @@ func _on_peer_disconnected(id: int) -> void:
 	_peer_username.erase(id)
 	_peer_skin_id.erase(id)
 	_peer_hat_id.erase(id)
+	_peer_trail_id.erase(id)
 	_peer_client_id.erase(id)
 	var lobby_id: int = _peer_lobby.get(id, -1)
 	if lobby_id != -1:
@@ -192,18 +194,19 @@ func _on_peer_disconnected(id: int) -> void:
 # ==================== Server-side RPC endpoints (client -> server) ====================
 
 @rpc("any_peer", "reliable")
-func _server_register_player(display_name: String, skin_id: String, hat_id: String = "", client_id: String = "") -> void:
+func _server_register_player(display_name: String, skin_id: String, hat_id: String = "", trail_id: String = "", client_id: String = "") -> void:
 	if not is_server:
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	_peer_username[sender] = _sanitize_username(display_name)
-	# Just the ids -- a custom skin/hat's actual image lives on the cosmetics
-	# service (codecade.co.za/tag/api/skins, /api/hats), not here, so any
-	# client that needs to render it (see roster's skin_id/hat_id in match
-	# state) fetches it directly from there itself instead of relying on
-	# peer-to-peer relay.
+	# Just the ids -- a custom skin/hat/trail's actual image lives on the
+	# cosmetics service (codecade.co.za/tag/api/skins, /api/hats, /api/trails),
+	# not here, so any client that needs to render it (see roster's skin_id/
+	# hat_id/trail_id in match state) fetches it directly from there itself
+	# instead of relying on peer-to-peer relay.
 	_peer_skin_id[sender] = skin_id
 	_peer_hat_id[sender] = hat_id
+	_peer_trail_id[sender] = trail_id
 	_peer_client_id[sender] = client_id
 	if is_ranked_server:
 		_join_ranked_lobby(sender)
@@ -415,6 +418,7 @@ func _start_match_for_lobby(lobby_id: int, ranked: bool) -> void:
 	for peer_id in members_with_extras.keys():
 		members_with_extras[peer_id]["skin_id"] = _peer_skin_id.get(peer_id, "red")
 		members_with_extras[peer_id]["hat_id"] = _peer_hat_id.get(peer_id, "")
+		members_with_extras[peer_id]["trail_id"] = _peer_trail_id.get(peer_id, "")
 		members_with_extras[peer_id]["client_id"] = _peer_client_id.get(peer_id, "")
 	var match_instance := ServerMatch.new(self, lobby_id, members_with_extras, ranked)
 	add_child(match_instance)

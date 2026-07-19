@@ -40,6 +40,7 @@ const SKIN_IMAGE_DIR = path.join(DATA_DIR, 'skin_images');
 const CATALOG_JSON_PATH = path.join(DATA_DIR, 'catalog.json');
 const SELECTIONS_JSON_PATH = path.join(DATA_DIR, 'selections.json');
 const HAT_SELECTIONS_JSON_PATH = path.join(DATA_DIR, 'hat_selections.json');
+const TRAIL_SELECTIONS_JSON_PATH = path.join(DATA_DIR, 'trail_selections.json');
 const LEGACY_SKINS_JSON_PATH = path.join(DATA_DIR, 'skins.json');
 const CLIENT_ID_RE = /^[a-f0-9-]{8,64}$/i;
 
@@ -62,8 +63,14 @@ const PART_DIMENSIONS = {
 // overlap the head at all (see skin_catalog.gd's HAT_OVERLAP comment on
 // the client, which this must stay in sync with).
 const HAT_DIMENSIONS = { width: 18, height: 16 };
+// A trail is a single small particle sprite the game stamps repeatedly
+// behind a moving player (see player.gd's trail emitter), not a rig-sized
+// image -- 16x16 is plenty of room to draw a distinct shape/pattern at the
+// size it's actually rendered.
+const TRAIL_DIMENSIONS = { width: 16, height: 16 };
 const MAX_CUSTOM_SKINS_PER_CLIENT = 5;
 const MAX_HATS_PER_CLIENT = 5;
+const MAX_TRAILS_PER_CLIENT = 5;
 const MAX_UPLOAD_BYTES = 100 * 1024; // generous over what a handful of tiny PNGs actually need -- just an abuse backstop
 
 // Levels live in the same catalog.json (type: 'level') as skins/hats, but
@@ -151,6 +158,16 @@ let hatSelections = loadHatSelections(); // clientId -> hatId, absent means no h
 
 function saveHatSelections() {
   fs.writeFileSync(HAT_SELECTIONS_JSON_PATH, JSON.stringify(hatSelections));
+}
+
+function loadTrailSelections() {
+  try { return JSON.parse(fs.readFileSync(TRAIL_SELECTIONS_JSON_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+let trailSelections = loadTrailSelections(); // clientId -> trailId, absent means no trail equipped
+
+function saveTrailSelections() {
+  fs.writeFileSync(TRAIL_SELECTIONS_JSON_PATH, JSON.stringify(trailSelections));
 }
 
 // ─── Ranked (ELO, ranks, matchmaking) ──────────────────────────────────────────
@@ -470,11 +487,11 @@ app.get('/api/servers', (req, res) => {
 app.use(express.json({ limit: '256kb' }));
 
 // The shared catalog of server-curated + player-drawn custom skins -- every
-// client sees the same list. Hats and levels live in the same catalog.json
-// (see readCatalog()) but are filtered out here; use /api/hats/catalog and
-// /api/levels/catalog for those.
+// client sees the same list. Hats, trails, and levels live in the same
+// catalog.json (see readCatalog()) but are filtered out here; use
+// /api/hats/catalog, /api/trails/catalog, and /api/levels/catalog for those.
 app.get('/api/skins/catalog', (req, res) => {
-  res.json(readCatalog().filter(e => e.type !== 'hat' && e.type !== 'level'));
+  res.json(readCatalog().filter(e => e.type !== 'hat' && e.type !== 'trail' && e.type !== 'level'));
 });
 
 app.get('/api/skins/:clientId', (req, res) => {
@@ -632,6 +649,70 @@ app.get('/api/hats/image/:hatId', (req, res) => {
   fs.createReadStream(imgPath).pipe(res);
 });
 
+// ─── HTTP: trails ─────────────────────────────────────────────────────────────
+// A third, independent cosmetic slot alongside skins and hats -- same
+// catalog.json (filtered by type), same client-drawn-and-uploaded model,
+// same mitigations. Like a hat, a trail is a single image (no rig parts);
+// unlike a hat it's not attached to the rig at all, just stamped repeatedly
+// behind a moving player (see player.gd).
+app.get('/api/trails/catalog', (req, res) => {
+  res.json(readCatalog().filter(e => e.type === 'trail'));
+});
+
+app.get('/api/trails/:clientId', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  res.json({ selected: trailSelections[req.params.clientId] || null });
+});
+
+app.post('/api/trails/:clientId/select', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  const trailId = req.body.trailId ? String(req.body.trailId) : null;
+  if (trailId) {
+    trailSelections[req.params.clientId] = trailId;
+  } else {
+    delete trailSelections[req.params.clientId]; // null/empty means "no trail"
+  }
+  saveTrailSelections();
+  res.json({ ok: true });
+});
+
+app.post('/api/trails/:clientId/upload', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+
+  const clientId = req.params.clientId;
+  const existingCount = readCatalog().filter(e => e.createdBy === clientId && e.type === 'trail').length;
+  if (existingCount >= MAX_TRAILS_PER_CLIENT) {
+    return res.status(400).json({ error: `max ${MAX_TRAILS_PER_CLIENT} drawn trails per client` });
+  }
+
+  const name = sanitizeName(req.body.name);
+  let bytes;
+  try { bytes = Buffer.from(String(req.body.imageBase64 || ''), 'base64'); } catch { return res.status(400).json({ error: 'bad image data' }); }
+  if (bytes.length === 0 || bytes.length > MAX_UPLOAD_BYTES) return res.status(400).json({ error: 'image too large or empty' });
+  const dims = pngDimensions(bytes);
+  if (!dims || dims.width !== TRAIL_DIMENSIONS.width || dims.height !== TRAIL_DIMENSIONS.height) {
+    return res.status(400).json({ error: `trail image must be exactly ${TRAIL_DIMENSIONS.width}x${TRAIL_DIMENSIONS.height}` });
+  }
+
+  const id = 'trail_' + crypto.randomBytes(8).toString('hex');
+  fs.writeFileSync(path.join(SKIN_IMAGE_DIR, id + '.png'), bytes);
+  const catalog = readCatalog();
+  catalog.push({ id, name, type: 'trail', createdBy: clientId, createdAt: Date.now() });
+  fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
+  res.json({ id });
+});
+
+app.get('/api/trails/image/:trailId', (req, res) => {
+  const trailId = req.params.trailId;
+  if (!/^trail_[a-f0-9]{16}$/.test(trailId)) return res.status(400).end();
+  const imgPath = path.join(SKIN_IMAGE_DIR, trailId + '.png');
+  if (!fs.existsSync(imgPath)) return res.status(404).end();
+  res.set('Content-Type', 'image/png');
+  res.set('Cache-Control', 'public, max-age=86400');
+  fs.createReadStream(imgPath).pipe(res);
+});
+
 // ─── HTTP: levels ─────────────────────────────────────────────────────────────
 // Live-published, no review step -- same trust model as drawn skins/hats.
 // Unlike skins/hats, a level's data is used by the dedicated server itself
@@ -703,12 +784,21 @@ app.get('/api/ranked/:clientId', (req, res) => {
   res.json({ elo: entry.elo, tier: tierForElo(entry.elo), wins: entry.wins, losses: entry.losses, matchesPlayed: entry.matchesPlayed });
 });
 
+// Mirrors game/net/server_match.gd's ROUND_DURATION_SEC -- a reported itTime
+// can never legitimately exceed one full round, so anything outside this
+// range is clamped rather than trusted outright (see report-result below).
+const ROUND_DURATION_SEC = 180.0;
+
 // A ranked match's host (any player's client, per the accepted trust model
 // above) reports the round's outcome here once it ends. No auth beyond the
 // existing rate limiter -- a malicious report can only ever move the
 // clientIds it actually names, through the same public Elo formula everyone
 // else goes through, so the worst case is a self-serving win/loss report,
-// not an arbitrary rating mint.
+// not an arbitrary rating mint. Clamping itTime to a plausible range closes
+// the cheapest version of that: reporting an absurd time (negative, or far
+// past the round length) to game the it_time-based ranking within one
+// report. This doesn't address a fully malicious host lying about placement
+// itself -- an accepted, known limitation of this hosted-authority model.
 app.post('/api/ranked/report-result', (req, res) => {
   if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
   const results = req.body.results;
@@ -718,7 +808,8 @@ app.post('/api/ranked/report-result', (req, res) => {
     if (!r || !CLIENT_ID_RE.test(String(r.clientId || ''))) return res.status(400).json({ error: 'bad clientId in results' });
     const place = parseInt(r.place, 10);
     if (!Number.isFinite(place) || place < 1) return res.status(400).json({ error: 'bad place in results' });
-    clean.push({ clientId: String(r.clientId), itTime: Number(r.itTime) || 0, place, username: r.username ? sanitizeName(r.username) : null });
+    const itTime = Math.min(Math.max(Number(r.itTime) || 0, 0), ROUND_DURATION_SEC);
+    clean.push({ clientId: String(r.clientId), itTime, place, username: r.username ? sanitizeName(r.username) : null });
   }
   applyEloUpdates(clean);
   applyProgressionUpdates(clean);

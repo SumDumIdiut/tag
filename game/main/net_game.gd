@@ -54,6 +54,7 @@ func _ready() -> void:
 		avatars[peer_id] = avatar
 		_apply_skin(peer_id)
 		_apply_hat(peer_id)
+		_apply_trail(peer_id)
 
 	# my_peer_id == -1 means we're spectating (see NetworkManager.start_
 	# spectator) -- there's no local avatar to own the camera, so fall back
@@ -81,6 +82,12 @@ func _apply_hat(peer_id: int) -> void:
 		return
 	var hat_id: String = roster[peer_id].get("hat_id", "")
 	avatars[peer_id].set_hat(hat_id)
+
+func _apply_trail(peer_id: int) -> void:
+	if not avatars.has(peer_id) or not roster.has(peer_id):
+		return
+	var trail_id: String = roster[peer_id].get("trail_id", "")
+	avatars[peer_id].set_trail(trail_id)
 
 ## Independently fetches and builds the exact same custom level the server
 ## is authoritatively simulating (see server_match.gd's identical fetch),

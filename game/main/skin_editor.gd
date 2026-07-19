@@ -26,7 +26,7 @@ const PALETTE := [
 @onready var upload_button: Button = $VBox/UploadButton
 @onready var back_button: Button = $VBox/BackButton
 
-var _mode := "skin" # "skin" or "hat"
+var _mode := "skin" # "skin", "hat", or "trail"
 var _images := {} # part_name (or "hat") -> Image, the artist's in-progress work
 var _current_canvas: PixelCanvas = null
 var _current_color: Color = PALETTE[2]
@@ -56,12 +56,18 @@ func _ready() -> void:
 		_show_part("head")
 		name_edit.text = "My Skin"
 		upload_button.text = "Upload Skin"
-	else:
+	elif _mode == "hat":
 		_images["hat"] = _blank_image(Vector2i(SkinCatalog.HAT_WIDTH, SkinCatalog.HAT_HEIGHT))
 		part_tabs.visible = false
 		_show_part("hat")
 		name_edit.text = "My Hat"
 		upload_button.text = "Upload Hat"
+	else:
+		_images["trail"] = _blank_image(Vector2i(SkinCatalog.TRAIL_WIDTH, SkinCatalog.TRAIL_HEIGHT))
+		part_tabs.visible = false
+		_show_part("trail")
+		name_edit.text = "My Trail"
+		upload_button.text = "Upload Trail"
 
 func _blank_image(size: Vector2i) -> Image:
 	var img := Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)
@@ -124,23 +130,23 @@ func _show_part(part_name: String) -> void:
 func _on_upload_pressed() -> void:
 	var name_text := name_edit.text.strip_edges()
 	if name_text.is_empty():
-		name_text = "My Skin" if _mode == "skin" else "My Hat"
+		name_text = "My %s" % _mode.capitalize()
 	status_label.text = "Uploading..."
 	upload_button.disabled = true
 	var id: String
-	if _mode == "skin":
-		id = await SkinCatalog.add_drawn_skin(_images, name_text)
-	else:
-		id = await SkinCatalog.add_drawn_hat(_images["hat"], name_text)
+	match _mode:
+		"skin": id = await SkinCatalog.add_drawn_skin(_images, name_text)
+		"hat": id = await SkinCatalog.add_drawn_hat(_images["hat"], name_text)
+		_: id = await SkinCatalog.add_drawn_trail(_images["trail"], name_text)
 	upload_button.disabled = false
 	if id.is_empty():
 		status_label.text = "Couldn't upload that -- try again."
 		return
 	SkinCatalog.refresh_catalog()
-	if _mode == "skin":
-		SkinCatalog.select_skin(id)
-	else:
-		SkinCatalog.select_hat(id)
+	match _mode:
+		"skin": SkinCatalog.select_skin(id)
+		"hat": SkinCatalog.select_hat(id)
+		_: SkinCatalog.select_trail(id)
 	_return_to_shop()
 
 func _on_back_pressed() -> void:
