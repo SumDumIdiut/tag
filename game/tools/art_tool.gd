@@ -52,10 +52,13 @@ they add it with one command:
 and it's live for everyone immediately, no build or restart needed.
 """
 
-const TILE_INSTRUCTIONS_TEXT := """tag_tiles.png is a horizontal strip, one 10x10 tile per type in this
-exact order: Boundary, Pillar, Platform -- the same layout
-tools/build_tileset.gd generates and game/levels/tag_tileset.tres reads
-from.
+const TILE_INSTRUCTIONS_TEXT := """tag_tiles.png is a horizontal strip, one 10x10 tile per slot, 9 slots in
+this exact order: Boundary Piece, Pillar Piece, Platform Piece, Boundary
+Corner, Pillar Corner, Platform Corner, Boundary Internal, Pillar
+Internal, Platform Internal -- the same layout tools/build_tileset.gd
+generates and game/levels/tag_tileset.tres reads from. (Slots 0-2 are the
+same Boundary/Pillar/Platform tiles the original 3-tile atlas had, in the
+same order -- the 6 new Corner/Internal slots were appended after.)
 
 To make this the game's real tile texture:
 
@@ -143,20 +146,40 @@ const LEVEL_API_BASE := "https://codecade.co.za/tag/api/levels"
 # ─── Tiles page (paint the actual texture of the built-in tile types) ───────
 const TILE_TEXTURE_SIZE := 10 # must match tools/build_tileset.gd's TILE_SIZE
 const TILE_ATLAS_PATH := "res://assets/tiles/tag_tiles.png"
-# Same names/order tile_canvas.gd's TILE_COLORS and build_tileset.gd's TILES
-# both already use -- keeping the order identical is what makes index i
-# here line up with atlas slot i in the exported strip.
+# Same names/order tile_canvas.gd's TILE_COLORS and build_tileset.gd's TILES/
+# VARIANT_NAMES all already use -- keeping the order identical is what makes
+# tile_index() here line up with atlas slot i in the exported strip. Each
+# base type now has 3 art variants (a straight edge Piece, a Corner, and a
+# fully-surrounded Internal), so a hand-placed level can use the
+# right-looking piece at a platform's edges/corners instead of one flat
+# texture tiling awkwardly everywhere -- see _build_tiles_page/_build_level_
+# page below, both of which pick a tile index via tile_index().
 const TILE_TYPE_NAMES := ["Boundary", "Pillar", "Platform"]
+const TILE_VARIANT_NAMES := ["Piece", "Corner", "Internal"]
 const TILE_TEXTURE_ZOOM := 34 # a 10x10 image needs a much bigger per-pixel
 # zoom than a 32x48 skin part to be comfortably paintable at all.
+
+## variant_index * 3 + type_index, NOT type-major -- this is what keeps
+## indices 0/1/2 exactly Boundary/Pillar/Platform's Piece variant, matching
+## the original 3-tile atlas, so tag_arena.tscn's already-painted cells and
+## any level already published before variants existed still render as the
+## same tile they always did (see build_tileset.gd's TILES comment).
+static func tile_index(type_idx: int, variant_idx: int) -> int:
+	return variant_idx * TILE_TYPE_NAMES.size() + type_idx
 
 var tiles_tab_button: Button
 var tiles_page: HBoxContainer
 var tiles_toolbar: Container
 var tiles_canvas_holder: CenterContainer
-var _tile_images: Array[Image] = [] # index-matched to TILE_TYPE_NAMES
+var _tile_images: Array[Image] = [] # index-matched to tile_index()
 var _current_tile_index := -1
-var _tile_select_buttons: Array[Button] = []
+var _tile_select_buttons: Array[Button] = [] # index-matched to tile_index()
+
+# Level page's placement palette: which (type, variant) pair PAINT currently
+# stamps onto the grid -- Internal is the default variant since it's the
+# "fill" piece most of a platform's interior actually uses.
+var _level_selected_type := 0
+var _level_selected_variant := 2
 
 func _ready() -> void:
 	get_window().size = Vector2i(1300, 860)
@@ -665,20 +688,44 @@ func _build_level_page() -> void:
 	_tile_canvas = TileCanvasScene.new()
 	level_canvas_center.add_child(_tile_canvas)
 
+	# Type swatches pick which base tile (Boundary/Pillar/Platform) PAINT
+	# places; the variant row alongside them picks which of that type's 3
+	## art pieces (Piece/Corner/Internal) gets placed -- both feed into
+	# _apply_level_tile_type(), which is also where PAINT mode + the actual
+	# tile_index() get set, so pressing either kind of button places tiles
+	# immediately rather than needing a separate "apply" step.
 	var level_tool_group := ButtonGroup.new()
-	var tile_names := ["Boundary", "Pillar", "Platform"]
-	for i in tile_names.size():
+	for t in TILE_TYPE_NAMES.size():
 		var swatch := Button.new()
-		swatch.text = tile_names[i]
+		swatch.text = TILE_TYPE_NAMES[t]
 		swatch.toggle_mode = true
 		swatch.button_group = level_tool_group
-		swatch.button_pressed = (i == 0)
-		UIStyle.style_button(swatch, TileCanvas.TILE_COLORS[i], 8)
+		swatch.button_pressed = (t == 0)
+		UIStyle.style_button(swatch, TileCanvas.TILE_COLORS[tile_index(t, 2)], 8)
 		swatch.pressed.connect(func():
-			_tile_canvas.tool = TileCanvas.Tool.PAINT
-			_tile_canvas.current_tile_type = i
+			_level_selected_type = t
+			_apply_level_tile_type()
 		)
 		level_toolbar.add_child(swatch)
+
+	level_toolbar.add_child(VSeparator.new())
+
+	# Separate ButtonGroup from level_tool_group above -- variant is an
+	# independent axis from "which top-level tool mode is active"
+	# (paint-a-type/erase/spawn), so it must stay togglable on its own.
+	var variant_group := ButtonGroup.new()
+	for v in TILE_VARIANT_NAMES.size():
+		var variant_btn := Button.new()
+		variant_btn.text = TILE_VARIANT_NAMES[v]
+		variant_btn.toggle_mode = true
+		variant_btn.button_group = variant_group
+		variant_btn.button_pressed = (v == _level_selected_variant)
+		UIStyle.style_button(variant_btn, UIStyle.COLOR_NEUTRAL, 8)
+		variant_btn.pressed.connect(func():
+			_level_selected_variant = v
+			_apply_level_tile_type()
+		)
+		level_toolbar.add_child(variant_btn)
 
 	var erase_btn := Button.new()
 	erase_btn.text = "Erase"
@@ -706,6 +753,16 @@ func _build_level_page() -> void:
 
 	UIStyle.style_button(publish_level_button, UIStyle.COLOR_SHOP)
 	publish_level_button.pressed.connect(_on_publish_level_pressed)
+
+	_apply_level_tile_type()
+
+## Pushes the currently-selected (type, variant) pair onto the TileCanvas
+## and switches it to PAINT mode -- called by both the type swatches and the
+## variant row, since either one changing should immediately affect what
+## the next click paints, not just the swatch that was actually clicked.
+func _apply_level_tile_type() -> void:
+	_tile_canvas.tool = TileCanvas.Tool.PAINT
+	_tile_canvas.current_tile_type = tile_index(_level_selected_type, _level_selected_variant)
 
 ## Live-publish, same trust model as the skin/hat Publish buttons -- goes
 ## straight to the shared level catalog with no review step, immediately
@@ -742,11 +799,12 @@ func _on_publish_level_pressed() -> void:
 		status_label.text = "Publish failed for \"%s\" -- check your connection." % level_name
 
 ## Builds the Tiles page entirely in code (no .tscn changes -- see the file
-## header): a left-hand list of the 3 built-in tile types, a canvas panel
-## driven by the exact same _build_shared_toolbar/_current_canvas machinery
-## the Paint page uses, and its own ColorPicker (the Paint page's is hidden
-## while this page is showing, so it needs an independent one to stay
-## usable -- see _active_color_picker).
+## header): a left-hand list of the 3 built-in tile types, each grouped into
+## its 3 art variants (Piece/Corner/Internal -- 9 textures total), a canvas
+## panel driven by the exact same _build_shared_toolbar/_current_canvas
+## machinery the Paint page uses, and its own ColorPicker (the Paint page's
+## is hidden while this page is showing, so it needs an independent one to
+## stay usable -- see _active_color_picker).
 func _build_tiles_page() -> void:
 	var vbox: VBoxContainer = paint_page.get_parent()
 	tiles_page = HBoxContainer.new()
@@ -765,18 +823,31 @@ func _build_tiles_page() -> void:
 	select_panel.add_child(select_box)
 	select_box.add_child(_section_label("TILE TYPES"))
 
+	# Grouped by base type (Boundary/Pillar/Platform), each with its own row
+	# of 3 variant buttons (Piece/Corner/Internal) -- 9 total selectable
+	# textures, one ButtonGroup shared across all of them so exactly one is
+	# ever the active canvas.
 	var tile_group := ButtonGroup.new()
-	_tile_select_buttons.clear()
-	for i in TILE_TYPE_NAMES.size():
-		var btn := Button.new()
-		btn.text = TILE_TYPE_NAMES[i]
-		btn.toggle_mode = true
-		btn.button_group = tile_group
-		btn.custom_minimum_size = Vector2(0, 40)
-		UIStyle.style_button(btn, TileCanvas.TILE_COLORS[i], 10)
-		btn.pressed.connect(_show_tile.bind(i))
-		select_box.add_child(btn)
-		_tile_select_buttons.append(btn)
+	_tile_select_buttons.resize(TILE_TYPE_NAMES.size() * TILE_VARIANT_NAMES.size())
+	for t in TILE_TYPE_NAMES.size():
+		var type_label := _section_label(TILE_TYPE_NAMES[t].to_upper())
+		type_label.add_theme_font_size_override("font_size", 11)
+		select_box.add_child(type_label)
+		var variant_row := HBoxContainer.new()
+		variant_row.add_theme_constant_override("separation", 4)
+		select_box.add_child(variant_row)
+		for v in TILE_VARIANT_NAMES.size():
+			var idx := tile_index(t, v)
+			var btn := Button.new()
+			btn.text = TILE_VARIANT_NAMES[v]
+			btn.toggle_mode = true
+			btn.button_group = tile_group
+			btn.custom_minimum_size = Vector2(0, 36)
+			btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			UIStyle.style_button(btn, TileCanvas.TILE_COLORS[idx], 8)
+			btn.pressed.connect(_show_tile.bind(idx))
+			variant_row.add_child(btn)
+			_tile_select_buttons[idx] = btn
 
 	var canvas_panel := PanelContainer.new()
 	canvas_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -823,12 +894,14 @@ func _build_tiles_page() -> void:
 	_show_tile(0)
 	_tile_select_buttons[0].button_pressed = true
 
-## Loads the atlas already baked into the build (flat colors today -- see
-## build_tileset.gd) and slices it into one Image per tile type, so the
-## Tiles page always opens with something real on the canvas instead of a
-## blank transparent square. Falls back to a flat-color square per type if
-## the atlas can't be loaded for any reason (e.g. running this tool against
-## a stripped-down export), so the page is never left totally broken.
+## Loads the atlas already baked into the build (flat, slightly-shaded
+## placeholder colors today -- see build_tileset.gd) and slices it into one
+## Image per (type, variant) texture, so the Tiles page always opens with
+## something real on the canvas instead of a blank transparent square.
+## Falls back to a flat-color square per slot if the atlas can't be loaded
+## or is still the old narrower size for any reason (e.g. running this tool
+## against a stripped-down or stale export), so the page is never left
+## totally broken.
 func _load_tile_images() -> void:
 	_tile_images.clear()
 	# load() (not Image.load_from_file) so this also works from the exported
@@ -837,7 +910,8 @@ func _load_tile_images() -> void:
 	var atlas_tex: Texture2D = load(TILE_ATLAS_PATH)
 	if atlas_tex:
 		atlas = atlas_tex.get_image()
-	for i in TILE_TYPE_NAMES.size():
+	var total := TILE_TYPE_NAMES.size() * TILE_VARIANT_NAMES.size()
+	for i in total:
 		var tile_img: Image
 		if atlas and not atlas.is_empty() and (i + 1) * TILE_TEXTURE_SIZE <= atlas.get_width():
 			tile_img = atlas.get_region(Rect2i(i * TILE_TEXTURE_SIZE, 0, TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE))

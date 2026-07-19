@@ -11,9 +11,16 @@ class_name LevelData
 # (serialize()), turning a painted layout into the same JSON to publish.
 #
 # {"tiles": [[x, y, tile_type], ...], "spawn_points": [[x, y], ...]}
-# tile_type is 0/1/2, matching tag_tileset.tres's 3 atlas-x tiles (all at
-# atlas-y 0). tiles/spawn_points coordinates: tile-grid cells for tiles,
-# world/pixel position for spawn points (straight into Marker2D.position).
+# tile_type is 0-8, matching tag_tileset.tres's 9 atlas-x tiles (all at
+# atlas-y 0): 3 base types (boundary/pillar/platform) x 3 art variants
+# (Piece/Corner/Internal), encoded variant-major as variant_index * 3 +
+# type_index -- see build_tileset.gd's TILES/VARIANT_NAMES, the source of
+# truth for this ordering. (Values 0/1/2 are deliberately still exactly
+# Boundary/Pillar/Platform's Piece variant, same as the original 3-tile
+# format, so every level published before variants existed still decodes
+# to the same tiles it always did.) tiles/spawn_points coordinates:
+# tile-grid cells for tiles, world/pixel position for spawn points
+# (straight into Marker2D.position).
 #
 # No waypoints/AI-pathing in this format -- custom levels simply aren't
 # offered for Sandbox/bot matches, only real player-vs-player ones.
@@ -44,7 +51,7 @@ static func is_valid(data: Dictionary) -> bool:
 		var tile_type = entry[2]
 		if typeof(tile_type) != TYPE_FLOAT and typeof(tile_type) != TYPE_INT:
 			return false
-		if int(tile_type) < 0 or int(tile_type) > 2:
+		if int(tile_type) < 0 or int(tile_type) > 8:
 			return false
 	for entry in spawns:
 		if typeof(entry) != TYPE_ARRAY or entry.size() < 2:

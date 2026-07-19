@@ -15,12 +15,24 @@ const LevelData := preload("res://levels/level_data.gd")
 # real in-game tile size, not an arbitrary editor-only value.
 const TILE_SIZE_PX := 10
 
-# Same 3 colors tag_tiles.png's atlas uses, so the painted grid reads as a
-# preview of the real tiles rather than arbitrary editor colors.
+# Same 9 colors tag_tiles.png's atlas uses (see build_tileset.gd's TILES),
+# so the painted grid reads as a preview of the real tiles rather than
+# arbitrary editor colors. Index = variant_index * 3 + type_index (variant-
+# major -- see build_tileset.gd's comment on why: it keeps indices 0/1/2
+# exactly Boundary/Pillar/Platform's Piece variant, matching the original
+# 3-tile atlas for backward compatibility with already-placed/published
+# data), type order always [Boundary, Pillar, Platform], variant order
+# always [Piece, Corner, Internal].
 const TILE_COLORS := [
-	Color(0.55, 0.55, 0.58), # 0: boundary
-	Color(0.45, 0.32, 0.22), # 1: pillar
-	Color(0.75, 0.75, 0.78), # 2: platform
+	Color(0.5, 0.5, 0.55), # 0: boundary piece
+	Color(0.6, 0.5, 0.35), # 1: pillar piece
+	Color(0.65, 0.65, 0.7), # 2: platform piece
+	Color(0.42, 0.42, 0.47), # 3: boundary corner
+	Color(0.5, 0.41, 0.27), # 4: pillar corner
+	Color(0.56, 0.56, 0.61), # 5: platform corner
+	Color(0.58, 0.58, 0.63), # 6: boundary internal
+	Color(0.68, 0.58, 0.42), # 7: pillar internal
+	Color(0.73, 0.73, 0.78), # 8: platform internal
 ]
 const EMPTY_COLOR := Color(0.09, 0.09, 0.14)
 const GRID_LINE_COLOR := Color(1, 1, 1, 0.04)
@@ -31,7 +43,7 @@ enum Tool { PAINT, ERASE, SPAWN }
 @export var grid_size := Vector2i(70, 40) # paintable extent, in tile-grid cells
 @export var zoom := 12
 
-var cells: Dictionary = {} # Vector2i -> int (tile_type 0/1/2)
+var cells: Dictionary = {} # Vector2i -> int (tile_type 0-8, see TILE_COLORS)
 var spawn_points: Array = [] # Array[Vector2i], tile-grid coordinates
 var current_tile_type := 0
 var tool: int = Tool.PAINT
