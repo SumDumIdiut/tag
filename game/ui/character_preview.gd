@@ -18,6 +18,16 @@ const AVATAR_OFFSET := Vector2(28, 50)
 @export var skin_id: String = "red"
 @export var hat_id: String = ""
 @export var zoom: float = 2.0
+# Multiplies the SubViewport's actual pixel resolution (and the camera's
+## effective zoom right along with it) without changing what's framed --
+# VIEWPORT_SIZE (56x72) is tuned for the small menu-bar portraits, where
+# it's displayed at close to its native size. Blown up much larger (e.g.
+# the Art Tool's big preview, ~260x340), a non-integer stretch factor from
+# that small a source produces visibly uneven, jagged-blocky scaling even
+# with nearest filtering -- rendering more real pixels for the same framing
+# fixes that at the source instead of just stretching harder. World-space
+# framing (AVATAR_OFFSET et al) is unaffected: only pixel density changes.
+@export var render_scale: float = 1.0
 
 var _avatar: RemoteAvatar
 
@@ -27,7 +37,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var viewport := SubViewport.new()
-	viewport.size = VIEWPORT_SIZE
+	viewport.size = Vector2i(Vector2(VIEWPORT_SIZE) * render_scale)
 	viewport.transparent_bg = true
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	# Each preview needs its own isolated 2D canvas/camera space -- without
@@ -48,7 +58,7 @@ func _ready() -> void:
 		_avatar.name_label.visible = false
 	if _avatar.camera:
 		_avatar.camera.position_smoothing_enabled = false
-		_avatar.camera.zoom = Vector2(zoom, zoom)
+		_avatar.camera.zoom = Vector2(zoom, zoom) * render_scale
 		_avatar.camera.global_position = AVATAR_OFFSET + Vector2(0, -20)
 		_avatar.camera.enabled = true
 		_avatar.camera.make_current()

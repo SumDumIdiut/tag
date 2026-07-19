@@ -46,8 +46,13 @@ const SPAWN_COLOR := Color(0.35, 0.9, 0.55)
 const PLATFORM_COLOR := Color(0.85, 0.55, 0.2)
 const PLATFORM_PENDING_COLOR := Color(0.95, 0.8, 0.4)
 const DEFAULT_PLATFORM_PERIOD_SEC := 4.0
+const SELECTED_OUTLINE_COLOR := Color(1.0, 0.95, 0.3, 0.95)
 
-enum Tool { PAINT, ERASE, SPAWN, PLATFORM }
+enum Tool { PAINT, ERASE, SPAWN, PLATFORM, EDIT }
+## What EDIT mode currently has grabbed -- a platform has two independently
+## draggable handles (its start and end), so selecting "a platform" alone
+## isn't enough to know which endpoint a drag should move.
+enum SelectionKind { NONE, SPAWN, PLATFORM_START, PLATFORM_END }
 
 @export var grid_size := Vector2i(70, 40) # paintable extent, in tile-grid cells
 @export var zoom := 12
@@ -74,8 +79,17 @@ var _pending_platform_start := Vector2i.ZERO
 ## Emitted after any cell/spawn-point change, so a host UI can update a
 ## live preview or an "N tiles, N spawns" status readout.
 signal changed
+## Emitted whenever EDIT mode's selection changes (a new object grabbed,
+## the same one dragged -- position changes don't re-fire this, only a
+## change of *what* is selected -- or deselected), so a host UI can show/
+## hide/refresh a properties panel for whatever's currently selected.
+signal selection_changed
 
 var _is_pressing := false
+var _selected_kind: int = SelectionKind.NONE
+var _selected_spawn_index := -1
+var _selected_platform_index := -1
+var _dragging_selection := false
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(grid_size.x * zoom, grid_size.y * zoom)
@@ -105,27 +119,50 @@ func _draw() -> void:
 	if _has_pending_platform_start:
 		var pending_center: Vector2 = Vector2(_pending_platform_start) * zoom + half
 		draw_rect(Rect2(pending_center - half * 0.7, half * 1.4), PLATFORM_PENDING_COLOR)
+	match _selected_kind:
+		SelectionKind.SPAWN:
+			if _selected_spawn_index >= 0 and _selected_spawn_index < spawn_points.size():
+				var c: Vector2 = Vector2(spawn_points[_selected_spawn_index]) * zoom + half
+				draw_arc(c, zoom * 0.55, 0.0, TAU, 24, SELECTED_OUTLINE_COLOR, 2.5)
+		SelectionKind.PLATFORM_START, SelectionKind.PLATFORM_END:
+			if _selected_platform_index >= 0 and _selected_platform_index < platforms.size():
+				var p: Dictionary = platforms[_selected_platform_index]
+				var pt: Vector2i = p.start if _selected_kind == SelectionKind.PLATFORM_START else p.end
+				var c: Vector2 = Vector2(pt) * zoom + half
+				draw_rect(Rect2(c - half, half * 2.0), SELECTED_OUTLINE_COLOR, false, 2.5)
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_is_pressing = true
-			_apply_at(event.position)
+			if tool == Tool.EDIT:
+				_start_edit_press(event.position)
+			else:
+				_apply_at(event.position)
 		else:
 			_is_pressing = false
-	# Platform placement is two discrete clicks (start, then end), not a
-	# drag -- unlike PAINT/ERASE/SPAWN, repeating on every motion event
-	# while the button is held would place a garbage platform on every
-	# pixel the mouse crossed.
-	elif event is InputEventMouseMotion and _is_pressing and tool != Tool.PLATFORM:
-		_apply_at(event.position)
+			_dragging_selection = false
+	elif event is InputEventMouseMotion and _is_pressing:
+		if tool == Tool.EDIT:
+			if _dragging_selection:
+				_drag_selection_to(event.position)
+		# Platform placement is two discrete clicks (start, then end), not a
+		# drag -- unlike PAINT/ERASE/SPAWN, repeating on every motion event
+		# while the button is held would place a garbage platform on every
+		# pixel the mouse crossed.
+		elif tool != Tool.PLATFORM:
+			_apply_at(event.position)
+	elif event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_DELETE and tool == Tool.EDIT:
+		delete_selected()
+
+func _to_cell(local_pos: Vector2) -> Vector2i:
+	return Vector2i(int(local_pos.x / zoom), int(local_pos.y / zoom))
 
 func _apply_at(local_pos: Vector2) -> void:
-	var cx := int(local_pos.x / zoom)
-	var cy := int(local_pos.y / zoom)
-	if cx < 0 or cy < 0 or cx >= grid_size.x or cy >= grid_size.y:
+	var coord := _to_cell(local_pos)
+	if coord.x < 0 or coord.y < 0 or coord.x >= grid_size.x or coord.y >= grid_size.y:
 		return
-	var coord := Vector2i(cx, cy)
 	match tool:
 		Tool.PAINT:
 			cells[coord] = current_tile_type
@@ -164,11 +201,133 @@ func _apply_platform_click(coord: Vector2i) -> void:
 	_has_pending_platform_start = true
 	_pending_platform_start = coord
 
+## EDIT mode's press handler -- grabbing an existing spawn point or platform
+## endpoint selects it and starts a drag; clicking empty space deselects.
+## Checked spawn points before platforms only because that's the order they
+## were declared in; a cell can't be both anyway (spawn points and platform
+## endpoints don't occupy shared bookkeeping) so there's no real precedence
+## question here.
+func _start_edit_press(local_pos: Vector2) -> void:
+	var cell := _to_cell(local_pos)
+	for i in spawn_points.size():
+		if spawn_points[i] == cell:
+			_select_spawn(i)
+			_dragging_selection = true
+			return
+	for i in platforms.size():
+		var p: Dictionary = platforms[i]
+		if p.start == cell:
+			_select_platform(i, SelectionKind.PLATFORM_START)
+			_dragging_selection = true
+			return
+		if p.end == cell:
+			_select_platform(i, SelectionKind.PLATFORM_END)
+			_dragging_selection = true
+			return
+	deselect()
+
+func _select_spawn(i: int) -> void:
+	_selected_kind = SelectionKind.SPAWN
+	_selected_spawn_index = i
+	_selected_platform_index = -1
+	queue_redraw()
+	selection_changed.emit()
+
+func _select_platform(i: int, kind: int) -> void:
+	_selected_kind = kind
+	_selected_platform_index = i
+	_selected_spawn_index = -1
+	queue_redraw()
+	selection_changed.emit()
+
+## Drags whatever's currently grabbed to follow the pointer, clamped to the
+## paintable grid -- the direct click-and-drag manipulation a tile-grid
+## click-to-place tool didn't have before (placing a spawn point or a
+## platform endpoint used to mean deleting and re-placing it from scratch).
+func _drag_selection_to(local_pos: Vector2) -> void:
+	var cell := _to_cell(local_pos)
+	cell.x = clampi(cell.x, 0, grid_size.x - 1)
+	cell.y = clampi(cell.y, 0, grid_size.y - 1)
+	match _selected_kind:
+		SelectionKind.SPAWN:
+			if _selected_spawn_index >= 0 and _selected_spawn_index < spawn_points.size():
+				spawn_points[_selected_spawn_index] = cell
+		SelectionKind.PLATFORM_START:
+			if _selected_platform_index >= 0 and _selected_platform_index < platforms.size():
+				platforms[_selected_platform_index]["start"] = cell
+		SelectionKind.PLATFORM_END:
+			if _selected_platform_index >= 0 and _selected_platform_index < platforms.size():
+				platforms[_selected_platform_index]["end"] = cell
+	queue_redraw()
+	changed.emit()
+
+func has_selection() -> bool:
+	return _selected_kind != SelectionKind.NONE
+
+func selected_kind() -> int:
+	return _selected_kind
+
+func get_selected_spawn() -> Vector2i:
+	if _selected_spawn_index >= 0 and _selected_spawn_index < spawn_points.size():
+		return spawn_points[_selected_spawn_index]
+	return Vector2i.ZERO
+
+## Numeric-entry counterpart to dragging -- a properties panel field calling
+## this and a mouse drag both just move the same selected point.
+func set_selected_spawn(cell: Vector2i) -> void:
+	if _selected_spawn_index >= 0 and _selected_spawn_index < spawn_points.size():
+		spawn_points[_selected_spawn_index] = cell
+		queue_redraw()
+		changed.emit()
+
+func get_selected_platform() -> Dictionary:
+	if _selected_platform_index >= 0 and _selected_platform_index < platforms.size():
+		return platforms[_selected_platform_index]
+	return {}
+
+func set_selected_platform_start(cell: Vector2i) -> void:
+	if _selected_platform_index >= 0 and _selected_platform_index < platforms.size():
+		platforms[_selected_platform_index]["start"] = cell
+		queue_redraw()
+		changed.emit()
+
+func set_selected_platform_end(cell: Vector2i) -> void:
+	if _selected_platform_index >= 0 and _selected_platform_index < platforms.size():
+		platforms[_selected_platform_index]["end"] = cell
+		queue_redraw()
+		changed.emit()
+
+func set_selected_platform_period(period_sec: float) -> void:
+	if _selected_platform_index >= 0 and _selected_platform_index < platforms.size():
+		platforms[_selected_platform_index]["period_sec"] = period_sec
+		changed.emit()
+
+func delete_selected() -> void:
+	match _selected_kind:
+		SelectionKind.SPAWN:
+			if _selected_spawn_index >= 0 and _selected_spawn_index < spawn_points.size():
+				spawn_points.remove_at(_selected_spawn_index)
+		SelectionKind.PLATFORM_START, SelectionKind.PLATFORM_END:
+			if _selected_platform_index >= 0 and _selected_platform_index < platforms.size():
+				platforms.remove_at(_selected_platform_index)
+	deselect()
+	changed.emit()
+
+func deselect() -> void:
+	if _selected_kind == SelectionKind.NONE:
+		return
+	_selected_kind = SelectionKind.NONE
+	_selected_spawn_index = -1
+	_selected_platform_index = -1
+	queue_redraw()
+	selection_changed.emit()
+
 func clear() -> void:
 	cells.clear()
 	spawn_points.clear()
 	platforms.clear()
 	_has_pending_platform_start = false
+	deselect()
 	queue_redraw()
 	changed.emit()
 
