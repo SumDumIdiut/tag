@@ -539,7 +539,7 @@ app.get('/api/servers/:id/state', (req, res) => {
   if (!/^[a-f0-9]{16}$/.test(req.params.id)) return res.status(400).json({ error: 'bad server id' });
   const s = servers.get(req.params.id);
   if (!s) return res.status(404).json({ error: 'no such server' });
-  res.json(s.matchState || { players: [], timeRemaining: 0, arenaWidth: 0, arenaHeight: 0, updatedAt: 0 });
+  res.json(s.matchState || { players: [], timeRemaining: 0, arenaWidth: 0, arenaHeight: 0, levelId: '', updatedAt: 0 });
 });
 
 // ─── HTTP: skins ──────────────────────────────────────────────────────────────
@@ -1154,8 +1154,45 @@ server.on('upgrade', (req, socket, head) => {
     wss.handleUpgrade(req, socket, head, ws => handlePlayerJoin(ws, joinMatch[1]));
     return;
   }
+  // The website's live match viewer (watch.html) -- read-only, no rate
+  // limit beyond the connection itself (a spectator can't affect anything,
+  // same trust level as the native client's own spectate path).
+  const watchMatch = pathname.match(/^\/watch\/([a-f0-9]{16})$/);
+  if (watchMatch) {
+    wss.handleUpgrade(req, socket, head, ws => handleBrowserWatch(ws, watchMatch[1]));
+    return;
+  }
   socket.destroy();
 });
+
+// serverId -> Set<WebSocket> -- browsers currently watching that server's
+// live match state, pushed to immediately as each "match_state" message
+// arrives on that server's own control channel (see handleHostControl)
+// rather than making every open tab poll for it.
+const watchers = new Map();
+
+function handleBrowserWatch(ws, serverId) {
+  if (!watchers.has(serverId)) watchers.set(serverId, new Set());
+  watchers.get(serverId).add(ws);
+  // Send whatever's already known immediately -- otherwise a browser that
+  // connects between two server reports sits with a blank view for up to
+  // MATCH_STATE_INTERVAL_SEC (relay_client.gd) before its first update.
+  const s = servers.get(serverId);
+  if (s && s.matchState) ws.send(JSON.stringify({ type: 'match_state', ...s.matchState }));
+  ws.on('close', () => {
+    const set = watchers.get(serverId);
+    if (set) { set.delete(ws); if (set.size === 0) watchers.delete(serverId); }
+  });
+}
+
+function broadcastMatchState(serverId, matchState) {
+  const set = watchers.get(serverId);
+  if (!set || set.size === 0) return;
+  const payload = JSON.stringify({ type: 'match_state', ...matchState });
+  for (const ws of set) {
+    if (ws.readyState === ws.OPEN) ws.send(payload);
+  }
+}
 
 function handleHostControl(ws) {
   let serverId = null;
@@ -1205,14 +1242,19 @@ function handleHostControl(ws) {
         x: typeof p.x === 'number' ? p.x : 0,
         y: typeof p.y === 'number' ? p.y : 0,
         isIt: !!p.isIt,
+        skinId: typeof p.skinId === 'string' ? p.skinId.slice(0, 32) : 'red',
       })) : [];
       s.matchState = {
         players,
         timeRemaining: typeof msg.timeRemaining === 'number' ? msg.timeRemaining : 0,
         arenaWidth: typeof msg.arenaWidth === 'number' ? msg.arenaWidth : 0,
         arenaHeight: typeof msg.arenaHeight === 'number' ? msg.arenaHeight : 0,
+        arenaCenterX: typeof msg.arenaCenterX === 'number' ? msg.arenaCenterX : 0,
+        arenaCenterY: typeof msg.arenaCenterY === 'number' ? msg.arenaCenterY : 0,
+        levelId: typeof msg.levelId === 'string' ? msg.levelId.slice(0, 64) : '',
         updatedAt: Date.now(),
       };
+      broadcastMatchState(serverId, s.matchState);
     } else if (msg.type === 'unregister') {
       if (serverId) servers.delete(serverId);
     }

@@ -20,9 +20,11 @@ const RECONNECT_DELAY_SEC := 5.0
 # is sized for "is this server still alive," which 5s is plenty responsive
 # for; the website's live match viewer (watch.html) wants to feel closer to
 # live than that. Matches ServerMatch's own STATE_SUMMARY_INTERVAL_TICKS
-# (60 ticks @ 60Hz = 1s), so this never fires faster than fresh data
-# actually exists.
-const MATCH_STATE_INTERVAL_SEC := 1.0
+# (6 ticks @ 60Hz = 100ms), so this never fires faster than fresh data
+# actually exists. The relay pushes each of these straight to any browser
+# watching over its own WebSocket the moment it arrives (see relay-server's
+# "match_state" broadcast) rather than making the browser poll for it.
+const MATCH_STATE_INTERVAL_SEC := 0.1
 # Generous headroom -- up to MAX_LOBBY_PLAYERS worth of match state can be
 # pushed every physics tick; relying on WebSocketPeer's small defaults here
 # risks silently dropped or errored packets under load.
@@ -157,6 +159,9 @@ func _send_match_state() -> void:
 			"timeRemaining": summary.get("timeRemaining", 0.0),
 			"arenaWidth": summary.get("arenaWidth", 0.0),
 			"arenaHeight": summary.get("arenaHeight", 0.0),
+			"arenaCenterX": summary.get("arenaCenterX", 0.0),
+			"arenaCenterY": summary.get("arenaCenterY", 0.0),
+			"levelId": summary.get("levelId", ""),
 		})
 
 func _send_json(peer: WebSocketPeer, data: Dictionary) -> void:

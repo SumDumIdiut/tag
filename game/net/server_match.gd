@@ -31,13 +31,15 @@ var _coalesced_input := {} # peer_id -> Dictionary, merged since the last tick
 var _tag_mode: TagMode
 var _arena: Node2D
 var _tick := 0
-# Throttles report_match_state_summary() (see NetworkManager) to roughly
-# once a second instead of every physics tick -- the website's live match
-# viewer only needs to look "live enough," not interpolation-smooth, and
-# RelayClient's own reporting timer runs at the same cadence, so anything
-# more frequent here would just be discarded work.
-const STATE_SUMMARY_INTERVAL_TICKS := 60
-var _arena_size_px := Vector2.ZERO
+# Throttles report_match_state_summary() (see NetworkManager) instead of
+# running every physics tick -- the website's live match viewer doesn't
+# need full 60Hz precision, but with the relay now pushing this over a
+# WebSocket the moment it arrives (not polled), 10Hz reads as genuinely
+# live rather than the choppy 1Hz an earlier pass here used. RelayClient's
+# own reporting timer runs at the same cadence, so anything more frequent
+# here would just be discarded work between ticks.
+const STATE_SUMMARY_INTERVAL_TICKS := 6
+var _arena_bounds := {"size": Vector2.ZERO, "center": Vector2.ZERO}
 ## Set once by _finish_setup() and kept for the lifetime of the match --
 ## a late-joining spectator (see NetworkManager._server_register_spectator)
 ## needs this exact shape to send as its own "_client_match_started" payload,
@@ -88,7 +90,7 @@ func _fetch_custom_arena(id: String) -> void:
 	req.request(LEVEL_DATA_URL % id)
 
 func _finish_setup() -> void:
-	_arena_size_px = _compute_arena_size_px()
+	_arena_bounds = _compute_arena_bounds_px()
 	var spawn_points := _arena.get_node("SpawnPoints").get_children()
 	spawn_points.shuffle()
 
@@ -252,12 +254,20 @@ func _report_state_summary() -> void:
 			"x": p.global_position.x,
 			"y": p.global_position.y,
 			"isIt": _tag_mode.is_it(p),
+			"skinId": _skin_ids.get(peer_id, "red"),
 		})
 	_network_manager.report_match_state_summary(lobby_id, {
 		"players": players,
 		"timeRemaining": _tag_mode.round_timer,
-		"arenaWidth": _arena_size_px.x,
-		"arenaHeight": _arena_size_px.y,
+		"arenaWidth": _arena_bounds.size.x,
+		"arenaHeight": _arena_bounds.size.y,
+		"arenaCenterX": _arena_bounds.center.x,
+		"arenaCenterY": _arena_bounds.center.y,
+		# "" means the built-in default arena (watch.html's default_arena.json,
+		# see tools/export_default_arena.gd) -- otherwise this is a real level
+		# id the website can fetch the exact same JSON for via the existing
+		# public GET /api/levels/data/:id, no new endpoint needed.
+		"levelId": _network_manager.level_id,
 	})
 
 ## Mirrors tag_tileset.tres's texture_region_size (10x10) -- see
@@ -269,12 +279,21 @@ const TILE_SIZE_PX := 10
 ## converted to pixels -- the website's live match viewer (watch.html)
 ## needs this once, up front, to size its canvas/scale player positions
 ## correctly, since a custom level's dimensions aren't known ahead of time.
-func _compute_arena_size_px() -> Vector2:
+## Returns {size, center} in world pixels -- center matters just as much as
+## size here: tile cell (0,0) is NOT necessarily world-pixel (0,0) (the
+## arena's tile bounding box isn't guaranteed centered on the origin), but
+## Player.global_position IS reported in that same world-pixel space, so
+## the website needs the bounding box's real center to align tiles and
+## player dots in one consistent frame instead of assuming they share an
+## origin they might not.
+func _compute_arena_bounds_px() -> Dictionary:
 	var tiles: TileMapLayer = _arena.get_node_or_null("Tiles")
 	if not tiles:
-		return Vector2.ZERO
+		return {"size": Vector2.ZERO, "center": Vector2.ZERO}
 	var used_rect := tiles.get_used_rect()
-	return Vector2(used_rect.size) * TILE_SIZE_PX
+	var size_px := Vector2(used_rect.size) * TILE_SIZE_PX
+	var center_px := (Vector2(used_rect.position) * TILE_SIZE_PX) + size_px * 0.5
+	return {"size": size_px, "center": center_px}
 
 func teardown() -> void:
 	_network_manager.clear_match_state_summary(lobby_id)

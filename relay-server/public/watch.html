@@ -14,7 +14,7 @@
     background: #0b0d14; color: #e4e7f0;
     padding: 32px 20px 60px;
   }
-  .wrap { max-width: 720px; margin: 0 auto; }
+  .wrap { max-width: 860px; margin: 0 auto; }
   header { margin-bottom: 20px; }
   h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 4px; }
   .sub { color: #7b82a8; font-size: 13px; }
@@ -37,16 +37,37 @@
   .dot { width: 7px; height: 7px; border-radius: 50%; background: #3ef5a8; box-shadow: 0 0 6px #3ef5a8; }
   .stale .dot { background: #7b82a8; box-shadow: none; }
   .canvas-wrap {
-    border-radius: 14px; overflow: hidden;
+    position: relative; border-radius: 14px; overflow: hidden;
     border: 1.5px solid rgba(255,255,255,.09); background: #05060a;
-    aspect-ratio: 16 / 10;
+    aspect-ratio: 16 / 10; cursor: grab;
+    touch-action: none;
   }
+  .canvas-wrap.dragging { cursor: grabbing; }
   canvas { width: 100%; height: 100%; display: block; }
   .empty {
-    display: flex; align-items: center; justify-content: center;
-    height: 100%; color: #4e5578; font-size: 14px; text-align: center; padding: 20px;
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #4e5578; font-size: 14px; text-align: center; padding: 20px; pointer-events: none;
   }
-  footer { margin-top: 32px; color: #4e5578; font-size: 11.5px; text-align: center; }
+  .view-controls {
+    position: absolute; top: 10px; right: 10px; display: flex; gap: 6px;
+  }
+  .view-btn {
+    background: rgba(11,13,20,.75); border: 1.5px solid rgba(255,255,255,.12);
+    color: #e4e7f0; border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 700;
+    cursor: pointer; font-family: inherit;
+  }
+  .view-btn:hover { background: rgba(255,255,255,.1); }
+  .roster { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .roster-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px 5px 6px; border-radius: 999px; font-size: 12.5px; font-weight: 700;
+    border: 1.5px solid rgba(255,255,255,.09); background: rgba(255,255,255,.04);
+    cursor: pointer; color: inherit; font-family: inherit;
+  }
+  .roster-chip img { width: 20px; height: 20px; image-rendering: pixelated; }
+  .roster-chip.following { border-color: #b6acf9; background: rgba(124,108,248,.18); }
+  .roster-chip .it-badge { color: #ff4d4d; font-size: 10px; }
+  footer { margin-top: 20px; color: #4e5578; font-size: 11.5px; text-align: center; }
 </style>
 </head>
 <body>
@@ -66,20 +87,15 @@
     <div class="canvas-wrap" id="canvas-wrap">
       <canvas id="canvas" width="1280" height="800"></canvas>
       <div class="empty" id="empty-state" style="display:none">Waiting for a match to start on this server…</div>
+      <div class="view-controls">
+        <button class="view-btn" id="reset-view-btn" title="Reset pan/zoom">Reset View</button>
+      </div>
     </div>
-    <footer>codecade.co.za/tag — this is a simplified top-down view, not the real renderer. Fidelity is lower and updates about once a second; for the full game, watch from the Tag client instead.</footer>
+    <div class="roster" id="roster"></div>
+    <footer>codecade.co.za/tag — a simplified live view, not the real renderer (no physics, no collision, positions only). Drag to pan, scroll/pinch to zoom, click a player to follow them. For the full game, watch from the Tag client instead.</footer>
   </div>
 
 <script>
-// No BASE_PATH here (unlike index.html) -- window.__BASE_PATH__ is only
-// ever injected into index.html's own server route (see server.js's
-// _indexHtmlCache), never into the other static pages, which is exactly
-// why this used to be a real bug: prefixing fetch URLs with an always-
-// empty BASE_PATH silently dropped the required /tag prefix, hitting a
-// route the portal doesn't proxy at all and 404ing on every single
-// request regardless of whether the server id was valid. Plain relative
-// paths (no leading slash) resolve against this page's own URL instead,
-// the same way leaderboard.html/profile.html already do it correctly.
 const params = new URLSearchParams(location.search);
 const serverId = params.get('id');
 const titleEl = document.getElementById('title');
@@ -87,22 +103,91 @@ const subEl = document.getElementById('sub');
 const timerEl = document.getElementById('timer');
 const livePillEl = document.getElementById('live-pill');
 const liveTextEl = document.getElementById('live-text');
+const canvasWrap = document.getElementById('canvas-wrap');
 const canvas = document.getElementById('canvas');
 const emptyEl = document.getElementById('empty-state');
+const rosterEl = document.getElementById('roster');
+const resetViewBtn = document.getElementById('reset-view-btn');
 const ctx = canvas.getContext('2d');
 
-const POLL_INTERVAL_MS = 1000;
-// If the last update is older than this, the match state is presumed stale
-// (server gone quiet, or the round just ended) -- the poll interval itself
-// is 1s, so anything over ~2x that missing is a real gap, not just timing.
-const STALE_AFTER_MS = 2500;
-const PLAYER_RADIUS_PX = 14;
+// Only used if the WebSocket push (see connectWatch below) can't connect
+// or drops -- polling is the fallback, not the primary path, so a match
+// can still be watched (just less smoothly) through a proxy/network that
+// blocks WebSockets outright.
+const POLL_FALLBACK_MS = 1000;
+const STALE_AFTER_MS = 3000;
+const PLAYER_RADIUS_PX = 20;
+const TILE_SIZE_PX = 10;
 
-// A small fixed palette rather than trying to mirror the game's real skin
-// colors here -- this view already tells the player apart by the "IT"
-// highlight and username label, so the exact hue doesn't need to match
-// their in-game skin, just be visually distinct player-to-player.
-const PALETTE = ['#5aa9ff', '#3ef5a8', '#ffd166', '#b6acf9', '#ff8fa3', '#7de0e6', '#f4a261', '#c9cba3'];
+// Mirrors TileCanvas.TILE_COLORS in game/main/tile_canvas.gd exactly, so
+// the arena reads as a real preview of the actual tiles rather than
+// arbitrary colors picked for the website. Indices 9/10 (Ice/Bouncy) are
+// included even though the default arena may not use them -- a custom
+// level could.
+const TILE_COLORS = [
+  '#80808c', '#998059', '#a6a6b3', '#6b6b78', '#806945',
+  '#8f8f9c', '#9494a1', '#ad946b', '#babac7', '#a6d9f2', '#f2598c',
+];
+
+const SKIN_COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'teal'];
+const sprites = {};
+SKIN_COLORS.forEach(c => {
+  const img = new Image();
+  img.src = `sprites/${c}.png`;
+  sprites[c] = img;
+});
+
+let latestState = { players: [], timeRemaining: 0, arenaWidth: 0, arenaHeight: 0, levelId: '', updatedAt: 0 };
+let arenaTiles = null; // Array of [x, y, tileType] in tile-grid coords, or null until loaded
+let loadedLevelId = undefined; // whichever level's tiles arenaTiles currently holds
+
+// ─── Camera: pan/zoom/follow ───────────────────────────────────────────────
+let view = { offsetX: 0, offsetY: 0, zoom: 1, userAdjusted: false };
+let followClientId = null;
+let dragging = false;
+let dragLast = null;
+
+function resetView() {
+  view = { offsetX: 0, offsetY: 0, zoom: 1, userAdjusted: false };
+  followClientId = null;
+  updateRosterHighlight();
+}
+resetViewBtn.addEventListener('click', resetView);
+
+function canvasPointFromEvent(e) {
+  const rect = canvas.getBoundingClientRect();
+  const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+  return { x: cx * (canvas.width / rect.width), y: cy * (canvas.height / rect.height) };
+}
+
+canvasWrap.addEventListener('mousedown', e => { dragging = true; dragLast = { x: e.clientX, y: e.clientY }; canvasWrap.classList.add('dragging'); });
+window.addEventListener('mouseup', () => { dragging = false; canvasWrap.classList.remove('dragging'); });
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  view.offsetX += (e.clientX - dragLast.x);
+  view.offsetY += (e.clientY - dragLast.y);
+  view.userAdjusted = true;
+  dragLast = { x: e.clientX, y: e.clientY };
+});
+canvasWrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 0.9;
+  view.zoom = Math.min(6, Math.max(0.3, view.zoom * factor));
+  view.userAdjusted = true;
+}, { passive: false });
+
+let touchLast = null;
+canvasWrap.addEventListener('touchstart', e => { if (e.touches.length === 1) touchLast = { x: e.touches[0].clientX, y: e.touches[0].clientY }; });
+canvasWrap.addEventListener('touchmove', e => {
+  if (e.touches.length !== 1 || !touchLast) return;
+  e.preventDefault();
+  view.offsetX += (e.touches[0].clientX - touchLast.x);
+  view.offsetY += (e.touches[0].clientY - touchLast.y);
+  view.userAdjusted = true;
+  touchLast = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+}, { passive: false });
+canvasWrap.addEventListener('touchend', () => { touchLast = null; });
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -115,6 +200,16 @@ function fmtTime(sec) {
   return String(m) + ':' + String(s).padStart(2, '0');
 }
 
+// ─── Arena tile loading ─────────────────────────────────────────────────────
+function ensureArenaLoaded(levelId) {
+  if (loadedLevelId === levelId) return;
+  loadedLevelId = levelId;
+  arenaTiles = null;
+  const url = levelId ? `api/levels/data/${encodeURIComponent(levelId)}` : 'default_arena.json';
+  fetch(url).then(r => r.json()).then(data => { arenaTiles = data.tiles || []; }).catch(() => { arenaTiles = []; });
+}
+
+// ─── Rendering ──────────────────────────────────────────────────────────────
 function draw(state) {
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
@@ -126,82 +221,183 @@ function draw(state) {
   }
   emptyEl.style.display = 'none';
 
-  // Arena bounds come from the actual level (built-in or custom, see
-  // server_match.gd's _compute_arena_size_px) -- fall back to a plausible
-  // default if it's ever missing/zero so a fresh/edge-case report doesn't
-  // divide by zero.
   const arenaW = state.arenaWidth > 0 ? state.arenaWidth : 1000;
   const arenaH = state.arenaHeight > 0 ? state.arenaHeight : 600;
-  const scale = Math.min(w / arenaW, h / arenaH) * 0.92;
-  const offsetX = (w - arenaW * scale) / 2;
-  const offsetY = (h - arenaH * scale) / 2;
+  const baseScale = Math.min(w / arenaW, h / arenaH) * 0.92;
+  const scale = baseScale * view.zoom;
 
-  ctx.strokeStyle = 'rgba(255,255,255,.12)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(offsetX, offsetY, arenaW * scale, arenaH * scale);
+  // Tile cell (0,0) is NOT necessarily world-pixel (0,0) -- the arena's
+  // tile bounding box isn't guaranteed centered on the origin, so both
+  // tiles and players (Player.global_position, already real world pixels)
+  // need to go through the SAME world->screen transform, anchored on the
+  // arena's actual center (arenaCenterX/Y, see server_match.gd's
+  // _compute_arena_bounds_px) rather than assuming symmetry.
+  const arenaCenterX = state.arenaCenterX || 0;
+  const arenaCenterY = state.arenaCenterY || 0;
+  let centerX = arenaCenterX, centerY = arenaCenterY;
+  if (followClientId) {
+    const followed = players.find(p => p.clientId === followClientId);
+    if (followed) { centerX = followed.x; centerY = followed.y; }
+  }
+  const offsetX = w / 2 - centerX * scale + (followClientId ? 0 : view.offsetX);
+  const offsetY = h / 2 - centerY * scale + (followClientId ? 0 : view.offsetY);
+  const worldToScreen = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
 
-  players.forEach((p, i) => {
-    const x = offsetX + p.x * scale;
-    const y = offsetY + p.y * scale;
-    const color = PALETTE[i % PALETTE.length];
+  // Arena tiles -- drawn from a static export of the level's own layout
+  // (see tools/export_default_arena.gd for the built-in arena, or the
+  // same live-published level JSON custom matches already use), not
+  // reconstructed from live state, since tile geometry never changes
+  // mid-match. Moving platforms aren't animated here (their current
+  // position isn't part of the state summary) -- a known simplification,
+  // not a bug.
+  if (arenaTiles) {
+    for (const [tx, ty, type] of arenaTiles) {
+      const p = worldToScreen(tx * TILE_SIZE_PX, ty * TILE_SIZE_PX);
+      const size = TILE_SIZE_PX * scale;
+      ctx.fillStyle = TILE_COLORS[type] || '#7f7f8c';
+      ctx.fillRect(p.x, p.y, Math.ceil(size), Math.ceil(size));
+    }
+  } else {
+    ctx.strokeStyle = 'rgba(255,255,255,.12)';
+    ctx.lineWidth = 2;
+    const topLeft = worldToScreen(arenaCenterX - arenaW / 2, arenaCenterY - arenaH / 2);
+    ctx.strokeRect(topLeft.x, topLeft.y, arenaW * scale, arenaH * scale);
+  }
+
+  const spriteSize = PLAYER_RADIUS_PX * 2 * (scale / baseScale);
+  players.forEach(p => {
+    const pos = worldToScreen(p.x, p.y);
 
     if (p.isIt) {
       ctx.beginPath();
-      ctx.arc(x, y, PLAYER_RADIUS_PX + 8, 0, Math.PI * 2);
+      ctx.arc(pos.x, pos.y, spriteSize / 2 + 8, 0, Math.PI * 2);
       ctx.strokeStyle = '#ff4d4d';
       ctx.lineWidth = 3;
       ctx.stroke();
     }
 
-    ctx.beginPath();
-    ctx.arc(x, y, PLAYER_RADIUS_PX, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
+    const sprite = sprites[p.skinId] || sprites.red;
+    if (sprite.complete && sprite.naturalWidth > 0) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(sprite, pos.x - spriteSize / 2, pos.y - spriteSize / 2, spriteSize, spriteSize);
+    } else {
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, spriteSize / 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#5aa9ff';
+      ctx.fill();
+    }
 
     ctx.font = '600 13px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#e4e7f0';
-    ctx.fillText(p.username || 'Player', x, y - PLAYER_RADIUS_PX - 10);
-    if (p.isIt) {
-      ctx.fillStyle = '#ff4d4d';
+    ctx.fillText(p.username || 'Player', pos.x, pos.y - spriteSize / 2 - 8);
+    if (followClientId === p.clientId) {
+      ctx.fillStyle = '#b6acf9';
       ctx.font = '700 10px -apple-system, sans-serif';
-      ctx.fillText('IT', x, y + 4);
+      ctx.fillText('FOLLOWING', pos.x, pos.y + spriteSize / 2 + 16);
     }
   });
 }
 
-function refresh() {
-  fetch(`api/servers/${encodeURIComponent(serverId)}/state`)
-    .then(r => {
-      // 404 specifically means this server id no longer exists at all --
-      // distinct from a network hiccup, and the most common real cause:
-      // servers get a brand-new random id every time the dedicated server
-      // process itself restarts, so an old bookmarked/shared Watch link
-      // can point at an id that's simply gone, not one that's just quiet
-      // right now. Surfacing that distinction (instead of one generic
-      // "offline" message for both cases) tells you what to actually do
-      // about it -- go back and click Watch again -- versus a transient
-      // failure that a future poll might just recover from on its own.
-      if (r.status === 404) throw new Error('gone');
-      if (!r.ok) throw new Error('network');
-      return r.json();
-    })
-    .then(state => {
-      const age = Date.now() - (state.updatedAt || 0);
-      const stale = !state.updatedAt || age > STALE_AFTER_MS;
-      livePillEl.className = 'live-pill' + (stale ? ' stale' : '');
-      liveTextEl.textContent = stale ? 'No match live' : 'Live';
-      timerEl.textContent = state.updatedAt ? fmtTime(state.timeRemaining) : '--:--';
-      draw(stale ? { players: [] } : state);
-    })
-    .catch(err => {
-      subEl.textContent = err.message === 'gone'
-        ? 'This link has expired -- the server was restarted since it was shared. Go back to the Server Browser and click Watch again.'
-        : 'Could not reach the relay server right now -- retrying automatically.';
-      livePillEl.className = 'live-pill stale';
-      liveTextEl.textContent = 'Offline';
-      draw({ players: [] });
+function updateRosterHighlight() {
+  rosterEl.querySelectorAll('.roster-chip').forEach(chip => {
+    chip.classList.toggle('following', chip.dataset.clientId === followClientId);
+  });
+}
+
+function renderRoster(players) {
+  rosterEl.innerHTML = players.map(p => {
+    return '<button class="roster-chip" data-client-id="' + esc(p.clientId) + '">' +
+      '<img src="sprites/' + esc(p.skinId || 'red') + '.png" alt="">' +
+      esc(p.username || 'Player') +
+      (p.isIt ? ' <span class="it-badge">IT</span>' : '') +
+    '</button>';
+  }).join('');
+  rosterEl.querySelectorAll('.roster-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const id = chip.dataset.clientId;
+      followClientId = followClientId === id ? null : id;
+      view.userAdjusted = false;
+      updateRosterHighlight();
     });
+  });
+  updateRosterHighlight();
+}
+
+let lastRosterKey = '';
+function applyState(state) {
+  latestState = state;
+  const age = Date.now() - (state.updatedAt || 0);
+  const stale = !state.updatedAt || age > STALE_AFTER_MS;
+  livePillEl.className = 'live-pill' + (stale ? ' stale' : '');
+  liveTextEl.textContent = stale ? 'No match live' : 'Live';
+  timerEl.textContent = state.updatedAt ? fmtTime(state.timeRemaining) : '--:--';
+  const shown = stale ? { players: [] } : state;
+  if (!stale) {
+    ensureArenaLoaded(state.levelId || '');
+    const rosterKey = shown.players.map(p => p.clientId + p.isIt).join(',');
+    if (rosterKey !== lastRosterKey) { lastRosterKey = rosterKey; renderRoster(shown.players); }
+  } else if (lastRosterKey !== '') {
+    lastRosterKey = '';
+    rosterEl.innerHTML = '';
+  }
+  draw(shown);
+}
+
+// ─── Live transport: WebSocket push, HTTP polling as a fallback ───────────
+let pollTimer = null;
+let ws = null;
+
+function startPolling() {
+  if (pollTimer) return;
+  const poll = () => {
+    fetch(`api/servers/${encodeURIComponent(serverId)}/state`)
+      .then(r => { if (r.status === 404) throw new Error('gone'); if (!r.ok) throw new Error('network'); return r.json(); })
+      .then(applyState)
+      .catch(err => {
+        subEl.textContent = err.message === 'gone'
+          ? 'This link has expired -- the server was restarted since it was shared. Go back to the Server Browser and click Watch again.'
+          : 'Could not reach the relay server right now -- retrying automatically.';
+        livePillEl.className = 'live-pill stale';
+        liveTextEl.textContent = 'Offline';
+        applyState({ players: [] });
+      });
+  };
+  poll();
+  pollTimer = setInterval(poll, POLL_FALLBACK_MS);
+}
+
+function connectWatch() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  // Derived from the current page's own path rather than a __BASE_PATH__
+  // global (that's only ever injected into index.html, see server.js's
+  // _indexHtmlCache -- relying on it here was the exact bug that made
+  // every fetch on this page silently miss the /tag prefix before).
+  const base = location.pathname.replace(/\/[^/]*$/, '');
+  ws = new WebSocket(`${proto}//${location.host}${base}/watch/${encodeURIComponent(serverId)}`);
+  ws.onopen = () => {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  };
+  ws.onmessage = e => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'match_state') applyState(msg);
+    } catch {}
+  };
+  ws.onerror = () => {};
+  ws.onclose = () => {
+    ws = null;
+    startPolling();
+    setTimeout(connectWatch, 4000);
+  };
+}
+
+// ─── Render loop (camera can move even between state updates -- following
+// a moving player needs to redraw every frame, not just when new data
+// arrives) ───────────────────────────────────────────────────────────────
+function tick() {
+  draw(Date.now() - (latestState.updatedAt || 0) > STALE_AFTER_MS ? { players: [] } : latestState);
+  requestAnimationFrame(tick);
 }
 
 if (!serverId) {
@@ -213,14 +409,14 @@ if (!serverId) {
       const match = list.find(s => s.id === serverId);
       if (match) {
         titleEl.textContent = 'Watching: ' + esc(match.name);
-        subEl.textContent = (match.ranked ? 'Ranked' : 'Casual') + ' — simplified live view, updates about once a second.';
+        subEl.textContent = (match.ranked ? 'Ranked' : 'Casual') + ' — drag to pan, scroll to zoom, click a player to follow.';
       } else {
         subEl.textContent = 'This server is not currently listed -- it may have gone offline.';
       }
     })
-    .catch(() => { subEl.textContent = 'Simplified live view, updates about once a second.'; });
-  refresh();
-  setInterval(refresh, POLL_INTERVAL_MS);
+    .catch(() => { subEl.textContent = 'Drag to pan, scroll to zoom, click a player to follow.'; });
+  connectWatch();
+  requestAnimationFrame(tick);
 }
 </script>
 </body>
