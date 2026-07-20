@@ -906,6 +906,12 @@ func _build_shared_toolbar(container: Container) -> void:
 	var alpha_label := Label.new()
 	alpha_label.text = "Opacity"
 	alpha_label.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
+	# Without this, the HFlowContainer row stretches both to the height of
+	# its tallest sibling (the size/toggle buttons) and top-aligns them --
+	# fine for a Label/HSlider's own content, but visually anchors them well
+	# above the row's vertical middle. SIZE_SHRINK_CENTER keeps each at its
+	# natural height and centers that within the row instead.
+	alpha_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	flow.add_child(alpha_label)
 	var alpha_slider := HSlider.new()
 	alpha_slider.min_value = 0.1
@@ -913,6 +919,7 @@ func _build_shared_toolbar(container: Container) -> void:
 	alpha_slider.step = 0.05
 	alpha_slider.value = 1.0
 	alpha_slider.custom_minimum_size = Vector2(90, 0)
+	alpha_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	UIStyle.style_slider(alpha_slider, UIStyle.COLOR_LOCAL)
 	alpha_slider.value_changed.connect(func(v: float):
 		_brush_alpha = v

@@ -104,11 +104,17 @@ static func _on_hover(btn: Button, entered: bool) -> void:
 
 ## Recolors an HSlider's default light-gray/white track and grabber (jarring
 ## against the dark theme) to match the rest of the UI -- a dark groove, a
-## colored fill up to the current value, and a small solid-color grabber
-## dot instead of the engine's default white circle icon.
+## colored fill up to the current value, and a small grabber dot instead of
+## the engine's default white circle icon. Several accent colors used here
+## (e.g. COLOR_LOCAL) are themselves bright sky-blues -- a lightened fill
+## plus a lightened-further white-ish grabber on top of it read as no
+## different from Godot's own stock slider theme, which is the same light-
+## blue-with-white-knob look. The groove is darkened instead of barely-there
+## and the grabber keeps its full accent color with a dark ring around it
+## (not lightened) so it stays visually distinct at a glance.
 static func style_slider(slider: HSlider, color: Color) -> void:
 	var groove := StyleBoxFlat.new()
-	groove.bg_color = Color(1, 1, 1, 0.08)
+	groove.bg_color = Color(0, 0, 0, 0.35)
 	groove.corner_radius_top_left = 4
 	groove.corner_radius_top_right = 4
 	groove.corner_radius_bottom_right = 4
@@ -118,7 +124,7 @@ static func style_slider(slider: HSlider, color: Color) -> void:
 	slider.add_theme_stylebox_override("slider", groove)
 
 	var fill := StyleBoxFlat.new()
-	fill.bg_color = Color(color.r, color.g, color.b, 0.85)
+	fill.bg_color = Color(color.r, color.g, color.b, 0.9)
 	fill.corner_radius_top_left = 4
 	fill.corner_radius_top_right = 4
 	fill.corner_radius_bottom_right = 4
@@ -128,12 +134,16 @@ static func style_slider(slider: HSlider, color: Color) -> void:
 	slider.add_theme_stylebox_override("grabber_area", fill)
 	slider.add_theme_stylebox_override("grabber_area_highlight", fill)
 
-	var dot := Image.create(12, 12, false, Image.FORMAT_RGBA8)
+	var dot := Image.create(14, 14, false, Image.FORMAT_RGBA8)
 	dot.fill(Color(0, 0, 0, 0))
-	for y in 12:
-		for x in 12:
-			if Vector2(x - 5.5, y - 5.5).length() <= 5.5:
-				dot.set_pixel(x, y, Color(color.r, color.g, color.b).lightened(0.4))
+	var ring := Color(0.08, 0.08, 0.11)
+	for y in 14:
+		for x in 14:
+			var dist := Vector2(x - 6.5, y - 6.5).length()
+			if dist <= 6.5:
+				dot.set_pixel(x, y, ring)
+			if dist <= 5.0:
+				dot.set_pixel(x, y, color)
 	var dot_tex := ImageTexture.create_from_image(dot)
 	slider.add_theme_icon_override("grabber", dot_tex)
 	slider.add_theme_icon_override("grabber_highlight", dot_tex)
