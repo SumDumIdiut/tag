@@ -17,6 +17,10 @@ const SWEEP_INTERVAL_MS = 5_000;
 const JOIN_TIMEOUT_MS = 10_000;
 const MAX_NAME_LEN = 40;
 const MAX_PAYLOAD_BYTES = 64 * 1024;
+// Mirrors NetworkManager.MAX_LOBBY_PLAYERS in game/net/network_manager.gd --
+// kept in sync by hand, same tradeoff already accepted for other client-
+// mirrored constants in this file (PART_DIMENSIONS, tile index ranges).
+const MAX_LOBBY_PLAYERS = 8;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 5;
 
@@ -523,6 +527,19 @@ app.get('/api/servers', (req, res) => {
   res.json([...servers.values()].map(s => ({
     id: s.id, name: s.name, playerCount: s.playerCount, maxPlayers: s.maxPlayers, createdAt: s.createdAt, ranked: !!s.ranked,
   })));
+});
+
+// Polled by the website's live match viewer (relay-server/public/watch.html)
+// -- a low-frequency (~1s), JSON-only echo of what the native client's own
+// spectate view gets over the real per-tick WebSocket state push (see
+// server_match.gd's _report_state_summary). {players: []} (not 404) when the
+// server exists but no match is in progress right now, so the page can
+// distinguish "not live yet" from "no such server."
+app.get('/api/servers/:id/state', (req, res) => {
+  if (!/^[a-f0-9]{16}$/.test(req.params.id)) return res.status(400).json({ error: 'bad server id' });
+  const s = servers.get(req.params.id);
+  if (!s) return res.status(404).json({ error: 'no such server' });
+  res.json(s.matchState || { players: [], timeRemaining: 0, arenaWidth: 0, arenaHeight: 0, updatedAt: 0 });
 });
 
 // ─── HTTP: skins ──────────────────────────────────────────────────────────────
@@ -1164,6 +1181,30 @@ function handleHostControl(ws) {
       // approach as playerCount above, since a heartbeat's job is to keep
       // the server listed, not to hard-fail on one odd field.
       s.clientIds = Array.isArray(msg.clientIds) ? msg.clientIds.filter(id => CLIENT_ID_RE.test(String(id))).slice(0, 64) : [];
+    } else if (msg.type === 'match_state') {
+      // Live-ish snapshot for the website's match viewer (see relay-server/
+      // public/watch.html) -- sent every ~1s by relay_client.gd while a
+      // match is in progress, separate from the heartbeat above. Loosely
+      // validated (this is trusted, already-registered infrastructure
+      // traffic, not arbitrary client input) but still bounded/typed so a
+      // malformed message can't wedge a bad value into what the website
+      // reads back out.
+      if (!serverId || !servers.has(serverId)) return;
+      const s = servers.get(serverId);
+      const players = Array.isArray(msg.players) ? msg.players.slice(0, MAX_LOBBY_PLAYERS).map(p => ({
+        clientId: typeof p.clientId === 'string' ? p.clientId.slice(0, 64) : '',
+        username: sanitizeName(p.username),
+        x: typeof p.x === 'number' ? p.x : 0,
+        y: typeof p.y === 'number' ? p.y : 0,
+        isIt: !!p.isIt,
+      })) : [];
+      s.matchState = {
+        players,
+        timeRemaining: typeof msg.timeRemaining === 'number' ? msg.timeRemaining : 0,
+        arenaWidth: typeof msg.arenaWidth === 'number' ? msg.arenaWidth : 0,
+        arenaHeight: typeof msg.arenaHeight === 'number' ? msg.arenaHeight : 0,
+        updatedAt: Date.now(),
+      };
     } else if (msg.type === 'unregister') {
       if (serverId) servers.delete(serverId);
     }
