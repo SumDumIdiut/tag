@@ -20,10 +20,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -180.0
-offset_top = -290.0
-offset_right = 180.0
-offset_bottom = 290.0
+offset_left = -460.0
+offset_top = -230.0
+offset_right = 460.0
+offset_bottom = 230.0
 theme_override_constants/separation = 16
 
 [node name="Title" type="Label" parent="VBox"]
@@ -39,45 +39,38 @@ theme_override_font_sizes/font_size = 14
 horizontal_alignment = 1
 text = "PLAY WITH OTHERS"
 
-[node name="MatchmakingRow" type="HBoxContainer" parent="VBox"]
+[node name="BarRow" type="HBoxContainer" parent="VBox"]
 layout_mode = 2
+size_flags_vertical = 3
+alignment = 1
 theme_override_constants/separation = 12
 
-[node name="QuickPlayButton" type="Button" parent="VBox/MatchmakingRow"]
+[node name="QuickPlayButton" type="Button" parent="VBox/BarRow"]
 layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 130)
+custom_minimum_size = Vector2(170, 290)
 clip_contents = true
 text = "Quick Play"
 
-[node name="RankedButton" type="Button" parent="VBox/MatchmakingRow"]
+[node name="RankedButton" type="Button" parent="VBox/BarRow"]
 layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 130)
+custom_minimum_size = Vector2(170, 290)
 clip_contents = true
 text = "Ranked"
 
-[node name="Divider" type="HSeparator" parent="VBox"]
+[node name="BrowseButton" type="Button" parent="VBox/BarRow"]
 layout_mode = 2
-
-[node name="BrowseButton" type="Button" parent="VBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 64)
+custom_minimum_size = Vector2(170, 290)
 clip_contents = true
 text = "Browse Servers"
 
-[node name="HostButton" type="Button" parent="VBox"]
+[node name="HostButton" type="Button" parent="VBox/BarRow"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 64)
+custom_minimum_size = Vector2(170, 290)
 clip_contents = true
 text = "Host Server"
 
-[node name="DirectConnectButton" type="Button" parent="VBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 48)
-text = "Direct Connect (advanced)"
-
 [node name="BackButton" type="Button" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 36)
+size_flags_horizontal = 4
+custom_minimum_size = Vector2(160, 40)
 text = "Back"

@@ -90,7 +90,7 @@ text = "3"
 
 [node name="StartButton" type="Button" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 46)
+custom_minimum_size = Vector2(0, 64)
 text = "Play Tag"
 
 [node name="BackButton" type="Button" parent="VBox"]

@@ -12,7 +12,12 @@ const UIStyle := preload("res://ui/ui_style.gd")
 func _ready() -> void:
 	UIStyle.add_background(self)
 	$VBox/SettingsPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_LOCAL))
-	UIStyle.style_button(start_button, UIStyle.COLOR_LOCAL)
+	# Same plain flat-color-no-glow bar treatment online_menu.gd's row uses --
+	# Local only has the one real destination (there's nothing to arrange in
+	# a row here), but it should still carry the same visual weight/boldness
+	# as those bars rather than reading as a smaller, secondary action.
+	UIStyle.style_button(start_button, UIStyle.COLOR_LOCAL, 18)
+	start_button.add_theme_font_size_override("font_size", 18)
 	UIStyle.style_back_button(back_button)
 	UIStyle.style_slider(npc_count_slider, UIStyle.COLOR_LOCAL)
 	UIStyle.style_slider(skill_slider, UIStyle.COLOR_LOCAL)
