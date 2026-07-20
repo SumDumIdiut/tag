@@ -71,7 +71,15 @@
   </div>
 
 <script>
-const BASE_PATH = window.__BASE_PATH__ || '';
+// No BASE_PATH here (unlike index.html) -- window.__BASE_PATH__ is only
+// ever injected into index.html's own server route (see server.js's
+// _indexHtmlCache), never into the other static pages, which is exactly
+// why this used to be a real bug: prefixing fetch URLs with an always-
+// empty BASE_PATH silently dropped the required /tag prefix, hitting a
+// route the portal doesn't proxy at all and 404ing on every single
+// request regardless of whether the server id was valid. Plain relative
+// paths (no leading slash) resolve against this page's own URL instead,
+// the same way leaderboard.html/profile.html already do it correctly.
 const params = new URLSearchParams(location.search);
 const serverId = params.get('id');
 const titleEl = document.getElementById('title');
@@ -163,7 +171,7 @@ function draw(state) {
 }
 
 function refresh() {
-  fetch(`${BASE_PATH}/api/servers/${encodeURIComponent(serverId)}/state`)
+  fetch(`api/servers/${encodeURIComponent(serverId)}/state`)
     .then(r => {
       // 404 specifically means this server id no longer exists at all --
       // distinct from a network hiccup, and the most common real cause:
@@ -199,7 +207,7 @@ function refresh() {
 if (!serverId) {
   subEl.textContent = 'No server specified.';
 } else {
-  fetch(`${BASE_PATH}/api/servers`)
+  fetch(`api/servers`)
     .then(r => r.json())
     .then(list => {
       const match = list.find(s => s.id === serverId);
