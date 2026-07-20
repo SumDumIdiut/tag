@@ -293,10 +293,6 @@ function draw(state) {
   players.forEach((p, i) => {
     const pos = worldToScreen(p.x, p.y);
 
-    // No glow/ring on the tagger -- the real game doesn't draw one either
-    // (a spectator can tell who's it the same way a player would: the
-    // roster list below, not a magic in-world highlight nothing in the
-    // actual client ever shows).
     const sprite = sprites[p.skinId] || sprites.red;
     // facing < 0 means the game's own remote_avatar.gd negates the
     // sprite's scale.x to flip it -- mirrored here as a canvas transform
@@ -310,11 +306,23 @@ function draw(state) {
       ctx.translate(pos.x, pos.y);
       if (flip) ctx.scale(-1, 1);
       ctx.drawImage(sprite, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize);
+      if (p.isIt) {
+        // The real game's own tagger indicator (Player.TAG_IT_COLOR,
+        // applied as visual.modulate in remote_avatar.gd) -- a color
+        // multiply over the whole sprite, not a ring or glow around it.
+        // source-atop constrains the fill to pixels the sprite itself
+        // just drew (its actual silhouette, not its bounding box), the
+        // same shape a true multiply would respect.
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = 'rgba(255, 217, 26, 0.65)';
+        ctx.fillRect(-spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize);
+        ctx.globalCompositeOperation = 'source-over';
+      }
       ctx.restore();
     } else {
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, spriteSize / 2, 0, Math.PI * 2);
-      ctx.fillStyle = '#5aa9ff';
+      ctx.fillStyle = p.isIt ? '#ffd91a' : '#5aa9ff';
       ctx.fill();
     }
 
