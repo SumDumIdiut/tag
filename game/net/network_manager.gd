@@ -9,7 +9,7 @@ extends Node
 
 signal lobby_list_updated(lobbies: Array)
 signal lobby_state_updated(lobby: Dictionary)
-signal match_started(lobby_id: int, my_peer_id: int, roster: Dictionary, level_id: String)
+signal match_started(lobby_id: int, my_peer_id: int, roster: Dictionary, level_id: String, playlist_id: String)
 signal match_state_received(tick: int, states: Dictionary)
 ## Fires once on every peer when a ranked round's timer runs out. `ranking`
 ## is [{peer_id, username, it_time, place}], sorted best (place 1) first.
@@ -25,6 +25,8 @@ signal chat_message_received(username: String, text: String)
 ## in progress on that server to watch.
 signal spectate_failed
 
+const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
+
 const DEFAULT_PORT := 9000
 const MAX_LOBBY_PLAYERS := 8
 const MIN_RANKED_PLAYERS := 2
@@ -34,6 +36,11 @@ const MAX_CHAT_MESSAGE_LEN := 200
 var is_server := false
 var is_ranked_server := false # set by server_main.gd from --ranked; auto-lobbies/starts ranked rounds instead of waiting for manual create/join/Start
 var level_id := "" # set by server_main.gd from --level=<id>; "" means the built-in default arena, applies to every lobby this server process hosts
+# set by server_main.gd from --playlist=<id>; "" means the legacy undifferentiated
+# free-for-all ranked pool (any headcount 2-8) -- one playlist per process,
+# same pattern as is_ranked_server/level_id. Casual servers also read this:
+# host_setup.gd passes --playlist= for a playlist-restricted casual lobby.
+var playlist_id := ""
 var username := "Player"
 var my_peer_id := -1
 var current_lobby: Dictionary = {}
@@ -268,7 +275,7 @@ func _server_register_spectator() -> void:
 		_spectators[target_lobby_id] = []
 	_spectators[target_lobby_id].append(sender)
 	_peer_spectating_lobby[sender] = target_lobby_id
-	rpc_id(sender, "_client_match_started", target_lobby_id, -1, match_instance.roster, level_id)
+	rpc_id(sender, "_client_match_started", target_lobby_id, -1, match_instance.roster, level_id, match_instance.playlist_id)
 
 func _sanitize_username(raw: String) -> String:
 	var trimmed := raw.strip_edges()
@@ -277,13 +284,13 @@ func _sanitize_username(raw: String) -> String:
 	return trimmed.substr(0, 16)
 
 @rpc("any_peer", "reliable")
-func _server_create_lobby(lobby_name: String, max_players: int) -> void:
+func _server_create_lobby(lobby_name: String, max_players: int, p_playlist_id: String = "") -> void:
 	if not is_server:
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	if _peer_lobby.has(sender):
 		return # already in a lobby
-	_create_lobby_internal(sender, lobby_name, max_players)
+	_create_lobby_internal(sender, lobby_name, max_players, p_playlist_id)
 
 @rpc("any_peer", "reliable")
 func _server_join_lobby(lobby_id: int) -> void:
@@ -312,23 +319,41 @@ func _server_quick_join_lobby() -> void:
 			return
 	_create_lobby_internal(sender, "Quick Match", MAX_LOBBY_PLAYERS)
 
-func _create_lobby_internal(sender: int, lobby_name: String, max_players: int) -> void:
+## skin_id/hat_id here (not just username/ready) so a live lobby-waiting
+## view (see TeamLobbyView) can show real character portraits before the
+## match even starts, not just names -- match-start's own members_with_extras
+## duplicates this same lookup for the same reason.
+func _member_entry(peer_id: int, ready: bool) -> Dictionary:
+	return {
+		"username": _peer_username.get(peer_id, "Player"), "ready": ready,
+		"skin_id": _peer_skin_id.get(peer_id, "red"), "hat_id": _peer_hat_id.get(peer_id, ""),
+	}
+
+func _create_lobby_internal(sender: int, lobby_name: String, max_players: int, p_playlist_id: String = "") -> void:
 	var id := _next_lobby_id
 	_next_lobby_id += 1
 	var clean_name := lobby_name.strip_edges().substr(0, 24)
 	if clean_name.is_empty():
 		clean_name = "Lobby %d" % id
+	# A playlist-restricted lobby's headcount comes from the catalog, not
+	# the caller-supplied max_players -- 2v2 is always exactly 4, never
+	# host-configurable, same as ranked's playlist lobbies below.
+	var effective_max := clampi(max_players, 2, MAX_LOBBY_PLAYERS)
+	if not p_playlist_id.is_empty():
+		effective_max = PlaylistCatalog.total_players(p_playlist_id)
 	_lobbies[id] = {
 		"id": id,
 		"name": clean_name,
 		"host_peer": sender,
-		"max_players": clampi(max_players, 2, MAX_LOBBY_PLAYERS),
-		"members": {sender: {"username": _peer_username.get(sender, "Player"), "ready": false}},
+		"max_players": effective_max,
+		"members": {sender: _member_entry(sender, false)},
 		"in_match": false,
+		"playlist": p_playlist_id,
 	}
 	_peer_lobby[sender] = id
 	_broadcast_lobby_list()
 	_send_lobby_state(id)
+	_maybe_autostart_playlist_lobby(id)
 
 func _join_lobby_internal(sender: int, lobby_id: int) -> void:
 	if not _lobbies.has(lobby_id):
@@ -336,10 +361,27 @@ func _join_lobby_internal(sender: int, lobby_id: int) -> void:
 	var lobby: Dictionary = _lobbies[lobby_id]
 	if lobby.in_match or lobby.members.size() >= lobby.max_players:
 		return
-	lobby.members[sender] = {"username": _peer_username.get(sender, "Player"), "ready": false}
+	lobby.members[sender] = _member_entry(sender, false)
 	_peer_lobby[sender] = lobby_id
 	_broadcast_lobby_list()
 	_send_lobby_state(lobby_id)
+	_maybe_autostart_playlist_lobby(lobby_id)
+
+## Casual playlist lobbies (1v1/2v2/1v1v1/1v1v1v1 chosen at host_setup.gd)
+## have no manual Start button at all -- they auto-start the instant they
+## reach the playlist's exact headcount, mirroring how _join_ranked_lobby
+## already auto-starts ranked. A "Free-for-all" casual lobby (empty
+## playlist, today's default) is untouched -- still manual Start, any
+## headcount, via _server_start_match.
+func _maybe_autostart_playlist_lobby(lobby_id: int) -> void:
+	if not _lobbies.has(lobby_id):
+		return
+	var lobby: Dictionary = _lobbies[lobby_id]
+	var lobby_playlist: String = lobby.get("playlist", "")
+	if lobby_playlist.is_empty() or lobby.in_match:
+		return
+	if lobby.members.size() >= PlaylistCatalog.total_players(lobby_playlist):
+		_start_match_for_lobby(lobby_id, false)
 
 @rpc("any_peer", "reliable")
 func _server_leave_lobby() -> void:
@@ -406,7 +448,10 @@ func _server_start_match() -> void:
 	if lobby_id == -1 or not _lobbies.has(lobby_id):
 		return
 	var lobby: Dictionary = _lobbies[lobby_id]
-	if lobby.host_peer != sender or lobby.in_match or lobby.members.is_empty():
+	# Playlist lobbies auto-start on fill (_maybe_autostart_playlist_lobby)
+	# and never expose a manual Start button client-side -- reject it
+	# server-side too rather than trusting the client didn't send it anyway.
+	if lobby.host_peer != sender or lobby.in_match or lobby.members.is_empty() or not lobby.get("playlist", "").is_empty():
 		return
 	_start_match_for_lobby(lobby_id, false)
 
@@ -415,34 +460,47 @@ func _server_start_match() -> void:
 ## (recreated fresh after each round, see notify_match_ended), and the round
 ## auto-starts as soon as MIN_RANKED_PLAYERS are in it.
 func _join_ranked_lobby(sender: int) -> void:
+	# Playlist set -> exact headcount, team-mode-aware; empty -> the legacy
+	# undifferentiated free-for-all pool (any headcount 2-8), same fallback
+	# server_main.gd/is_ranked_server already follow for a process launched
+	# without a matching flag.
+	var target_size: int = PlaylistCatalog.total_players(playlist_id) if not playlist_id.is_empty() else MAX_LOBBY_PLAYERS
+	var start_threshold: int = target_size if not playlist_id.is_empty() else MIN_RANKED_PLAYERS
 	if _ranked_lobby_id == -1 or not _lobbies.has(_ranked_lobby_id) or _lobbies[_ranked_lobby_id].in_match:
 		_ranked_lobby_id = _next_lobby_id
 		_next_lobby_id += 1
 		_lobbies[_ranked_lobby_id] = {
 			"id": _ranked_lobby_id, "name": "Ranked Match", "host_peer": sender,
-			"max_players": MAX_LOBBY_PLAYERS, "members": {}, "in_match": false, "ranked": true,
+			"max_players": target_size, "members": {}, "in_match": false, "ranked": true,
+			"playlist": playlist_id,
 		}
 	var lobby: Dictionary = _lobbies[_ranked_lobby_id]
 	if lobby.members.size() >= lobby.max_players:
 		return # full -- rare, the directory listing should already hide a full ranked server from new searches
-	lobby.members[sender] = {"username": _peer_username.get(sender, "Player"), "ready": true}
+	lobby.members[sender] = _member_entry(sender, true)
 	_peer_lobby[sender] = _ranked_lobby_id
 	_broadcast_lobby_list()
 	_send_lobby_state(_ranked_lobby_id)
-	if lobby.members.size() >= MIN_RANKED_PLAYERS:
+	if lobby.members.size() >= start_threshold:
 		_start_match_for_lobby(_ranked_lobby_id, true)
 
 func _start_match_for_lobby(lobby_id: int, ranked: bool) -> void:
 	var lobby: Dictionary = _lobbies[lobby_id]
 	lobby.in_match = true
 	_broadcast_lobby_list()
+	var lobby_playlist: String = lobby.get("playlist", "")
 	var members_with_extras: Dictionary = lobby.members.duplicate(true)
+	if PlaylistCatalog.is_team_mode(lobby_playlist):
+		var teams := PlaylistCatalog.assign_teams(lobby.members.keys(), PlaylistCatalog.team_count(lobby_playlist))
+		for peer_id in teams.keys():
+			members_with_extras[peer_id]["team"] = teams[peer_id]
 	for peer_id in members_with_extras.keys():
 		members_with_extras[peer_id]["skin_id"] = _peer_skin_id.get(peer_id, "red")
 		members_with_extras[peer_id]["hat_id"] = _peer_hat_id.get(peer_id, "")
 		members_with_extras[peer_id]["trail_id"] = _peer_trail_id.get(peer_id, "")
 		members_with_extras[peer_id]["client_id"] = _peer_client_id.get(peer_id, "")
 	var match_instance := ServerMatch.new(self, lobby_id, members_with_extras, ranked)
+	match_instance.playlist_id = lobby_playlist
 	add_child(match_instance)
 	_matches[lobby_id] = match_instance
 
@@ -504,9 +562,9 @@ func _send_lobby_state(lobby_id: int) -> void:
 		rpc_id(peer_id, "_client_receive_lobby_state", lobby)
 
 ## Called by ServerMatch once it's finished spawning players.
-func notify_match_started(lobby_id: int, roster: Dictionary, match_level_id: String) -> void:
+func notify_match_started(lobby_id: int, roster: Dictionary, match_level_id: String, match_playlist_id: String = "") -> void:
 	for peer_id in roster.keys():
-		rpc_id(peer_id, "_client_match_started", lobby_id, peer_id, roster, match_level_id)
+		rpc_id(peer_id, "_client_match_started", lobby_id, peer_id, roster, match_level_id, match_playlist_id)
 
 ## Called by ServerMatch every physics tick.
 func push_match_state(peer_id: int, tick: int, states: Dictionary) -> void:
@@ -544,7 +602,11 @@ func _report_ranked_result(ranking: Array) -> void:
 	var req := HTTPRequest.new()
 	add_child(req)
 	req.request_completed.connect(func(_r, _c, _h, _b): req.queue_free())
-	var body := JSON.stringify({"results": results})
+	# notify_match_ended (this function's only caller) is only ever reached
+	# via a ranked round ending (see tag_mode.gd's round_ended, only emitted
+	# `if ranked`) -- so this process's own playlist_id always is the
+	# match's playlist, one-playlist-per-process (see the field's own doc).
+	var body := JSON.stringify({"results": results, "playlist": playlist_id})
 	req.request(RANKED_REPORT_URL, ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
 
 # ==================== Client-side RPC endpoints (server -> client) ====================
@@ -559,9 +621,9 @@ func _client_receive_lobby_state(lobby: Dictionary) -> void:
 	lobby_state_updated.emit(lobby)
 
 @rpc("authority", "reliable")
-func _client_match_started(lobby_id: int, my_id: int, roster: Dictionary, match_level_id: String) -> void:
+func _client_match_started(lobby_id: int, my_id: int, roster: Dictionary, match_level_id: String, match_playlist_id: String = "") -> void:
 	my_peer_id = my_id
-	match_started.emit(lobby_id, my_id, roster, match_level_id)
+	match_started.emit(lobby_id, my_id, roster, match_level_id, match_playlist_id)
 
 @rpc("authority", "unreliable_ordered")
 func _client_receive_match_state(tick: int, states: Dictionary) -> void:
@@ -584,8 +646,8 @@ func _client_spectate_failed() -> void:
 func set_username(display_name: String) -> void:
 	username = display_name
 
-func create_lobby(lobby_name: String, max_players: int) -> void:
-	rpc_id(1, "_server_create_lobby", lobby_name, max_players)
+func create_lobby(lobby_name: String, max_players: int, playlist_id: String = "") -> void:
+	rpc_id(1, "_server_create_lobby", lobby_name, max_players, playlist_id)
 
 func join_lobby(lobby_id: int) -> void:
 	rpc_id(1, "_server_join_lobby", lobby_id)

@@ -29,6 +29,9 @@
   .stat-value { font-size: 22px; font-weight: 800; }
   .stat-label { color: #7b82a8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
   .tier-badge { display: inline-block; padding: 4px 12px; border-radius: 999px; background: rgba(124,108,248,.15); color: #b6acf9; font-weight: 700; font-size: 12.5px; margin-bottom: 10px; }
+  .playlist-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+  .playlist-row:last-child { border-bottom: none; }
+  .playlist-name { flex: 1 1 auto; font-weight: 700; font-size: 14px; }
   .section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #7b82a8; margin-bottom: 10px; }
   .ach-list { display: flex; flex-wrap: wrap; gap: 8px; }
   .ach-pill { padding: 6px 12px; border-radius: 999px; background: rgba(63,245,168,.12); color: #3ef5a8; font-size: 12px; font-weight: 700; }
@@ -88,15 +91,24 @@ function render(p) {
       }).join('')
     : '<div class="empty">No ranked matches played yet.</div>';
 
+  // One row per playlist the player has an actual rank in (Rocket-League-
+  // style side-by-side per-playlist ranks, not one global number) --
+  // ranks is {} for a player who's never finished a ranked match.
+  const playlistIds = Object.keys(p.ranks || {});
+  const ranksHtml = playlistIds.length
+    ? playlistIds.map(id => {
+        const r = p.ranks[id];
+        return '<div class="playlist-row">' +
+          '<div class="playlist-name">' + esc(id) + '</div>' +
+          '<div class="tier-badge" style="margin-bottom:0">' + esc(r.tier) + '</div>' +
+          '<div class="stat-value" style="font-size:16px">' + r.elo + '</div>' +
+          '<div class="stat-label" style="margin-top:0">' + r.wins + 'W-' + r.losses + 'L</div>' +
+        '</div>';
+      }).join('')
+    : '<div class="empty">No ranked matches played yet.</div>';
+
   contentEl.innerHTML =
-    '<div class="card">' +
-      '<div class="tier-badge">' + esc(p.tier) + '</div>' +
-      '<div class="stat-grid">' +
-        '<div><div class="stat-value">' + p.elo + '</div><div class="stat-label">ELO</div></div>' +
-        '<div><div class="stat-value">' + p.wins + '-' + p.losses + '</div><div class="stat-label">W-L</div></div>' +
-        '<div><div class="stat-value">' + p.matchesPlayed + '</div><div class="stat-label">Matches</div></div>' +
-      '</div>' +
-    '</div>' +
+    '<div class="card"><div class="section-title">Ranks</div>' + ranksHtml + '</div>' +
     '<div class="card"><div class="section-title">Achievements (' + p.achievements.length + ')</div>' + achievementsHtml + '</div>' +
     '<div class="card"><div class="section-title">Recent Matches</div>' + matchesHtml + '</div>';
 }

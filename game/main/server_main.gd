@@ -34,6 +34,7 @@ func _ready() -> void:
 	var quit_when_empty := false
 	var is_ranked := false
 	var level_id := ""
+	var playlist_id := ""
 
 	for arg in OS.get_cmdline_args():
 		if arg.begins_with("--port="):
@@ -46,6 +47,8 @@ func _ready() -> void:
 			relay_url = arg.substr(12)
 		elif arg.begins_with("--level="):
 			level_id = arg.substr(8)
+		elif arg.begins_with("--playlist="):
+			playlist_id = arg.substr(11)
 		elif arg == "--private":
 			is_private = true
 		elif arg == "--quit-when-empty":
@@ -60,9 +63,10 @@ func _ready() -> void:
 		return
 	NetworkManager.is_ranked_server = is_ranked
 	NetworkManager.level_id = level_id
+	NetworkManager.playlist_id = playlist_id
 
 	if not is_private:
-		_relay_client = RelayClient.new(relay_url, server_name, max_players, port, is_ranked)
+		_relay_client = RelayClient.new(relay_url, server_name, max_players, port, is_ranked, playlist_id)
 		add_child(_relay_client)
 
 	# Godot has no native "die with parent". This used to poll

@@ -269,15 +269,25 @@ function loadRanks() {
   try { return JSON.parse(fs.readFileSync(RANKS_JSON_PATH, 'utf-8')); }
   catch { return {}; }
 }
-let ranks = loadRanks(); // clientId -> { elo, wins, losses, matchesPlayed, lastPlayed }
+// clientId -> playlistId -> { elo, wins, losses, matchesPlayed, lastPlayed }
+// -- one ELO per {player, playlist} pair (1v1, 2v2, 1v1v1, 1v1v1v1 all rank
+// separately, Rocket-League style), not one global number per player. "" is
+// the legacy/undifferentiated free-for-all pool a ranked server launched
+// without --playlist= falls back to (see network_manager.gd's playlist_id).
+// Deliberately no migration from the old flat {clientId: {elo,...}} shape
+// this replaces -- accepted clean break (active dev data, not a live
+// service), see the plan this shipped from.
+let ranks = loadRanks();
 
 function saveRanks() {
   fs.writeFileSync(RANKS_JSON_PATH, JSON.stringify(ranks));
 }
 
-function getRankEntry(clientId) {
-  if (!ranks[clientId]) ranks[clientId] = { elo: STARTING_ELO, wins: 0, losses: 0, matchesPlayed: 0, lastPlayed: 0 };
-  return ranks[clientId];
+function getRankEntry(clientId, playlistId) {
+  const playlist = String(playlistId || '');
+  if (!ranks[clientId]) ranks[clientId] = {};
+  if (!ranks[clientId][playlist]) ranks[clientId][playlist] = { elo: STARTING_ELO, wins: 0, losses: 0, matchesPlayed: 0, lastPlayed: 0 };
+  return ranks[clientId][playlist];
 }
 
 // Standard FFA/multiplayer Elo extension: every pair (i, j) in the lobby is
@@ -286,27 +296,45 @@ function getRankEntry(clientId) {
 // their N-1 opponents so total rating movement stays comparable regardless
 // of how many people were in the round (an 8-player lobby shouldn't swing
 // ratings 7x harder than a 2-player one).
-function applyEloUpdates(results) {
-  // results: [{clientId, itTime, place}], already sorted/placed by the caller
+function applyEloUpdates(results, playlistId) {
+  // results: [{clientId, itTime, place}], already sorted/placed by the caller.
+  // Team play reports the same `place` for both teammates (see
+  // server_match.gd's _rank_by_team) -- two results sharing a `place` are
+  // always teammates (FFA placement is always unique-per-player), so that
+  // alone is enough to detect a team pairing with no separate team field
+  // needed on the wire. Those pairs are skipped entirely rather than
+  // compared as a "tie" -- comparing them would otherwise treat neither as
+  // having "won" against the other and pull both down by an amount that
+  // depends on their relative starting elo (not actually a tie at all,
+  // just two players who were never opponents this match).
   const n = results.length;
   if (n < 2) return; // nothing to compare a lone result against
-  const before = results.map(r => getRankEntry(r.clientId).elo);
+  const before = results.map(r => getRankEntry(r.clientId, playlistId).elo);
   const deltas = results.map(() => 0);
+  const opponentCounts = results.map(() => 0);
+  // Team mode never reaches place===n (team A/B in a 2v2 are place 1/2,
+  // not 1/4) -- the actual "last place" is whatever the highest place
+  // value in this result set is, which degrades to exactly n for FFA
+  // (every place 1..n is unique there) and is the team count for team mode.
+  const lastPlace = Math.max(...results.map(r => r.place));
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
-      if (i === j) continue;
+      if (i === j || results[i].place === results[j].place) continue;
       const expected = 1 / (1 + Math.pow(10, (before[j] - before[i]) / 400));
       const actualScore = results[i].place < results[j].place ? 1 : 0; // lower place number = better = "won" this pair
       deltas[i] += (actualScore - expected);
+      opponentCounts[i] += 1;
     }
   }
   for (let i = 0; i < n; i++) {
-    const entry = getRankEntry(results[i].clientId);
-    entry.elo = Math.round(entry.elo + ELO_K * (deltas[i] / (n - 1)));
+    const entry = getRankEntry(results[i].clientId, playlistId);
+    if (opponentCounts[i] > 0) {
+      entry.elo = Math.round(entry.elo + ELO_K * (deltas[i] / opponentCounts[i]));
+    }
     entry.matchesPlayed += 1;
     entry.lastPlayed = Date.now();
     if (results[i].place === 1) entry.wins += 1;
-    else if (results[i].place === n) entry.losses += 1;
+    else if (results[i].place === lastPlace) entry.losses += 1;
   }
   saveRanks();
 }
@@ -458,9 +486,9 @@ function achievementList(ids) {
 // progression row so a profile page can list "recent matches" without
 // scanning the whole matches directory.
 const MAX_RECENT_MATCHES = 20;
-function recordMatchHistory(results) {
+function recordMatchHistory(results, playlistId) {
   const id = 'match_' + crypto.randomBytes(8).toString('hex');
-  const record = { id, timestamp: Date.now(), results };
+  const record = { id, timestamp: Date.now(), playlist: String(playlistId || ''), results };
   fs.writeFileSync(path.join(MATCHES_DIR, id + '.json'), JSON.stringify(record));
   for (const r of results) {
     const entry = getProgressionEntry(r.clientId);
@@ -473,16 +501,21 @@ function recordMatchHistory(results) {
 // Called right after applyEloUpdates(results) inside report-result -- reuses
 // the exact same validated {clientId, itTime, place} entries, plus n
 // (results.length) for achievements that depend on the whole round's size.
-function applyProgressionUpdates(results) {
-  const n = results.length;
+function applyProgressionUpdates(results, playlistId) {
+  // Team mode never reaches place===results.length (see applyEloUpdates'
+  // identical lastPlace note) -- both the placement XP bonus and the
+  // last_place achievement condition below need the real highest place in
+  // this result set, not the raw player count, or a team-mode loser's
+  // bonus/achievement math silently breaks.
+  const lastPlace = Math.max(...results.map(r => r.place));
   for (const r of results) {
     const entry = getProgressionEntry(r.clientId);
     if (r.username) entry.username = r.username;
-    entry.xp += XP_BASE + Math.max(0, n - r.place) * XP_PLACEMENT_BONUS;
-    const rank = getRankEntry(r.clientId); // already updated by applyEloUpdates, called before this
+    entry.xp += XP_BASE + Math.max(0, lastPlace - r.place) * XP_PLACEMENT_BONUS;
+    const rank = getRankEntry(r.clientId, playlistId); // already updated by applyEloUpdates, called before this
     for (const ach of ACHIEVEMENTS) {
       if (entry.achievements.includes(ach.id)) continue;
-      if (ach.condition(rank, { itTime: r.itTime, place: r.place, n })) {
+      if (ach.condition(rank, { itTime: r.itTime, place: r.place, n: lastPlace })) {
         entry.achievements.push(ach.id);
       }
     }
@@ -547,6 +580,7 @@ setInterval(() => {
 app.get('/api/servers', (req, res) => {
   res.json([...servers.values()].map(s => ({
     id: s.id, name: s.name, playerCount: s.playerCount, maxPlayers: s.maxPlayers, createdAt: s.createdAt, ranked: !!s.ranked,
+    playlist: s.playlist || '',
   })));
 });
 
@@ -957,9 +991,10 @@ app.get('/api/game-assets/:category/:key/download', (req, res) => {
 // ─── HTTP: ranked ─────────────────────────────────────────────────────────────
 app.get('/api/ranked/:clientId', (req, res) => {
   if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  const entry = getRankEntry(req.params.clientId);
+  const playlist = String(req.query.playlist || '');
+  const entry = getRankEntry(req.params.clientId, playlist);
   saveRanks(); // getRankEntry may have just created a fresh entry -- persist it so a lookup alone doesn't silently lose a brand-new player's row on restart
-  res.json({ elo: entry.elo, tier: tierForElo(entry.elo), wins: entry.wins, losses: entry.losses, matchesPlayed: entry.matchesPlayed });
+  res.json({ elo: entry.elo, tier: tierForElo(entry.elo), wins: entry.wins, losses: entry.losses, matchesPlayed: entry.matchesPlayed, playlist });
 });
 
 // Mirrors game/net/server_match.gd's ROUND_DURATION_SEC -- a reported itTime
@@ -981,6 +1016,7 @@ app.post('/api/ranked/report-result', (req, res) => {
   if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
   const results = req.body.results;
   if (!Array.isArray(results) || results.length === 0) return res.status(400).json({ error: 'results required' });
+  const playlist = String(req.body.playlist || '');
   const clean = [];
   for (const r of results) {
     if (!r || !CLIENT_ID_RE.test(String(r.clientId || ''))) return res.status(400).json({ error: 'bad clientId in results' });
@@ -989,9 +1025,9 @@ app.post('/api/ranked/report-result', (req, res) => {
     const itTime = Math.min(Math.max(Number(r.itTime) || 0, 0), ROUND_DURATION_SEC);
     clean.push({ clientId: String(r.clientId), itTime, place, username: r.username ? sanitizeName(r.username) : null });
   }
-  applyEloUpdates(clean);
-  applyProgressionUpdates(clean);
-  recordMatchHistory(clean);
+  applyEloUpdates(clean, playlist);
+  applyProgressionUpdates(clean, playlist);
+  recordMatchHistory(clean, playlist);
   saveProgression();
   res.json({ ok: true });
 });
@@ -1093,11 +1129,17 @@ app.get('/api/friends/:clientId', (req, res) => {
 // ─── HTTP: leaderboard + profiles ──────────────────────────────────────────────
 app.get('/api/leaderboard', (req, res) => {
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
-  const rows = Object.entries(ranks).map(([clientId, r]) => ({
-    clientId,
-    username: (progression[clientId] && progression[clientId].username) || null,
-    elo: r.elo, tier: tierForElo(r.elo), wins: r.wins, losses: r.losses, matchesPlayed: r.matchesPlayed,
-  }));
+  const playlist = String(req.query.playlist || '');
+  const rows = [];
+  for (const [clientId, byPlaylist] of Object.entries(ranks)) {
+    const r = byPlaylist[playlist];
+    if (!r) continue; // never played this specific playlist -- not on its leaderboard
+    rows.push({
+      clientId,
+      username: (progression[clientId] && progression[clientId].username) || null,
+      elo: r.elo, tier: tierForElo(r.elo), wins: r.wins, losses: r.losses, matchesPlayed: r.matchesPlayed,
+    });
+  }
   rows.sort((a, b) => b.elo - a.elo);
   res.json(rows.slice(0, limit));
 });
@@ -1105,15 +1147,22 @@ app.get('/api/leaderboard', (req, res) => {
 app.get('/api/profile/:clientId', (req, res) => {
   if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
   const clientId = req.params.clientId;
-  const rank = getRankEntry(clientId);
   const prog = getProgressionEntry(clientId);
   const recentMatches = (prog.recentMatches || []).map(matchId => {
     try { return JSON.parse(fs.readFileSync(path.join(MATCHES_DIR, matchId + '.json'), 'utf-8')); }
     catch { return null; }
   }).filter(Boolean);
+  // Every playlist this player has a rank in (Rocket-League-style profile:
+  // one rank per playlist shown side by side), not just a single number --
+  // ranks[clientId] is {} for a player who's never played a ranked match.
+  const byPlaylist = ranks[clientId] || {};
+  const playlistRanks = {};
+  for (const [playlistId, r] of Object.entries(byPlaylist)) {
+    playlistRanks[playlistId] = { elo: r.elo, tier: tierForElo(r.elo), wins: r.wins, losses: r.losses, matchesPlayed: r.matchesPlayed };
+  }
   res.json({
     clientId, username: prog.username,
-    elo: rank.elo, tier: tierForElo(rank.elo), wins: rank.wins, losses: rank.losses, matchesPlayed: rank.matchesPlayed,
+    ranks: playlistRanks,
     xp: prog.xp, level: levelForXp(prog.xp), achievements: achievementList(prog.achievements),
     recentMatches,
   });
@@ -1241,6 +1290,7 @@ function handleHostControl(ws) {
         maxPlayers: Math.max(1, Math.min(64, parseInt(msg.maxPlayers, 10) || 16)),
         playerCount: 0,
         ranked: !!msg.ranked,
+        playlist: String(msg.playlist || ''),
         createdAt: Date.now(),
         lastHeartbeat: Date.now(),
         controlSocket: ws,

@@ -25,12 +25,14 @@ const ROUND_DURATION_SEC := 180.0
 
 var lobby_id: int
 var ranked := false
+var playlist_id := "" # set by network_manager.gd right after construction, "" for the legacy FFA pool
 var _network_manager: Node
 var _usernames := {} # peer_id -> String
 var _skin_ids := {}  # peer_id -> String
 var _hat_ids := {}   # peer_id -> String, "" means no hat
 var _trail_ids := {} # peer_id -> String, "" means no trail
 var _client_ids := {} # peer_id -> String, server-side only -- never sent to clients
+var _teams := {} # peer_id -> int, -1 if no team-mode playlist is active for this match
 var _players := {}   # peer_id -> Player
 var _coalesced_input := {} # peer_id -> Dictionary, merged since the last tick
 var _tag_mode: TagMode
@@ -66,6 +68,7 @@ func _init(network_manager: Node, p_lobby_id: int, members: Dictionary, p_ranked
 		_hat_ids[peer_id] = members[peer_id].get("hat_id", "")
 		_trail_ids[peer_id] = members[peer_id].get("trail_id", "")
 		_client_ids[peer_id] = members[peer_id].get("client_id", "")
+		_teams[peer_id] = members[peer_id].get("team", -1)
 
 func _ready() -> void:
 	var level_id: String = _network_manager.level_id
@@ -109,6 +112,7 @@ func _finish_setup() -> void:
 		var p: Player = PLAYER_SCENE.instantiate()
 		add_child(p)
 		p.global_position = spawn_points[i % spawn_points.size()].global_position
+		p.team = _teams.get(peer_id, -1)
 		_players[peer_id] = p
 		participants.append(p)
 		i += 1
@@ -123,6 +127,7 @@ func _finish_setup() -> void:
 		roster[peer_id] = {
 			"username": _usernames[peer_id], "skin_id": _skin_ids[peer_id],
 			"hat_id": _hat_ids[peer_id], "trail_id": _trail_ids[peer_id],
+			"team": _teams.get(peer_id, -1),
 		}
 	# Simulation is already ticking (players spawned, TagMode running) by this
 	# point -- only the client-facing "match started" notice waits on this, so
@@ -130,7 +135,7 @@ func _finish_setup() -> void:
 	# appears, never a stuck match.
 	if ranked:
 		await _fill_ranked_stats()
-	_network_manager.notify_match_started(lobby_id, roster, _network_manager.level_id)
+	_network_manager.notify_match_started(lobby_id, roster, _network_manager.level_id, playlist_id)
 
 ## Enriches each ranked participant's roster entry with their current elo/
 ## tier (see match_intro.gd's VS screen) -- looked up server-side by the
@@ -164,7 +169,7 @@ func _fill_ranked_stats() -> void:
 			if remaining <= 0:
 				_ranked_stats_fetched.emit()
 		)
-		req.request(RANKED_LOOKUP_URL % String(_client_ids[peer_id]))
+		req.request(RANKED_LOOKUP_URL % String(_client_ids[peer_id]) + "?playlist=" + playlist_id.uri_encode())
 	await _ranked_stats_fetched
 
 ## Fires once when a ranked round's timer runs out. Ranks every participant
@@ -172,7 +177,22 @@ func _fill_ranked_stats() -> void:
 ## best) and hands the result to NetworkManager, which reports it to the
 ## relay for ELO and tells every client the match is over.
 func _on_round_ended() -> void:
+	var has_teams := false
+	for t in _teams.values():
+		if t != -1:
+			has_teams = true
+			break
 	var ranking := []
+	if has_teams:
+		_rank_by_team(ranking)
+	else:
+		_rank_individually(ranking)
+	_network_manager.notify_match_ended(lobby_id, ranking)
+
+## FFA path (no team-mode playlist active) -- ascending by it_time (least =
+## best), peer_id as a deterministic tiebreak for the vanishingly rare
+## exact-float tie.
+func _rank_individually(ranking: Array) -> void:
 	for peer_id in _players.keys():
 		var p: Player = _players[peer_id]
 		ranking.append({
@@ -181,8 +201,6 @@ func _on_round_ended() -> void:
 			"username": _usernames.get(peer_id, "Player"),
 			"it_time": _tag_mode.get_it_time(p),
 		})
-	# Ascending by it_time (least = best); peer_id as a deterministic
-	# tiebreak for the vanishingly rare exact-float tie.
 	ranking.sort_custom(func(a, b):
 		if a.it_time == b.it_time:
 			return a.peer_id < b.peer_id
@@ -190,7 +208,40 @@ func _on_round_ended() -> void:
 	)
 	for i in ranking.size():
 		ranking[i]["place"] = i + 1
-	_network_manager.notify_match_ended(lobby_id, ranking)
+
+## Team-mode path -- teams are ranked by their combined it_time (least =
+## best, same "least time spent as it wins" rule as FFA, just summed across
+## teammates), and every member of a team shares that team's place.
+func _rank_by_team(ranking: Array) -> void:
+	var team_time := {} # team -> summed it_time
+	var team_members := {} # team -> [peer_id, ...]
+	for peer_id in _players.keys():
+		var p: Player = _players[peer_id]
+		var t: int = _teams.get(peer_id, -1)
+		team_time[t] = team_time.get(t, 0.0) + _tag_mode.get_it_time(p)
+		if not team_members.has(t):
+			team_members[t] = []
+		team_members[t].append(peer_id)
+
+	var teams_sorted: Array = team_time.keys()
+	teams_sorted.sort_custom(func(a, b):
+		if team_time[a] == team_time[b]:
+			return a < b
+		return team_time[a] < team_time[b]
+	)
+
+	var place := 1
+	for t in teams_sorted:
+		for peer_id in team_members[t]:
+			var p: Player = _players[peer_id]
+			ranking.append({
+				"peer_id": peer_id,
+				"client_id": _client_ids.get(peer_id, ""),
+				"username": _usernames.get(peer_id, "Player"),
+				"it_time": _tag_mode.get_it_time(p),
+				"place": place,
+			})
+		place += 1
 
 func receive_input(peer_id: int, input: Dictionary) -> void:
 	# Coalesce everything received since the last tick into one effective

@@ -21,6 +21,14 @@
   nav { margin-top: 12px; }
   nav a { color: #b6acf9; font-size: 12.5px; text-decoration: none; }
   nav a:hover { text-decoration: underline; }
+  .tabs { display: flex; gap: 8px; margin: 16px 0 20px; flex-wrap: wrap; }
+  .tab {
+    padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 700;
+    border: 1.5px solid rgba(255,255,255,.09); background: rgba(255,255,255,.04);
+    color: #b3b8d4; cursor: pointer;
+  }
+  .tab:hover { background: rgba(255,255,255,.08); }
+  .tab.active { background: #7c6cf8; border-color: #7c6cf8; color: #fff; }
   .list { display: flex; flex-direction: column; gap: 8px; }
   .row {
     display: flex; align-items: center; gap: 10px;
@@ -58,20 +66,48 @@
       <p class="sub">Top ranked players by ELO.</p>
       <nav><a href="index.html">&larr; Server Browser</a></nav>
     </header>
+    <div class="tabs" id="tabs"></div>
     <div class="list" id="list"></div>
     <footer>codecade.co.za/tag</footer>
   </div>
 
 <script>
+// Mirrors game/net/playlist_catalog.gd's PLAYLIST_ORDER -- this static page
+// has no access to the Godot catalog, so the id/label pairs are hand-kept
+// in sync here (the relay itself doesn't need to know team_size/team_count,
+// only the id string as a ranks.json storage bucket, same reasoning as
+// server.js's own rank-storage code).
+const PLAYLISTS = [
+  { id: '1v1', label: '1v1' },
+  { id: '2v2', label: '2v2' },
+  { id: '1v1v1', label: '1v1v1' },
+  { id: '1v1v1v1', label: '1v1v1v1' },
+];
+
 const listEl = document.getElementById('list');
+const tabsEl = document.getElementById('tabs');
+let activePlaylist = PLAYLISTS[0].id;
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function renderTabs() {
+  tabsEl.innerHTML = PLAYLISTS.map(p =>
+    '<div class="tab' + (p.id === activePlaylist ? ' active' : '') + '" data-id="' + p.id + '">' + esc(p.label) + '</div>'
+  ).join('');
+  for (const el of tabsEl.querySelectorAll('.tab')) {
+    el.addEventListener('click', () => {
+      activePlaylist = el.dataset.id;
+      renderTabs();
+      load();
+    });
+  }
+}
+
 function render(rows) {
   if (!rows.length) {
-    listEl.innerHTML = '<div class="empty">No ranked matches played yet.</div>';
+    listEl.innerHTML = '<div class="empty">No ranked matches played in this playlist yet.</div>';
     return;
   }
   listEl.innerHTML = rows.map((r, i) => {
@@ -87,10 +123,15 @@ function render(rows) {
   }).join('');
 }
 
-fetch('api/leaderboard?limit=50')
-  .then(r => r.json())
-  .then(render)
-  .catch(() => { listEl.innerHTML = '<div class="empty">Could not reach the relay server.</div>'; });
+function load() {
+  fetch('api/leaderboard?limit=50&playlist=' + encodeURIComponent(activePlaylist))
+    .then(r => r.json())
+    .then(render)
+    .catch(() => { listEl.innerHTML = '<div class="empty">Could not reach the relay server.</div>'; });
+}
+
+renderTabs();
+load();
 </script>
 </body>
 </html>

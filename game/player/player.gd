@@ -126,6 +126,13 @@ const CLIMB_EXHAUST_TIME := 0.6
 # or performing a wall jump (so wall-jump + double-jump chain together).
 var double_jump_available := true
 
+# -1 = no team (every existing caller -- local bot play, any match that
+# never explicitly assigns one). Only server_match.gd sets this to a real
+# index for a team-mode playlist (see PlaylistCatalog.is_team_mode); tag_mode.gd's
+# tag-collision check treats -1 as "never matches," so nothing changes for
+# any match that doesn't opt into teams.
+var team: int = -1
+
 var _corner_correction_active := false
 var _corner_correction_start := Vector2.ZERO
 var _corner_correction_target := Vector2.ZERO
