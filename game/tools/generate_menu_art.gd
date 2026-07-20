@@ -17,6 +17,7 @@ extends Node
 
 const BACKGROUND_OUT_DIR := "res://assets/backgrounds"
 const MODE_BUTTON_OUT_DIR := "res://assets/icons/mode_buttons"
+const BAR_ICON_OUT_DIR := "res://assets/icons/online_bars"
 
 const BG_TOP := Color(0.106, 0.11, 0.157)
 const BG_MID := Color(0.07, 0.075, 0.11)
@@ -33,10 +34,13 @@ const BG_FINAL_SIZE := Vector2i(1152, 648)
 const BG_DESIGN_SIZE := Vector2i(144, 81) # 8x upscale
 const BTN_FINAL_SIZE := Vector2i(190, 360)
 const BTN_DESIGN_SIZE := Vector2i(38, 72) # 5x upscale
+const BAR_ICON_FINAL_SIZE := Vector2i(96, 96)
+const BAR_ICON_DESIGN_SIZE := Vector2i(32, 32) # 3x upscale
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BACKGROUND_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MODE_BUTTON_OUT_DIR))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BAR_ICON_OUT_DIR))
 
 	# No central icon here (unlike every other screen) -- the real UI
 	# already places two big Online/Local cards front-and-center over this
@@ -62,8 +66,27 @@ func _ready() -> void:
 	await _make_button("online", COLOR_ONLINE, "globe", "ONLINE")
 	await _make_button("local", COLOR_LOCAL, "house", "LOCAL")
 
+	# Small standalone icons for the Online submenu's 5 plain bars (Quick
+	# Play/Ranked/Browse Servers/Host Server/Friends) -- see online_menu.gd.
+	# Same icon library as the backgrounds/buttons above, just cropped to
+	# an icon-only glyph with no scene/label of its own since these sit on
+	# top of an existing styled button rather than replacing it outright.
+	_make_bar_icon("quick_play", COLOR_QUICKPLAY, "bolt")
+	_make_bar_icon("ranked", COLOR_RANKED, "crown")
+	_make_bar_icon("browse_servers", COLOR_ONLINE, "signal")
+	_make_bar_icon("host_server", COLOR_ONLINE, "gear")
+	_make_bar_icon("friends", COLOR_SHOP, "heart")
+
 	print("GENERATE_DONE")
 	get_tree().quit()
+
+func _make_bar_icon(key: String, color: Color, icon: String) -> void:
+	var img := Image.create(BAR_ICON_DESIGN_SIZE.x, BAR_ICON_DESIGN_SIZE.y, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	_draw_icon(img, icon, BAR_ICON_DESIGN_SIZE.x / 2, BAR_ICON_DESIGN_SIZE.y / 2, 11, color)
+	img.resize(BAR_ICON_FINAL_SIZE.x, BAR_ICON_FINAL_SIZE.y, Image.INTERPOLATE_NEAREST)
+	img.save_png("%s/%s.png" % [BAR_ICON_OUT_DIR, key])
+	print("painted bar icon: ", key)
 
 # ─── Background composition ─────────────────────────────────────────────
 
@@ -241,11 +264,32 @@ func _icon_gift(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
 	_px_rect(img, cx - 2, cy - h / 4, 4, h, color.lightened(0.3))
 	_px_rect(img, cx - w / 2, cy - h / 4 - 4, w, 4, color.lightened(0.2))
 
+## Explicit bitmap, same reasoning as BOLT_PATTERN -- the previous
+## circles-plus-triangle version lost its notch entirely at small sizes
+## (confirmed by screenshot on the online-menu Friends bar icon, where it
+## just read as a rounded blob) since a couple pixels of gap between two
+## small overlapping circles vanishes at low resolution. A hand-placed
+## pattern stays a clearly-a-heart silhouette at any scale.
+const HEART_PATTERN := [
+	".XX.XX.",
+	"XXXXXXX",
+	"XXXXXXX",
+	".XXXXX.",
+	"..XXX..",
+	"...X...",
+]
+
 func _icon_heart(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
-	var lobe := int(r * 0.5)
-	_px_circle(img, cx - lobe / 2, cy - lobe / 3, lobe, color)
-	_px_circle(img, cx + lobe / 2, cy - lobe / 3, lobe, color)
-	_px_triangle(img, cx, cy + lobe, cx - lobe, cy - lobe / 4, cx + lobe, cy - lobe / 4, color)
+	var scale: int = maxi(1, int(r / 3.5))
+	var pat_w := HEART_PATTERN[0].length()
+	var pat_h := HEART_PATTERN.size()
+	var ox := cx - (pat_w * scale) / 2
+	var oy := cy - (pat_h * scale) / 2
+	for row in pat_h:
+		var line: String = HEART_PATTERN[row]
+		for col in pat_w:
+			if line[col] == "X":
+				_px_rect(img, ox + col * scale, oy + row * scale, scale, scale, color)
 
 func _icon_group(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
 	_px_character(img, cx - 4, cy - 4, 8, color)
