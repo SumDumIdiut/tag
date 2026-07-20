@@ -1,9 +1,15 @@
 extends Node
 
+const LocalMapCatalog := preload("res://levels/local_maps/catalog.gd")
+
 # Carries the main menu's chosen match settings into the game scene --
 # an autoload survives the scene change that Start triggers.
 var npc_count: int = 3
 var npc_skill: int = 3
+var round_duration: float = 180.0
+# Set by local_map_picker.gd right before change_scene_to_file to game.tscn
+# -- see LocalMapCatalog for what this id resolves to.
+var selected_local_map: String = LocalMapCatalog.CLASSIC_ID
 
 const USERNAME_PATH := "user://username.txt"
 const DEFAULT_USERNAME := "Player"

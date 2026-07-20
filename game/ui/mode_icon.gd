@@ -41,6 +41,11 @@ const ATLAS_ICON_SIZE := 64
 # for that icon_type, mirroring the tile/tileset index-order contract
 # build_tileset.gd/tile_canvas.gd already use.
 const ATLAS_ICON_ORDER := ["globe", "controller", "box", "bolt", "star", "tag"]
+# "clock" isn't baked into the atlas (added after build_icon_atlas.gd's last
+# bake) -- ATLAS_ICON_ORDER.find() returns -1 for it, so it always falls
+# through to the procedural _draw() case below. Safe either way: baking it
+# in later just needs appending it to this array and re-running the atlas
+# builder, same as any other icon_type.
 
 var _atlas_rect: TextureRect = null
 
@@ -102,6 +107,10 @@ func _draw() -> void:
 	var s: Vector2 = size
 	var c: Vector2 = s * 0.5
 	match icon_type:
+		"clock":
+			draw_arc(c, s.x * 0.42, 0.0, TAU, 40, icon_color, line_width)
+			draw_line(c, c + Vector2(0, -s.y * 0.28), icon_color, line_width * 0.8)
+			draw_line(c, c + Vector2(s.x * 0.2, s.y * 0.12), icon_color, line_width * 0.8)
 		"bolt":
 			var pts := PackedVector2Array([
 				Vector2(0.58, 0.0), Vector2(0.18, 0.56), Vector2(0.46, 0.56),

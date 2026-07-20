@@ -2,16 +2,21 @@ extends Node2D
 
 const NPC_SCENE := preload("res://npc/npc.tscn")
 const PLAYER_SCENE := preload("res://player/player.tscn")
+const LocalMapCatalog := preload("res://levels/local_maps/catalog.gd")
 
-@onready var arena: Node2D = $TagArena
 @onready var hud: Label = $HUD
 
+var arena: Node2D
 var player: Player
 var tag_mode: TagMode
 var waypoint_graph: WaypointGraph
 var participants: Array = []
 
 func _ready() -> void:
+	arena = load(LocalMapCatalog.scene_path_for(GameSettings.selected_local_map)).instantiate()
+	add_child(arena)
+	move_child(arena, 0) # keep it drawn behind HUD/PauseMenu, matching the old static-child order
+
 	var spawn_points := arena.get_node("SpawnPoints").get_children()
 	spawn_points.shuffle()
 
@@ -41,7 +46,7 @@ func _ready() -> void:
 		npc.global_position = spawn_points[(i + 1) % spawn_points.size()].global_position
 		participants.append(npc)
 
-	tag_mode.setup(participants, randi() % participants.size())
+	tag_mode.setup(participants, randi() % participants.size(), false, GameSettings.round_duration)
 	tag_mode.it_changed.connect(_on_it_changed)
 	_on_it_changed(tag_mode.get_it())
 
