@@ -133,6 +133,23 @@ static func style_slider(slider: HSlider, color: Color) -> void:
 	slider.add_theme_icon_override("grabber_highlight", dot_tex)
 	slider.add_theme_icon_override("grabber_disabled", dot_tex)
 
+## A soft radial glow, fading from the given color to fully transparent --
+## originally main_menu.gd's own private helper for the mode bars' behind-
+## the-portrait glow; factored out here so any other screen wanting that
+## same "this card is alive" treatment (see online_menu.gd) doesn't need
+## its own copy.
+static func glow_texture(color: Color, size: int = 170) -> GradientTexture2D:
+	var grad := Gradient.new()
+	grad.colors = PackedColorArray([Color(color.r, color.g, color.b, 0.35), Color(color.r, color.g, color.b, 0.0)])
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	tex.width = size
+	tex.height = size
+	return tex
+
 ## A translucent bordered panel background -- used for roster lists, server
 ## lists, cards, and other content wells that need to visually separate
 ## from the backdrop without competing with buttons for attention.

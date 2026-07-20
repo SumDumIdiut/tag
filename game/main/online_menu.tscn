@@ -21,9 +21,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -180.0
-offset_top = -220.0
+offset_top = -290.0
 offset_right = 180.0
-offset_bottom = 220.0
+offset_bottom = 290.0
 theme_override_constants/separation = 16
 
 [node name="Title" type="Label" parent="VBox"]
@@ -46,13 +46,15 @@ theme_override_constants/separation = 12
 [node name="QuickPlayButton" type="Button" parent="VBox/MatchmakingRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 56)
+custom_minimum_size = Vector2(0, 130)
+clip_contents = true
 text = "Quick Play"
 
 [node name="RankedButton" type="Button" parent="VBox/MatchmakingRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 56)
+custom_minimum_size = Vector2(0, 130)
+clip_contents = true
 text = "Ranked"
 
 [node name="Divider" type="HSeparator" parent="VBox"]
@@ -60,17 +62,19 @@ layout_mode = 2
 
 [node name="BrowseButton" type="Button" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 44)
+custom_minimum_size = Vector2(0, 64)
+clip_contents = true
 text = "Browse Servers"
 
 [node name="HostButton" type="Button" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 44)
+custom_minimum_size = Vector2(0, 64)
+clip_contents = true
 text = "Host Server"
 
 [node name="DirectConnectButton" type="Button" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 48)
 text = "Direct Connect (advanced)"
 
 [node name="BackButton" type="Button" parent="VBox"]

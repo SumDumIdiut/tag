@@ -14,6 +14,8 @@ func _ready() -> void:
 	$VBox/SettingsPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_LOCAL))
 	UIStyle.style_button(start_button, UIStyle.COLOR_LOCAL)
 	UIStyle.style_back_button(back_button)
+	UIStyle.style_slider(npc_count_slider, UIStyle.COLOR_LOCAL)
+	UIStyle.style_slider(skill_slider, UIStyle.COLOR_LOCAL)
 
 	npc_count_slider.value = GameSettings.npc_count
 	skill_slider.value = GameSettings.npc_skill

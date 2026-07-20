@@ -14,8 +14,8 @@ A multiplayer Tag game built in Godot 4.7, with Celeste-style platforming moveme
 Open `game/` in the Godot 4.7 editor, or run one of the exported executables from a
 [Release](../../releases) (built automatically on every push to `main`):
 
-- **`Tag.exe`** - the client. The main menu offers three destinations: Online, Local,
-  and Sandbox, plus a Customize button for skins/hats. It's also the server: Host
+- **`Tag.exe`** - the client. The main menu offers two destinations: Online and
+  Local, plus a Customize button for skins/hats. It's also the server: Host
   Server, Quick Play, and Ranked auto-host all just spawn a second headless copy of
   this same exe with `--server` (see `game/net/local_server_spawner.gd`), a fully
   authoritative dedicated server over WebSockets (chosen so it can be reached through
@@ -26,7 +26,6 @@ Open `game/` in the Godot 4.7 editor, or run one of the exported executables fro
 
 ## Modes
 
-- **Sandbox** - a single-player course for testing the moveset in isolation.
 - **Local** - play against up to 7 AI-controlled bots (skill levels 1-5) on one
   machine, no networking involved.
 - **Online** - Quick Play or Ranked (both auto-match: join an open server if one
