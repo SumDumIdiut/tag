@@ -48,20 +48,42 @@ func _ready() -> void:
 ## screenshot: the second slot landed nowhere near its side) the moment slot
 ## heights weren't all identical -- not worth re-deriving that math by hand.
 func _build_static_shell() -> void:
-	var divider := _DividerLine.new()
-	divider.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	divider.accent_color = accent_color
-	add_child(divider)
+	var split := _SplitBackground.new()
+	split.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	split.accent_color = accent_color
+	add_child(split)
+
+	var chrome_top := _ChromeBar.new()
+	chrome_top.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	chrome_top.offset_bottom = 14
+	chrome_top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(chrome_top)
+	var chrome_bottom := _ChromeBar.new()
+	chrome_bottom.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	chrome_bottom.offset_top = -14
+	chrome_bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(chrome_bottom)
+
+	var starburst := _VsStarburst.new()
+	starburst.accent_color = accent_color
+	starburst.custom_minimum_size = Vector2(210, 210)
+	starburst.size = Vector2(210, 210)
+	starburst.set_anchors_preset(Control.PRESET_CENTER)
+	starburst.position = -starburst.size * 0.5
+	starburst.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(starburst)
 
 	_vs_label = Label.new()
-	_vs_label.text = "VS"
-	_vs_label.add_theme_font_size_override("font_size", 64)
-	_vs_label.add_theme_color_override("font_color", accent_color)
+	_vs_label.text = "VS."
+	_vs_label.add_theme_font_size_override("font_size", 56)
+	_vs_label.add_theme_color_override("font_color", Color(0.9, 0.15, 0.15))
+	_vs_label.add_theme_color_override("font_outline_color", Color.WHITE)
+	_vs_label.add_theme_constant_override("outline_size", 8)
 	_vs_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_vs_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_vs_label.set_anchors_preset(Control.PRESET_CENTER)
-	_vs_label.pivot_offset = Vector2(40, 40)
-	_vs_label.position = Vector2(-40, -40)
+	_vs_label.pivot_offset = Vector2(50, 35)
+	_vs_label.position = Vector2(-50, -35)
 	add_child(_vs_label)
 
 	var team_size := PlaylistCatalog.team_size(playlist_id)
@@ -217,10 +239,16 @@ func _build_card(peer_id: int, info: Dictionary) -> VBoxContainer:
 
 	return card
 
-## Same jagged pixel-art diagonal divider match_intro.gd built earlier this
-## session -- factored out here so lobby_room.gd/ranked_queue.gd get the
-## identical look, not a re-implementation.
-class _DividerLine extends Control:
+## A bold two-tone diagonal split with a jagged seam (Mario-Party-style
+## versus-screen reference the user provided) instead of a plain background
+## with a thin line drawn over it -- side 0's half is `accent_color` (ties
+## it to the ranked/casual identity color the rest of the app already
+## uses), side 1 is a fixed contrasting indigo so it always reads as
+## "the other side" regardless of what accent_color is. Drawn as hard-edged
+## flat polygons (no gradients) to match every other painted asset's
+## genuine-pixel-art rule, with a bright jagged energy streak along the seam.
+class _SplitBackground extends Control:
+	const SIDE_B_COLOR := Color(0.16, 0.19, 0.5)
 	var accent_color: Color = Color(0.91, 0.29, 0.35)
 
 	func _ready() -> void:
@@ -232,13 +260,75 @@ class _DividerLine extends Control:
 		var cx := w * 0.5
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 1337
-		var segments := 14
-		var points := PackedVector2Array()
+		var segments := 10
+		var boundary := PackedVector2Array()
 		for i in segments + 1:
 			var t := float(i) / float(segments)
-			var jitter := rng.randf_range(-14.0, 14.0)
-			points.append(Vector2(cx + jitter, t * h))
-		var color := Color(0.95, 0.95, 0.98, 0.9)
-		for i in points.size() - 1:
-			draw_line(points[i], points[i + 1], color, 6.0)
-			draw_line(points[i], points[i + 1], accent_color, 2.0)
+			var jitter := rng.randf_range(-w * 0.05, w * 0.05)
+			boundary.append(Vector2(cx + jitter, t * h))
+
+		var left_poly := PackedVector2Array([Vector2(0, 0)])
+		left_poly.append_array(boundary)
+		left_poly.append(Vector2(0, h))
+		var side_a := accent_color.darkened(0.35)
+		draw_colored_polygon(left_poly, side_a)
+
+		var right_poly := PackedVector2Array([Vector2(w, 0)])
+		right_poly.append_array(boundary)
+		right_poly.append(Vector2(w, h))
+		draw_colored_polygon(right_poly, SIDE_B_COLOR)
+
+		# A few faint radiating streaks per side, tinted to that side's own
+		# color -- cheap extra "busy" detail beyond two flat color blocks.
+		_draw_rays(c_for(0), accent_color.lightened(0.15))
+		_draw_rays(c_for(1), SIDE_B_COLOR.lightened(0.2))
+
+		var glow := Color(1, 1, 1, 0.9)
+		for i in boundary.size() - 1:
+			draw_line(boundary[i], boundary[i + 1], glow, 7.0)
+			draw_line(boundary[i], boundary[i + 1], accent_color.lightened(0.3), 3.0)
+
+	func c_for(side: int) -> Vector2:
+		return Vector2(size.x * (0.22 if side == 0 else 0.78), size.y * 0.5)
+
+	func _draw_rays(origin: Vector2, ray_color: Color) -> void:
+		var count := 10
+		var length := size.length() * 0.6
+		for i in count:
+			var ang := TAU * i / float(count)
+			var dir := Vector2(cos(ang), sin(ang))
+			draw_line(origin, origin + dir * length, Color(ray_color.r, ray_color.g, ray_color.b, 0.12), 10.0)
+
+## A jagged multi-point starburst (metallic silver, colored outline) behind
+## the "VS." text -- the reference's silver comic-book "impact star," drawn
+## as a hard-edged polygon rather than a rendered/gradient sprite.
+class _VsStarburst extends Control:
+	var accent_color: Color = Color(0.91, 0.29, 0.35)
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var c := size * 0.5
+		var outer := minf(size.x, size.y) * 0.5
+		var inner := outer * 0.58
+		var spikes := 12
+		var points := PackedVector2Array()
+		for i in spikes * 2:
+			var ang := TAU * i / float(spikes * 2) - PI / 2.0
+			var r := outer if i % 2 == 0 else inner
+			points.append(c + Vector2(cos(ang), sin(ang)) * r)
+		draw_colored_polygon(points, Color(0.82, 0.84, 0.88))
+		for i in points.size():
+			var a: Vector2 = points[i]
+			var b: Vector2 = points[(i + 1) % points.size()]
+			draw_line(a, b, accent_color, 4.0)
+
+## A flat beveled metal strip -- top/bottom frame accents matching the
+## reference's chrome bars.
+class _ChromeBar extends Control:
+	func _draw() -> void:
+		var base := Color(0.55, 0.57, 0.63)
+		draw_rect(Rect2(Vector2.ZERO, size), base)
+		draw_rect(Rect2(0, 0, size.x, 2), base.lightened(0.35))
+		draw_rect(Rect2(0, size.y - 2, size.x, 2), base.darkened(0.35))
