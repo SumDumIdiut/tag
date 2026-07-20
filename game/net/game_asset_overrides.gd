@@ -25,6 +25,9 @@ static func online_bar_override_path(key: String) -> String:
 static func local_bar_override_path(key: String) -> String:
 	return "user://game_assets/local_bars/%s.png" % key
 
+static func ranked_bar_override_path(key: String) -> String:
+	return "user://game_assets/ranked_bars/%s.png" % key
+
 ## Loads a downloaded override PNG straight off disk (not through
 ## ResourceLoader -- these are raw files GameAssetUpdater wrote directly,
 ## never imported into the project) as a ready-to-use Texture2D, or null if
