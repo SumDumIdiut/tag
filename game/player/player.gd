@@ -195,7 +195,6 @@ var _floor_grip_mult := 1.0
 var _trail_emitter: TrailEmitter
 
 var _was_on_floor_visual := false
-var _was_tagged_it := false
 
 const TAG_IT_COLOR := Color(1.0, 0.85, 0.1, 1.0)
 
@@ -276,12 +275,6 @@ func set_tagged_it(active: bool) -> void:
 	if not _visual:
 		return
 	_visual.modulate = TAG_IT_COLOR if active else Color.WHITE
-	# Only on the rising edge -- TagMode's it_changed (and this call) only
-	# fires when the status actually flips, but guard anyway so a caller
-	# re-asserting "still it" doesn't restart the flinch kick.
-	if active and not _was_tagged_it:
-		SFX.play("tag")
-	_was_tagged_it = active
 
 ## Called by TagMode when this player's been in sustained physical contact
 ## with another participant for too long. Sets velocity straight away from

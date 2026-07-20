@@ -60,12 +60,8 @@ func _on_skin_received(skin_id: String) -> void:
 			_previews[peer_id].texture = SkinCatalog.get_texture(skin_id)
 
 func _process(delta: float) -> void:
-	var whole_seconds_before := ceili(_time_left)
 	_time_left -= delta
-	var whole_seconds_after := maxi(ceili(_time_left), 0)
-	countdown_label.text = "Starting in %d..." % whole_seconds_after
-	if whole_seconds_after < whole_seconds_before:
-		SFX.play("countdown_tick")
+	countdown_label.text = "Starting in %d..." % maxi(ceili(_time_left), 0)
 	if _time_left <= 0.0:
 		_proceed()
 

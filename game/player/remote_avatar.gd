@@ -40,7 +40,6 @@ var target_position: Vector2 = Vector2.ZERO
 var target_velocity: Vector2 = Vector2.ZERO
 var target_facing: int = 1
 var _time_since_update := 0.0
-var _was_it := false
 
 func _ready() -> void:
 	if name_label:
@@ -129,9 +128,3 @@ func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, _is_cl
 		visual.scale = Vector2(1.5, 0.6) if is_dashing else Vector2.ONE
 		var flip := absf(visual.scale.x) * (1.0 if facing >= 0 else -1.0)
 		visual.scale.x = flip
-	# Rising edge only -- state updates arrive every network tick, so without
-	# this a still-"it" peer would replay the tag SFX on every single update
-	# instead of once when tag actually happens.
-	if is_it and not _was_it:
-		SFX.play("tag")
-	_was_it = is_it
