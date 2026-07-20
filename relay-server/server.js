@@ -1243,6 +1243,7 @@ function handleHostControl(ws) {
         y: typeof p.y === 'number' ? p.y : 0,
         isIt: !!p.isIt,
         skinId: typeof p.skinId === 'string' ? p.skinId.slice(0, 32) : 'red',
+        facing: p.facing === -1 ? -1 : 1,
       })) : [];
       s.matchState = {
         players,
