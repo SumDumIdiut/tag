@@ -14,7 +14,7 @@ var _chat_scrollback: RichTextLabel
 var _chat_input: LineEdit
 
 func _ready() -> void:
-	UIStyle.add_background(self)
+	UIStyle.add_background(self, "lobby_room")
 	UIStyle.style_button(ready_button, UIStyle.COLOR_ONLINE)
 	UIStyle.style_button(start_button, UIStyle.COLOR_ONLINE)
 	UIStyle.style_back_button(leave_button)

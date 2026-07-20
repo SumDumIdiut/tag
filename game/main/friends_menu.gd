@@ -20,7 +20,7 @@ var _refresh_timer: Timer
 var _cancelled := false
 
 func _ready() -> void:
-	UIStyle.add_background(self)
+	UIStyle.add_background(self, "friends_menu")
 	NetworkManager.connected_to_server.connect(_on_connected)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 

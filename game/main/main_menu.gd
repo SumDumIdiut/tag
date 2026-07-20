@@ -33,7 +33,7 @@ const MODE_BUTTON_ART_PATH := "res://assets/icons/mode_buttons/%s.png"
 @onready var mode_bar: HBoxContainer = $VBox/ModeBar
 
 func _ready() -> void:
-	UIStyle.add_background(self)
+	UIStyle.add_background(self, "main_menu")
 	for mode in MODES:
 		mode_bar.add_child(_build_bar(mode))
 	_build_shop_button()

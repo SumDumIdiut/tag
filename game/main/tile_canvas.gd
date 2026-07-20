@@ -15,29 +15,11 @@ const LevelData := preload("res://levels/level_data.gd")
 # real in-game tile size, not an arbitrary editor-only value.
 const TILE_SIZE_PX := 10
 
-# Same colors tag_tiles.png's atlas uses (see build_tileset.gd's TILES), so
-# the painted grid reads as a preview of the real tiles rather than
-# arbitrary editor colors. Indices 0-8: variant_index * 3 + type_index
-# (variant-major -- see build_tileset.gd's comment on why: it keeps indices
-# 0/1/2 exactly Boundary/Pillar/Platform's Piece variant, matching the
-# original 3-tile atlas for backward compatibility with already-placed/
-# published data), type order always [Boundary, Pillar, Platform], variant
-# order always [Piece, Corner, Internal]. Indices 9-10 (Ice/Bouncy) are
-# appended flat, outside that type/variant grid entirely -- see
-# TILE_TYPE_NAMES below, they're not part of it.
-const TILE_COLORS := [
-	Color(0.5, 0.5, 0.55), # 0: boundary piece
-	Color(0.6, 0.5, 0.35), # 1: pillar piece
-	Color(0.65, 0.65, 0.7), # 2: platform piece
-	Color(0.42, 0.42, 0.47), # 3: boundary corner
-	Color(0.5, 0.41, 0.27), # 4: pillar corner
-	Color(0.56, 0.56, 0.61), # 5: platform corner
-	Color(0.58, 0.58, 0.63), # 6: boundary internal
-	Color(0.68, 0.58, 0.42), # 7: pillar internal
-	Color(0.73, 0.73, 0.78), # 8: platform internal
-	Color(0.65, 0.85, 0.95), # 9: ice
-	Color(0.95, 0.35, 0.55), # 10: bouncy
-]
+# Matches tag_tiles.png's atlas (see build_tileset.gd's TILE_COLOR), so the
+# painted grid reads as a preview of the real tile rather than an arbitrary
+# editor color. A single regular tile now -- no more Boundary/Pillar/
+# Platform types, art variants, or Ice/Bouncy behavior tiles.
+const TILE_COLOR := Color(0.6, 0.6, 0.65)
 const EMPTY_COLOR := Color(0.09, 0.09, 0.14)
 const GRID_LINE_COLOR := Color(1, 1, 1, 0.04)
 const SPAWN_COLOR := Color(0.35, 0.9, 0.55)
@@ -57,17 +39,15 @@ enum SelectionKind { NONE, SPAWN, PLATFORM_START, PLATFORM_END }
 @export var grid_size := Vector2i(70, 40) # paintable extent, in tile-grid cells
 @export var zoom := 12
 
-var cells: Dictionary = {} # Vector2i -> int (tile_type 0-8, see TILE_COLORS)
+var cells: Dictionary = {} # Vector2i -> int, always 0 (a single tile type -- see LevelData)
 var spawn_points: Array = [] # Array[Vector2i], tile-grid coordinates
 # Array[{start: Vector2i, end: Vector2i, period_sec: float}], tile-grid
 # coordinates -- mirrors LevelData's own "platforms" shape directly (see
 # to_level_data()) so no conversion is needed at publish time beyond the
 # spawn-point-style grid-to-pixel step tile coordinates never need.
 var platforms: Array = []
-var current_tile_type := 0
 # Read by the host UI (Art Tool) to seed a period field, and by _apply_at
-# when finalizing a new platform placement -- set externally the same way
-# current_tile_type already is.
+# when finalizing a new platform placement.
 var current_platform_period_sec := DEFAULT_PLATFORM_PERIOD_SEC
 var tool: int = Tool.PAINT
 # Set after the first of a platform's two placement clicks; null (no
@@ -98,8 +78,7 @@ func _ready() -> void:
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, Vector2(grid_size) * zoom), EMPTY_COLOR)
 	for coord in cells.keys():
-		var tile_type: int = cells[coord]
-		draw_rect(Rect2(Vector2(coord) * zoom, Vector2(zoom, zoom)), TILE_COLORS[tile_type])
+		draw_rect(Rect2(Vector2(coord) * zoom, Vector2(zoom, zoom)), TILE_COLOR)
 	# Faint grid lines every 5 cells -- purely an orientation aid, cheap
 	# enough to just redraw whole since the grid is small.
 	for gx in range(0, grid_size.x + 1, 5):
@@ -165,7 +144,7 @@ func _apply_at(local_pos: Vector2) -> void:
 		return
 	match tool:
 		Tool.PAINT:
-			cells[coord] = current_tile_type
+			cells[coord] = 0
 		Tool.ERASE:
 			cells.erase(coord)
 		Tool.SPAWN:

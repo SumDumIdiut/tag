@@ -28,7 +28,7 @@ var _account_label: Label
 var _token := ""
 
 func _ready() -> void:
-	UIStyle.add_background(self)
+	UIStyle.add_background(self, "login_screen")
 	_token = _load_token()
 
 	var center := CenterContainer.new()

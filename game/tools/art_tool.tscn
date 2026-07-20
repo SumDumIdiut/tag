@@ -215,7 +215,7 @@ placeholder_text = "My Map"
 layout_mode = 2
 theme_override_colors/font_color = Color(0.6, 0.63, 0.72, 1)
 autowrap_mode = 2
-text = "Paint boundary/pillar/platform tiles, then drop at least 2 spawn points before publishing."
+text = "Paint tiles, then drop at least 2 spawn points before publishing."
 
 [node name="PublishLevelButton" type="Button" parent="VBox/LevelPage/LevelRightPanel/LevelRightBox"]
 layout_mode = 2

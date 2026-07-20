@@ -26,7 +26,7 @@ func setup(my_id: int, roster: Dictionary, level_id: String = "") -> void:
 	_roster = roster
 
 func _ready() -> void:
-	UIStyle.add_background(self)
+	UIStyle.add_background(self, "match_intro")
 	$VBox/RosterPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_NEUTRAL))
 	UIStyle.style_back_button(skip_button)
 	skip_button.pressed.connect(_proceed)

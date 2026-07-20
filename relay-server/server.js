@@ -108,11 +108,19 @@ const MAX_LEVEL_UPLOAD_BYTES = 150 * 1024;
 const GAME_ASSETS_DIR = path.join(DATA_DIR, 'game_assets');
 const GAME_ASSETS_MANIFEST_PATH = path.join(DATA_DIR, 'game_assets_manifest.json');
 const ASSET_PUBLISH_KEY = process.env.ASSET_PUBLISH_KEY || '';
-const GAME_ASSET_CATEGORIES = ['tiles', 'icons', 'mode_buttons'];
-const MODE_BUTTON_KEYS = ['online', 'local', 'sandbox']; // mirrors art_tool.gd's MODE_BUTTON_KEYS
-// Atlases (tiles/icons) and 3 whole mode-button images together comfortably
-// clear this with room to spare, well under the 1mb express.json cap above.
-const MAX_ASSET_UPLOAD_BYTES = 400 * 1024;
+const GAME_ASSET_CATEGORIES = ['icons', 'mode_buttons', 'backgrounds'];
+const MODE_BUTTON_KEYS = ['online', 'local']; // mirrors art_tool.gd's MODE_BUTTON_KEYS
+// Mirrors art_tool.gd's BACKGROUND_KEYS -- every menu screen with a
+// paintable background (see game/ui/ui_style.gd's add_background).
+const BACKGROUND_KEYS = [
+  'main_menu', 'online_menu', 'local_menu', 'shop', 'friends_menu',
+  'lobby_room', 'host_setup', 'login_screen', 'match_intro', 'match_results',
+  'multiplayer_connect', 'quick_play', 'ranked_queue', 'server_browser',
+];
+// A full-screen background (1152x648, far bigger than any icon/mode-button
+// canvas) needs more headroom than those -- bumped along with the
+// express.json limit below to match.
+const MAX_ASSET_UPLOAD_BYTES = 2 * 1024 * 1024;
 
 // Reads a PNG's declared width/height straight from its IHDR chunk (always
 // the first chunk, always 8-byte signature + 4-byte length + 4-byte "IHDR"
@@ -133,6 +141,7 @@ fs.mkdirSync(LEVEL_DATA_DIR, { recursive: true });
 const MATCHES_DIR = path.join(DATA_DIR, 'matches'); // one file per match, mirrors SKIN_IMAGE_DIR/LEVEL_DATA_DIR's one-file-per-id pattern
 fs.mkdirSync(MATCHES_DIR, { recursive: true });
 fs.mkdirSync(path.join(GAME_ASSETS_DIR, 'mode_buttons'), { recursive: true });
+fs.mkdirSync(path.join(GAME_ASSETS_DIR, 'backgrounds'), { recursive: true });
 
 function loadGameAssetsManifest() {
   try { return JSON.parse(fs.readFileSync(GAME_ASSETS_MANIFEST_PATH, 'utf-8')); }
@@ -543,7 +552,7 @@ app.get('/api/servers/:id/state', (req, res) => {
 });
 
 // ─── HTTP: skins ──────────────────────────────────────────────────────────────
-app.use(express.json({ limit: '1mb' })); // was 256kb -- game-asset atlas publishes (see "HTTP: game assets" below) run bigger than any single skin/hat upload
+app.use(express.json({ limit: '3mb' })); // was 256kb, then 1mb -- full-screen background publishes (see "HTTP: game assets" below) run much bigger than a skin/hat/icon upload
 
 // The shared catalog of server-curated + player-drawn custom skins -- every
 // client sees the same list. Hats, trails, and levels live in the same
@@ -865,29 +874,38 @@ app.get('/api/game-assets/manifest', (req, res) => {
   res.json(gameAssetsManifest);
 });
 
+// Shared by mode_buttons and backgrounds -- both publish as a set of
+// independent named images (one file per key) rather than a single shared
+// atlas the way icons does. Returns an error string, or null on success.
+function publishMultiKeyImages(category, keys, images) {
+  if (!images || typeof images !== 'object') return 'images required';
+  const decoded = {};
+  for (const key of keys) {
+    if (!images[key]) continue;
+    let bytes;
+    try { bytes = Buffer.from(String(images[key]), 'base64'); } catch { return `bad image data for ${key}`; }
+    if (bytes.length === 0 || bytes.length > MAX_ASSET_UPLOAD_BYTES || !pngDimensions(bytes)) {
+      return `image too large, empty, or not a PNG for ${key}`;
+    }
+    decoded[key] = bytes;
+  }
+  if (Object.keys(decoded).length === 0) return 'no valid images provided';
+  for (const [key, bytes] of Object.entries(decoded)) {
+    fs.writeFileSync(path.join(GAME_ASSETS_DIR, category, key + '.png'), bytes);
+  }
+  return null;
+}
+
 app.post('/api/game-assets/:category/publish', (req, res) => {
   const category = req.params.category;
   if (!GAME_ASSET_CATEGORIES.includes(category)) return res.status(404).json({ error: 'unknown category' });
   if (!verifyAssetKey(req.body.key)) return res.status(401).json({ error: 'bad or missing publish key' });
   if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
 
-  if (category === 'mode_buttons') {
-    const images = req.body.images;
-    if (!images || typeof images !== 'object') return res.status(400).json({ error: 'images required' });
-    const decoded = {};
-    for (const key of MODE_BUTTON_KEYS) {
-      if (!images[key]) continue;
-      let bytes;
-      try { bytes = Buffer.from(String(images[key]), 'base64'); } catch { return res.status(400).json({ error: `bad image data for ${key}` }); }
-      if (bytes.length === 0 || bytes.length > MAX_ASSET_UPLOAD_BYTES || !pngDimensions(bytes)) {
-        return res.status(400).json({ error: `image too large, empty, or not a PNG for ${key}` });
-      }
-      decoded[key] = bytes;
-    }
-    if (Object.keys(decoded).length === 0) return res.status(400).json({ error: 'no valid images provided' });
-    for (const [key, bytes] of Object.entries(decoded)) {
-      fs.writeFileSync(path.join(GAME_ASSETS_DIR, 'mode_buttons', key + '.png'), bytes);
-    }
+  if (category === 'mode_buttons' || category === 'backgrounds') {
+    const keys = category === 'mode_buttons' ? MODE_BUTTON_KEYS : BACKGROUND_KEYS;
+    const err = publishMultiKeyImages(category, keys, req.body.images);
+    if (err) return res.status(400).json({ error: err });
   } else {
     let bytes;
     try { bytes = Buffer.from(String(req.body.imageBase64 || ''), 'base64'); } catch { return res.status(400).json({ error: 'bad image data' }); }
@@ -905,11 +923,21 @@ app.post('/api/game-assets/:category/publish', (req, res) => {
 
 app.get('/api/game-assets/:category/download', (req, res) => {
   const category = req.params.category;
-  if (!GAME_ASSET_CATEGORIES.includes(category) || category === 'mode_buttons') return res.status(404).end();
+  if (!GAME_ASSET_CATEGORIES.includes(category) || category === 'mode_buttons' || category === 'backgrounds') return res.status(404).end();
   const imgPath = path.join(GAME_ASSETS_DIR, category + '.png');
   if (!fs.existsSync(imgPath)) return res.status(404).end();
   res.set('Content-Type', 'image/png');
   res.set('Cache-Control', 'no-cache'); // small file, checked rarely (once per launch), always want the latest
+  fs.createReadStream(imgPath).pipe(res);
+});
+
+app.get('/api/game-assets/backgrounds/:key/download', (req, res) => {
+  const key = req.params.key;
+  if (!BACKGROUND_KEYS.includes(key)) return res.status(404).end();
+  const imgPath = path.join(GAME_ASSETS_DIR, 'backgrounds', key + '.png');
+  if (!fs.existsSync(imgPath)) return res.status(404).end();
+  res.set('Content-Type', 'image/png');
+  res.set('Cache-Control', 'no-cache');
   fs.createReadStream(imgPath).pipe(res);
 });
 

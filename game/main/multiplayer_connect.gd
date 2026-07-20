@@ -23,7 +23,7 @@ var _cancelled := false
 var _watching := false
 
 func _ready() -> void:
-	UIStyle.add_background(self)
+	UIStyle.add_background(self, "multiplayer_connect")
 	UIStyle.style_button(connect_button, UIStyle.COLOR_ONLINE)
 	UIStyle.style_button(spectate_button, UIStyle.COLOR_NEUTRAL)
 	UIStyle.style_back_button(back_button)
