@@ -95,6 +95,7 @@ size_flags_vertical = 3
 [node name="EmptyStateLabel" type="Label" parent="VBox/PaintPage/CanvasPanel/CanvasBox"]
 layout_mode = 2
 size_flags_vertical = 3
+custom_minimum_size = Vector2(400, 0)
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
@@ -105,8 +106,13 @@ text = "Create a custom skin or hat on the left to start painting."
 layout_mode = 2
 custom_minimum_size = Vector2(240, 0)
 
-[node name="RightBox" type="VBoxContainer" parent="VBox/PaintPage/RightPanel"]
+[node name="RightScroll" type="ScrollContainer" parent="VBox/PaintPage/RightPanel"]
 layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="RightBox" type="VBoxContainer" parent="VBox/PaintPage/RightPanel/RightScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
 [node name="PaintColorLabel" type="Label" parent="VBox/PaintPage/RightPanel/RightBox"]
