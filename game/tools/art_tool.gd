@@ -285,14 +285,14 @@ var _icon_images: Array[Image] = [] # index-matched to ICON_TYPE_NAMES
 var _current_icon_index := -1
 var _icon_select_buttons: Array[Button] = []
 
-# Whole-button custom art for the main menu's 3 mode bars (Online/Local/
-# Sandbox) -- an alternative to the small badge-icon-on-a-procedural-box
-# system above: paint the entire button (background, character, label, all
-# of it) as one image, same canvas size the real button renders at, so
-# what's painted here is exactly what shows up in-game. Matches
-# main_menu.gd's MODES key order exactly -- "online"/"local"/"sandbox".
-const MODE_BUTTON_KEYS := ["online", "local", "sandbox"]
-const MODE_BUTTON_NAMES := ["Online", "Local", "Sandbox"]
+# Whole-button custom art for the main menu's 2 mode bars (Online/Local)
+# -- an alternative to the small badge-icon-on-a-procedural-box system
+# above: paint the entire button (background, character, label, all of
+# it) as one image, same canvas size the real button renders at, so what's
+# painted here is exactly what shows up in-game. Matches main_menu.gd's
+# MODES key order exactly -- "online"/"local" (Sandbox removed).
+const MODE_BUTTON_KEYS := ["online", "local"]
+const MODE_BUTTON_NAMES := ["Online", "Local"]
 const MODE_BUTTON_SIZE := Vector2i(190, 360) # matches main_menu.gd's BAR_SIZE exactly
 const MODE_BUTTON_ART_DIR := "res://assets/icons/mode_buttons"
 const MODE_BUTTON_ZOOM := 2 # 190x360 is already large -- a much smaller per-pixel zoom than a 64x64 icon needs
