@@ -2,6 +2,8 @@ extends Control
 
 const MATCH_INTRO_SCENE := preload("res://main/match_intro.tscn")
 const UIStyle := preload("res://ui/ui_style.gd")
+const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
+const TeamLobbyViewScene := preload("res://ui/team_lobby_view.gd")
 
 @onready var lobby_name_label: Label = $VBox/LobbyNameLabel
 @onready var roster_list: ItemList = $VBox/RosterList
@@ -12,6 +14,8 @@ const UIStyle := preload("res://ui/ui_style.gd")
 var _is_ready := false
 var _chat_scrollback: RichTextLabel
 var _chat_input: LineEdit
+var _team_view: TeamLobbyView
+var _team_view_built_for_playlist := ""
 
 func _ready() -> void:
 	UIStyle.add_background(self, "lobby_room")
@@ -79,13 +83,53 @@ func _on_lobby_state_updated(lobby: Dictionary) -> void:
 	if lobby.is_empty():
 		return
 	lobby_name_label.text = lobby.name
+	var lobby_playlist: String = lobby.get("playlist", "")
+	# Any playlist lobby (team or FFA-headcount) auto-starts on fill server-
+	# side (see network_manager.gd's _maybe_autostart_playlist_lobby) -- no
+	# manual Start for either. Ready is purely cosmetic even for the
+	# unrestricted "Free-for-all" case (server never gates Start on it), but
+	# hiding it too for playlist lobbies avoids a toggle that does nothing.
+	start_button.visible = lobby.host_peer == NetworkManager.my_peer_id and lobby_playlist.is_empty()
+	ready_button.visible = lobby_playlist.is_empty()
+
+	if PlaylistCatalog.is_team_mode(lobby_playlist):
+		_ensure_team_view(lobby_playlist)
+		_team_view.my_id = NetworkManager.my_peer_id
+		_team_view.set_roster(lobby.members)
+		return
+	_teardown_team_view()
+	roster_list.visible = true
 	roster_list.clear()
 	for peer_id in lobby.members.keys():
 		var member: Dictionary = lobby.members[peer_id]
 		var host_tag := "  [host]" if peer_id == lobby.host_peer else ""
 		var ready_tag := "  READY" if member.ready else ""
 		roster_list.add_item("%s%s%s" % [member.username, host_tag, ready_tag])
-	start_button.visible = lobby.host_peer == NetworkManager.my_peer_id
+
+## Lazily built the first time a team-mode playlist lobby is seen -- replaces
+## roster_list with the live team-card view (2 sides, empty slots as dark
+## placeholders) the user asked for, filling in as players join.
+func _ensure_team_view(lobby_playlist: String) -> void:
+	if _team_view and _team_view_built_for_playlist == lobby_playlist:
+		return
+	_teardown_team_view()
+	roster_list.visible = false
+	_team_view = TeamLobbyViewScene.new()
+	_team_view.custom_minimum_size = Vector2(0, 320)
+	_team_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_team_view.playlist_id = lobby_playlist
+	_team_view.ranked = false
+	_team_view.accent_color = UIStyle.COLOR_ONLINE
+	var vbox: VBoxContainer = roster_list.get_parent()
+	vbox.add_child(_team_view)
+	vbox.move_child(_team_view, roster_list.get_index() + 1)
+	_team_view_built_for_playlist = lobby_playlist
+
+func _teardown_team_view() -> void:
+	if _team_view:
+		_team_view.queue_free()
+		_team_view = null
+		_team_view_built_for_playlist = ""
 
 func _on_ready_pressed() -> void:
 	_is_ready = not _is_ready
@@ -95,9 +139,9 @@ func _on_ready_pressed() -> void:
 func _on_start_pressed() -> void:
 	NetworkManager.start_match()
 
-func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary, level_id: String) -> void:
+func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary, level_id: String, playlist_id: String = "") -> void:
 	var scene := MATCH_INTRO_SCENE.instantiate()
-	scene.setup(my_id, roster, level_id)
+	scene.setup(my_id, roster, level_id, false, playlist_id)
 	get_tree().root.add_child(scene)
 	get_tree().current_scene.queue_free()
 	get_tree().current_scene = scene

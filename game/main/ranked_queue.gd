@@ -12,6 +12,8 @@ const RELAY_JOIN_BASE := "wss://codecade.co.za/tag/relay/join/"
 
 const UIStyle := preload("res://ui/ui_style.gd")
 const ModeIconScene := preload("res://ui/mode_icon.gd")
+const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
+const TeamLobbyViewScene := preload("res://ui/team_lobby_view.gd")
 
 @onready var status_label: Label = $VBox/StatusPanel/StatusBox/StatusLabel
 @onready var back_button: Button = $VBox/BackButton
@@ -20,6 +22,8 @@ const ModeIconScene := preload("res://ui/mode_icon.gd")
 var _http: HTTPRequest
 var _spawner: LocalServerSpawner
 var _username := ""
+var _playlist_id := ""
+var _team_view: TeamLobbyView
 # NetworkManager is an autoload -- its signals outlive this screen, so a
 # match_started (or a late directory/connect response) can still fire after
 # Cancel is pressed and yank the player into a match anyway. Every async
@@ -28,10 +32,13 @@ var _username := ""
 var _cancelled := false
 
 func _ready() -> void:
+	_playlist_id = GameSettings.selected_ranked_playlist
 	UIStyle.add_background(self, "ranked_queue")
 	$VBox/StatusPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_RANKED))
 	UIStyle.style_back_button(back_button)
 	_setup_pulsing_icon()
+	if PlaylistCatalog.is_team_mode(_playlist_id):
+		_build_team_view()
 
 	back_button.pressed.connect(_on_back_pressed)
 	_username = GameSettings.saved_username
@@ -51,10 +58,39 @@ func _ready() -> void:
 	NetworkManager.connected_to_server.connect(_on_connected)
 	NetworkManager.connection_failed.connect(_on_join_existing_failed)
 	NetworkManager.match_started.connect(_on_match_started)
+	NetworkManager.lobby_state_updated.connect(_on_lobby_state_updated)
 
-	status_label.text = "Finding a ranked match..."
+	status_label.text = "Finding a %s match..." % PlaylistCatalog.display_name(_playlist_id)
 	if _http.request(DIRECTORY_URL) != OK:
 		_host_new_ranked_server()
+
+## The live team-fill view (2 sides, empty slots as dark placeholders) --
+## only built for team-mode playlists (1v1/2v2); 1v1v1/1v1v1v1 have no
+## "sides" and keep the plain status label the .tscn already has.
+func _build_team_view() -> void:
+	$VBox.visible = false
+	_team_view = TeamLobbyViewScene.new()
+	_team_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_team_view.playlist_id = _playlist_id
+	_team_view.ranked = true
+	_team_view.my_id = NetworkManager.my_peer_id
+	add_child(_team_view)
+	_team_view.set_roster({})
+
+	var cancel_btn := Button.new()
+	cancel_btn.text = "Cancel"
+	cancel_btn.custom_minimum_size = Vector2(200, 40)
+	cancel_btn.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	cancel_btn.position = Vector2(-100, -50)
+	UIStyle.style_back_button(cancel_btn)
+	cancel_btn.pressed.connect(_on_back_pressed)
+	add_child(cancel_btn)
+
+func _on_lobby_state_updated(lobby: Dictionary) -> void:
+	if _cancelled or not _team_view or lobby.is_empty():
+		return
+	_team_view.my_id = NetworkManager.my_peer_id
+	_team_view.set_roster(lobby.get("members", {}))
 
 func _on_directory_response(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if _cancelled:
@@ -70,6 +106,8 @@ func _on_directory_response(result: int, response_code: int, _headers: PackedStr
 	for s in parsed:
 		if not s.get("ranked", false):
 			continue
+		if s.get("playlist", "") != _playlist_id:
+			continue
 		if s.playerCount >= s.maxPlayers:
 			continue
 		if best == null or s.playerCount > best.playerCount:
@@ -77,7 +115,7 @@ func _on_directory_response(result: int, response_code: int, _headers: PackedStr
 	if best == null:
 		_host_new_ranked_server()
 		return
-	status_label.text = "Joining a ranked match..."
+	status_label.text = "Joining a %s match..." % PlaylistCatalog.display_name(_playlist_id)
 	NetworkManager.set_username(_username)
 	NetworkManager.start_client(RELAY_JOIN_BASE + str(best.id), _username)
 
@@ -90,8 +128,8 @@ func _on_join_existing_failed() -> void:
 func _host_new_ranked_server() -> void:
 	if _cancelled:
 		return
-	status_label.text = "No open ranked matches -- starting one..."
-	_spawner.spawn("%s's Ranked Match" % _username, _username, ["--ranked"])
+	status_label.text = "No open %s matches -- starting one..." % PlaylistCatalog.display_name(_playlist_id)
+	_spawner.spawn("%s's Ranked Match" % _username, _username, ["--ranked", "--playlist=%s" % _playlist_id])
 
 func _on_spawn_failed(reason: String) -> void:
 	if _cancelled:
@@ -103,11 +141,11 @@ func _on_connected() -> void:
 		return
 	status_label.text = "Waiting for more players..."
 
-func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary, level_id: String) -> void:
+func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary, level_id: String, playlist_id: String = "") -> void:
 	if _cancelled:
 		return
 	var scene := MATCH_INTRO_SCENE.instantiate()
-	scene.setup(my_id, roster, level_id, true)
+	scene.setup(my_id, roster, level_id, true, playlist_id)
 	get_tree().root.add_child(scene)
 	get_tree().current_scene.queue_free()
 	get_tree().current_scene = scene

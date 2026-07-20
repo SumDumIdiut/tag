@@ -74,7 +74,7 @@ func _on_quick_play_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/quick_play.tscn")
 
 func _on_ranked_pressed() -> void:
-	get_tree().change_scene_to_file("res://main/ranked_queue.tscn")
+	get_tree().change_scene_to_file("res://main/ranked_playlist_select.tscn")
 
 func _on_browse_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/server_browser.tscn")

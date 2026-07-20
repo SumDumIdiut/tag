@@ -1,19 +1,25 @@
 extends Control
 
 const UIStyle := preload("res://ui/ui_style.gd")
+const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 const LEVELS_CATALOG_URL := "https://codecade.co.za/tag/api/levels/catalog"
 
 @onready var username_edit: LineEdit = $VBox/UsernameEdit
 @onready var server_name_edit: LineEdit = $VBox/ServerNameEdit
 @onready var map_select: OptionButton = $VBox/MapSelect
+@onready var playlist_select: OptionButton = $VBox/PlaylistSelect
 @onready var host_button: Button = $VBox/HostButton
 @onready var back_button: Button = $VBox/BackButton
 @onready var status_label: Label = $VBox/StatusLabel
 
 var _spawner: LocalServerSpawner
 var _server_name := "Someone's Server"
+var _playlist_id := ""
 # item index -> level_id ("" for the built-in default, at index 0)
 var _map_level_ids: Array[String] = [""]
+# item index -> playlist id ("" = "Free-for-all", today's any-headcount
+# manual-Start behavior, at index 0)
+var _playlist_ids: Array[String] = [""]
 # NetworkManager is an autoload -- its signals outlive this screen, so a
 # late lobby_state_updated (from the CONNECT_ONE_SHOT below) can still fire
 # after Back is pressed and pull the player into lobby_room anyway. See
@@ -31,6 +37,11 @@ func _ready() -> void:
 
 	map_select.add_item("Classic Arena")
 	_fetch_map_catalog()
+
+	playlist_select.add_item("Free-for-all")
+	for id in PlaylistCatalog.PLAYLIST_ORDER:
+		playlist_select.add_item(PlaylistCatalog.display_name(id))
+		_playlist_ids.append(id)
 
 	_spawner = LocalServerSpawner.new()
 	add_child(_spawner)
@@ -73,7 +84,16 @@ func _on_host_pressed() -> void:
 	var selected := map_select.selected
 	if selected >= 0 and selected < _map_level_ids.size():
 		level_id = _map_level_ids[selected]
-	var extra_args := PackedStringArray(["--level=%s" % level_id]) if not level_id.is_empty() else PackedStringArray()
+
+	var playlist_selected := playlist_select.selected
+	if playlist_selected >= 0 and playlist_selected < _playlist_ids.size():
+		_playlist_id = _playlist_ids[playlist_selected]
+
+	var extra_args := PackedStringArray()
+	if not level_id.is_empty():
+		extra_args.append("--level=%s" % level_id)
+	if not _playlist_id.is_empty():
+		extra_args.append("--playlist=%s" % _playlist_id)
 	_spawner.spawn(_server_name, username, extra_args)
 
 func _on_spawn_failed(reason: String) -> void:
@@ -88,7 +108,7 @@ func _on_spawned_and_connected() -> void:
 	# As the host, there's nothing to browse for -- re-typing the server name
 	# as a lobby name too would just be re-doing what this screen collected.
 	NetworkManager.lobby_state_updated.connect(_on_lobby_created, CONNECT_ONE_SHOT)
-	NetworkManager.create_lobby(_server_name, NetworkManager.MAX_LOBBY_PLAYERS)
+	NetworkManager.create_lobby(_server_name, NetworkManager.MAX_LOBBY_PLAYERS, _playlist_id)
 
 func _on_lobby_created(_lobby: Dictionary) -> void:
 	if _cancelled:

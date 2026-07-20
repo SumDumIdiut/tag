@@ -110,7 +110,11 @@ func _physics_process(delta: float) -> void:
 		return
 	for i in participants.size():
 		var p = participants[i]
-		if p == it:
+		# team == -1 (the default -- every non-team-playlist match) never
+		# matches itself, so this is a no-op everywhere except a real team
+		# playlist (see Player.team) where it blocks "it" from ever passing
+		# to a teammate, only ever to an opposing-team player.
+		if p == it or (it.team != -1 and p.team == it.team):
 			continue
 		if it.global_position.distance_to(p.global_position) < TAG_DISTANCE:
 			it_index = i

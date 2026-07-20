@@ -38,6 +38,7 @@ var server_name: String
 var max_players: int
 var local_port: int
 var ranked: bool
+var playlist: String
 
 var _control: WebSocketPeer = null
 var _server_id: String = ""
@@ -52,12 +53,13 @@ class _BridgePair:
 	var local_leg: WebSocketPeer
 	var closing := false
 
-func _init(p_relay_url: String, p_name: String, p_max_players: int, p_local_port: int, p_ranked: bool = false) -> void:
+func _init(p_relay_url: String, p_name: String, p_max_players: int, p_local_port: int, p_ranked: bool = false, p_playlist: String = "") -> void:
 	relay_url = p_relay_url
 	server_name = p_name
 	max_players = p_max_players
 	local_port = p_local_port
 	ranked = p_ranked
+	playlist = p_playlist
 
 func _ready() -> void:
 	_heartbeat_timer = Timer.new()
@@ -107,7 +109,7 @@ func _poll_control() -> void:
 			# one of those frames and the relay ends up with a pile of
 			# duplicate registrations for what's really one server.
 			_register_sent = true
-			_send_json(_control, {"type": "register", "name": server_name, "maxPlayers": max_players, "ranked": ranked})
+			_send_json(_control, {"type": "register", "name": server_name, "maxPlayers": max_players, "ranked": ranked, "playlist": playlist})
 		while _control.get_available_packet_count() > 0:
 			_handle_control_message(_control.get_packet())
 	elif state == WebSocketPeer.STATE_CLOSED:
