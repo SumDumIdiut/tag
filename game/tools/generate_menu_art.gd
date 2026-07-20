@@ -18,6 +18,7 @@ extends Node
 const BACKGROUND_OUT_DIR := "res://assets/backgrounds"
 const MODE_BUTTON_OUT_DIR := "res://assets/icons/mode_buttons"
 const ONLINE_BAR_OUT_DIR := "res://assets/icons/online_bars"
+const LOCAL_BAR_OUT_DIR := "res://assets/icons/local_bars"
 
 const BG_TOP := Color(0.106, 0.11, 0.157)
 const BG_MID := Color(0.07, 0.075, 0.11)
@@ -37,11 +38,25 @@ const BTN_DESIGN_SIZE := Vector2i(38, 72) # 5x upscale
 # Matches online_menu.tscn's bar custom_minimum_size exactly.
 const BAR_FINAL_SIZE := Vector2i(170, 290)
 const BAR_DESIGN_SIZE := Vector2i(34, 58) # 5x upscale
+# Matches local_menu.tscn's StartButton/BackButton rendered size (they fill
+# the 380px-wide VBox at fixed heights) -- landscape, not portrait, unlike
+# every other painted button/bar so far, so these use their own
+# _make_horizontal_bar_art() composition instead of _make_bar_art(). Design
+# height kept much closer to final height than the other assets' ~5x
+# upscale (only ~2.3-2.7x here) -- at these short heights a 5x-downscaled
+# design gives the play-triangle/arrow icons too few pixels to read as
+# anything but noise (confirmed by screenshot on a first pass at 13px/8px
+# design height).
+const PLAY_FINAL_SIZE := Vector2i(380, 64)
+const PLAY_DESIGN_SIZE := Vector2i(142, 24)
+const BACK_FINAL_SIZE := Vector2i(380, 36)
+const BACK_DESIGN_SIZE := Vector2i(168, 16)
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BACKGROUND_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MODE_BUTTON_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(ONLINE_BAR_OUT_DIR))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(LOCAL_BAR_OUT_DIR))
 
 	# No central icon here (unlike every other screen) -- the real UI
 	# already places two big Online/Local cards front-and-center over this
@@ -78,6 +93,12 @@ func _ready() -> void:
 	await _make_bar_art(ONLINE_BAR_OUT_DIR, "browse_servers", COLOR_ONLINE, "signal", "Browse Servers", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 16)
 	await _make_bar_art(ONLINE_BAR_OUT_DIR, "host_server", COLOR_ONLINE, "gear", "Host Server", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 16)
 	await _make_bar_art(ONLINE_BAR_OUT_DIR, "friends", COLOR_SHOP, "heart", "Friends", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 18)
+
+	# Local menu's Play Tag / Back -- same painted treatment as every other
+	# real button in the app, just in a wide landscape shape instead of the
+	# tall portrait one every other bar/button above uses.
+	await _make_horizontal_bar_art(LOCAL_BAR_OUT_DIR, "play", COLOR_LOCAL, "play", "Play Tag", PLAY_FINAL_SIZE, PLAY_DESIGN_SIZE, 22)
+	await _make_horizontal_bar_art(LOCAL_BAR_OUT_DIR, "back", COLOR_NEUTRAL, "back_arrow", "Back", BACK_FINAL_SIZE, BACK_DESIGN_SIZE, 16)
 
 	print("GENERATE_DONE")
 	get_tree().quit()
@@ -131,6 +152,22 @@ func _make_bar_art(out_dir: String, key: String, color: Color, icon: String, lab
 	_blit_centered(img, text_img, final_size.x / 2, final_size.y - 44)
 	img.save_png("%s/%s.png" % [out_dir, key])
 	print("painted bar art: ", key)
+
+## Landscape counterpart to _make_bar_art() -- icon sits left-of-center
+## (there's no room for icon+character+label stacked vertically at 64px or
+## 36px tall), label centered in the remaining right-hand space.
+func _make_horizontal_bar_art(out_dir: String, key: String, color: Color, icon: String, label_text: String, final_size: Vector2i, design_size: Vector2i, font_size: int) -> void:
+	var img := Image.create(design_size.x, design_size.y, false, Image.FORMAT_RGBA8)
+	_paint_banded_sky(img, color)
+	_scatter_stars(img, key)
+	var icon_cx := int(design_size.x * 0.12)
+	_draw_icon(img, icon, icon_cx, design_size.y / 2, int(design_size.y * 0.38), color)
+	_px_border(img, color)
+	img.resize(final_size.x, final_size.y, Image.INTERPOLATE_NEAREST)
+	var text_img := await _render_text(label_text, font_size)
+	_blit_centered(img, text_img, final_size.x / 2 + int(final_size.x * 0.06), final_size.y / 2)
+	img.save_png("%s/%s.png" % [out_dir, key])
+	print("painted local bar art: ", key)
 
 func _render_text(text: String, font_size: int) -> Image:
 	var viewport := SubViewport.new()
@@ -238,6 +275,8 @@ func _draw_icon(img: Image, icon: String, cx: int, cy: int, r: int, color: Color
 		"signal": _icon_signal(img, cx, cy, r, color)
 		"diamond": _icon_diamond(img, cx, cy, r, color, color2)
 		"faceoff": _icon_faceoff(img, cx, cy, r, color, color2)
+		"play": _icon_play(img, cx, cy, r, color)
+		"back_arrow": _icon_back_arrow(img, cx, cy, r, color)
 
 # ─── Icon library (all operate in small pixel units around cx,cy) ────────
 
@@ -376,6 +415,16 @@ func _icon_diamond(img: Image, cx: int, cy: int, r: int, color1: Color, color2: 
 	_px_rect(img, cx + r + 4 - int(r * 0.9), cy - int(r * 0.7), int(r * 0.9), int(r * 1.4), color2)
 	_px_character(img, cx - r - 4 + int(r * 0.15), cy - 4, 8, color1.lightened(0.3))
 	_px_character(img, cx + r + 4 - int(r * 0.9) + int(r * 0.15), cy - 4, 8, color2.lightened(0.3))
+
+## A plain media-style "play" triangle -- the clearest possible glyph for
+## "start the match" at these sizes, simpler than reusing "house"/"tag"
+## (which already mean something else elsewhere) or drawing a character.
+func _icon_play(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
+	_px_triangle(img, cx - int(r * 0.6), cy - r, cx - int(r * 0.6), cy + r, cx + r, cy, color)
+
+func _icon_back_arrow(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
+	_px_triangle(img, cx + int(r * 0.5), cy - r, cx + int(r * 0.5), cy + r, cx - r, cy, color)
+	_px_rect(img, cx, cy - 2, int(r * 0.9), 4, color)
 
 func _icon_faceoff(img: Image, cx: int, cy: int, r: int, color1: Color, color2: Color) -> void:
 	_px_character(img, cx - r, cy - 4, 9, color1)

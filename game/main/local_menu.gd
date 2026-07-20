@@ -25,6 +25,8 @@ func _ready() -> void:
 	UIStyle.style_button(start_button, UIStyle.COLOR_LOCAL, 18)
 	start_button.add_theme_font_size_override("font_size", 18)
 	UIStyle.style_back_button(back_button)
+	_apply_bar_art(start_button, "play")
+	_apply_bar_art(back_button, "back")
 	UIStyle.style_slider(npc_count_slider, UIStyle.COLOR_LOCAL)
 	UIStyle.style_slider(skill_slider, UIStyle.COLOR_LOCAL)
 	UIStyle.style_slider(round_duration_slider, UIStyle.COLOR_LOCAL)
@@ -59,6 +61,28 @@ func _add_row_icon(row: HBoxContainer, icon_type: String) -> void:
 	icon_wrap.add_child(icon)
 	row.add_child(icon_wrap)
 	row.move_child(icon_wrap, 0)
+
+## Painted whole-button art for Play Tag / Back -- same fallback chain
+## online_menu.gd's _style_bar() already uses (downloaded override, then
+## baked-into-this-build), falling back to the plain styled button (already
+## applied above) if neither exists.
+func _apply_bar_art(btn: Button, key: String) -> void:
+	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.local_bar_override_path(key))
+	if not tex:
+		var path := "res://assets/icons/local_bars/%s.png" % key
+		if ResourceLoader.exists(path):
+			tex = load(path)
+	if not tex:
+		return
+	btn.text = ""
+	btn.clip_contents = true
+	var art := TextureRect.new()
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art.texture = tex
+	art.stretch_mode = TextureRect.STRETCH_SCALE
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	btn.add_child(art)
 
 func _update_npc_count_label(value: float) -> void:
 	npc_count_value.text = str(int(value))
