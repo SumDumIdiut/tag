@@ -248,6 +248,23 @@ static func panel_box(color: Color = COLOR_NEUTRAL, bg_alpha: float = 0.05, bord
 static func style_back_button(btn: Button) -> void:
 	style_button(btn, COLOR_NEUTRAL, 8)
 
+## Every LineEdit in the app previously fell through to theme.tres's one
+## generic near-transparent purple box (4-6% bg alpha) regardless of
+## screen, reading as barely-there next to every button's opaque
+## hard-bordered panel_box()/button_box() look -- this gives text fields
+## the exact same visual language as style_back_button() (same
+## button_box() alpha levels, same neutral color by default), so an input
+## field reads as "part of this UI" instead of a leftover default control.
+static func style_line_edit(edit: LineEdit, color: Color = COLOR_NEUTRAL, radius: int = 8) -> void:
+	edit.add_theme_stylebox_override("normal", button_box(color, 0.14, 0.35, radius))
+	edit.add_theme_stylebox_override("focus", button_box(color, 0.26, 0.75, radius))
+	edit.add_theme_stylebox_override("read_only", button_box(color, 0.08, 0.2, radius))
+	edit.add_theme_color_override("font_color", Color(0.894, 0.906, 0.941, 1))
+	edit.add_theme_color_override("font_placeholder_color", Color(color.r, color.g, color.b, 0.6))
+	edit.add_theme_color_override("font_uneditable_color", Color(color.r, color.g, color.b, 0.8))
+	edit.add_theme_color_override("caret_color", color.lightened(0.4))
+	edit.add_theme_color_override("selection_color", Color(color.r, color.g, color.b, 0.35))
+
 ## A small colored icon glyph anchored to a button's left edge, over its
 ## existing text (which should start with a couple spaces of padding to
 ## make room) -- for buttons too narrow for full painted whole-button art

@@ -1,12 +1,12 @@
 [gd_resource type="Theme" load_steps=10 format=3]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_normal"]
-bg_color = Color(1, 1, 1, 0.06)
+bg_color = Color(0.6, 0.63, 0.72, 0.14)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(1, 1, 1, 0.1)
+border_color = Color(0.6, 0.63, 0.72, 0.35)
 corner_radius_top_left = 10
 corner_radius_top_right = 10
 corner_radius_bottom_right = 10
@@ -17,12 +17,12 @@ content_margin_right = 16.0
 content_margin_bottom = 10.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
-bg_color = Color(0.486, 0.424, 0.973, 0.28)
+bg_color = Color(0.6, 0.63, 0.72, 0.26)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.486, 0.424, 0.973, 0.6)
+border_color = Color(0.6, 0.63, 0.72, 0.75)
 corner_radius_top_left = 10
 corner_radius_top_right = 10
 corner_radius_bottom_right = 10
@@ -33,12 +33,12 @@ content_margin_right = 16.0
 content_margin_bottom = 10.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pressed"]
-bg_color = Color(0.486, 0.424, 0.973, 0.45)
+bg_color = Color(0.6, 0.63, 0.72, 0.4)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.486, 0.424, 0.973, 0.8)
+border_color = Color(0.6, 0.63, 0.72, 1.0)
 corner_radius_top_left = 10
 corner_radius_top_right = 10
 corner_radius_bottom_right = 10
@@ -49,12 +49,12 @@ content_margin_right = 16.0
 content_margin_bottom = 10.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_disabled"]
-bg_color = Color(1, 1, 1, 0.03)
+bg_color = Color(0.6, 0.63, 0.72, 0.06)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(1, 1, 1, 0.05)
+border_color = Color(0.6, 0.63, 0.72, 0.15)
 corner_radius_top_left = 10
 corner_radius_top_right = 10
 corner_radius_bottom_right = 10
@@ -65,12 +65,12 @@ content_margin_right = 16.0
 content_margin_bottom = 10.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_field_normal"]
-bg_color = Color(1, 1, 1, 0.04)
+bg_color = Color(0.6, 0.63, 0.72, 0.14)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(1, 1, 1, 0.09)
+border_color = Color(0.6, 0.63, 0.72, 0.35)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
@@ -81,12 +81,12 @@ content_margin_right = 12.0
 content_margin_bottom = 8.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_field_focus"]
-bg_color = Color(1, 1, 1, 0.06)
+bg_color = Color(0.6, 0.63, 0.72, 0.26)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.486, 0.424, 0.973, 0.7)
+border_color = Color(0.6, 0.63, 0.72, 0.75)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8

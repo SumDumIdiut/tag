@@ -32,6 +32,8 @@ func _ready() -> void:
 	UIStyle.style_back_button(back_button)
 	UIStyle.apply_bar_art(host_button, "action_bars", "host_server")
 	UIStyle.apply_bar_art(back_button, "action_bars", "back")
+	UIStyle.style_line_edit(username_edit)
+	UIStyle.style_line_edit(server_name_edit)
 
 	username_edit.text = GameSettings.saved_username
 	host_button.pressed.connect(_on_host_pressed)

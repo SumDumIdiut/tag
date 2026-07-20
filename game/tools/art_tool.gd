@@ -349,6 +349,8 @@ func _ready() -> void:
 	get_window().size = Vector2i(1300, 940)
 	get_window().title = "Tag Art Tool"
 	UIStyle.add_background(self)
+	UIStyle.style_line_edit(level_name_edit)
+	UIStyle.style_line_edit(publish_key_edit)
 	_setup_page_tabs()
 	_build_sidebar()
 	_build_shared_toolbar(toolbar)
@@ -563,6 +565,7 @@ func _build_skin_entry(id: String) -> Control:
 	var name_edit := LineEdit.new()
 	name_edit.text = _skin_names[id]
 	name_edit.placeholder_text = "Skin name"
+	UIStyle.style_line_edit(name_edit)
 	name_edit.text_submitted.connect(func(new_text: String):
 		var trimmed := new_text.strip_edges()
 		if not trimmed.is_empty():
@@ -613,6 +616,7 @@ func _build_hat_entry(id: String) -> Control:
 	var name_edit := LineEdit.new()
 	name_edit.text = _hat_names[id]
 	name_edit.placeholder_text = "Hat name"
+	UIStyle.style_line_edit(name_edit)
 	name_edit.text_submitted.connect(func(new_text: String):
 		var trimmed := new_text.strip_edges()
 		if not trimmed.is_empty():
@@ -663,6 +667,7 @@ func _build_trail_entry(id: String) -> Control:
 	var name_edit := LineEdit.new()
 	name_edit.text = _trail_names[id]
 	name_edit.placeholder_text = "Trail name"
+	UIStyle.style_line_edit(name_edit)
 	name_edit.text_submitted.connect(func(new_text: String):
 		var trimmed := new_text.strip_edges()
 		if not trimmed.is_empty():

@@ -73,12 +73,14 @@ func _build_form_box(parent: VBoxContainer) -> void:
 	_username_edit = LineEdit.new()
 	_username_edit.placeholder_text = "Username"
 	_username_edit.custom_minimum_size = Vector2(0, 40)
+	UIStyle.style_line_edit(_username_edit)
 	_form_box.add_child(_username_edit)
 
 	_password_edit = LineEdit.new()
 	_password_edit.placeholder_text = "Password"
 	_password_edit.secret = true
 	_password_edit.custom_minimum_size = Vector2(0, 40)
+	UIStyle.style_line_edit(_password_edit)
 	_form_box.add_child(_password_edit)
 
 	var row := HBoxContainer.new()

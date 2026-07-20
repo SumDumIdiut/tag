@@ -62,6 +62,7 @@ func _build_chat_panel() -> void:
 	_chat_input = LineEdit.new()
 	_chat_input.placeholder_text = "Say something..."
 	_chat_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UIStyle.style_line_edit(_chat_input)
 	_chat_input.text_submitted.connect(func(_t): _send_chat())
 	row.add_child(_chat_input)
 	var send_btn := Button.new()
