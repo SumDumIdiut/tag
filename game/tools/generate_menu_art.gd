@@ -1,5 +1,7 @@
 extends Node
 
+const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
+
 # Paints genuine low-res pixel art (not smooth gradients) for the 2 mode
 # buttons and 14 menu backgrounds, then nearest-neighbor-upscales each to
 # its real in-game size so the blocky pixel look stays crisp. Text labels
@@ -21,6 +23,7 @@ const ONLINE_BAR_OUT_DIR := "res://assets/icons/online_bars"
 const LOCAL_BAR_OUT_DIR := "res://assets/icons/local_bars"
 const RANKED_BAR_OUT_DIR := "res://assets/icons/ranked_bars"
 const ACTION_BAR_OUT_DIR := "res://assets/icons/action_bars"
+const PLAYLIST_CARD_OUT_DIR := "res://assets/icons/playlist_cards"
 
 const BG_TOP := Color(0.106, 0.11, 0.157)
 const BG_MID := Color(0.07, 0.075, 0.11)
@@ -81,6 +84,15 @@ const ACTION_BARS := {
 	"logout": {"color": COLOR_RANKED, "icon": "back_arrow", "label": "Log Out"},
 }
 
+# Ranked playlist picker's 4 cards (ranked_playlist_select.gd) -- same
+# whole-card painted treatment as everything else, sized to the card's own
+# custom_minimum_size (170x150) rather than reusing BTN/BAR's tall portrait
+# ratio. team_count/team_size come from PlaylistCatalog (not hand-copied
+# here) so a future 5th playlist automatically gets the right figure count
+# without this dict needing to know the numbers itself.
+const PLAYLIST_CARD_FINAL_SIZE := Vector2i(170, 150)
+const PLAYLIST_CARD_DESIGN_SIZE := Vector2i(34, 30) # 5x upscale, matches BAR_DESIGN_SIZE's ratio
+
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BACKGROUND_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MODE_BUTTON_OUT_DIR))
@@ -88,6 +100,7 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(LOCAL_BAR_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(RANKED_BAR_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(ACTION_BAR_OUT_DIR))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(PLAYLIST_CARD_OUT_DIR))
 
 	# No central icon here (unlike every other screen) -- the real UI
 	# already places two big Online/Local cards front-and-center over this
@@ -145,6 +158,10 @@ func _ready() -> void:
 	for key in ACTION_BARS.keys():
 		var def: Dictionary = ACTION_BARS[key]
 		await _make_horizontal_bar_art(ACTION_BAR_OUT_DIR, key, def.color, def.icon, def.label, ACTION_BAR_FINAL_SIZE, ACTION_BAR_DESIGN_SIZE, 18)
+
+	# Ranked playlist picker's 4 cards -- see PLAYLIST_CARD_FINAL_SIZE.
+	for id in PlaylistCatalog.PLAYLIST_ORDER:
+		await _make_playlist_card_art(id, PlaylistCatalog.team_count(id), PlaylistCatalog.team_size(id), PlaylistCatalog.display_name(id))
 
 	print("GENERATE_DONE")
 	get_tree().quit()
@@ -266,6 +283,57 @@ func _make_horizontal_bar_art(out_dir: String, key: String, color: Color, icon: 
 	_blit_centered(img, text_img, final_size.x / 2 + int(final_size.x * 0.06), final_size.y / 2)
 	img.save_png("%s/%s.png" % [out_dir, key])
 	print("painted local bar art: ", key)
+
+## Whole-card art for one ranked playlist entry (ranked_playlist_select.gd) --
+## a banded-sky backdrop like every other painted asset, plus a cluster of
+## mini characters per side (see _draw_playlist_figures) so the shape of the
+## matchup (how many sides, how big each side is) reads at a glance instead
+## of needing the sub-label text to explain it.
+func _make_playlist_card_art(key: String, team_count: int, team_size: int, label_text: String) -> void:
+	var img := Image.create(PLAYLIST_CARD_DESIGN_SIZE.x, PLAYLIST_CARD_DESIGN_SIZE.y, false, Image.FORMAT_RGBA8)
+	_paint_banded_sky(img, COLOR_RANKED)
+	_scatter_stars(img, key)
+	_draw_playlist_figures(img, team_count, team_size, COLOR_RANKED)
+	_px_rect(img, 0, PLAYLIST_CARD_DESIGN_SIZE.y - 6, PLAYLIST_CARD_DESIGN_SIZE.x, 6, BG_BOTTOM.darkened(0.3))
+	_px_border(img, COLOR_RANKED)
+	img.resize(PLAYLIST_CARD_FINAL_SIZE.x, PLAYLIST_CARD_FINAL_SIZE.y, Image.INTERPOLATE_NEAREST)
+	var text_img := await _render_text(label_text, 20)
+	_blit_centered(img, text_img, PLAYLIST_CARD_FINAL_SIZE.x / 2, PLAYLIST_CARD_FINAL_SIZE.y - 32)
+	img.save_png("%s/%s.png" % [PLAYLIST_CARD_OUT_DIR, key])
+	print("painted playlist card: ", key)
+
+## Draws `team_count` side-by-side clusters of `team_size` mini characters
+## each, alternating shade per side so opposing sides read as distinct even
+## in this single-accent-color card (this is a picker card, not the live
+## roster preview -- see team_lobby_view.gd for actual per-player team
+## colors). More sides or bigger teams naturally reads as "busier," which is
+## exactly the at-a-glance cue a 1v1 vs 2v2 vs 1v1v1v1 card needs.
+func _draw_playlist_figures(img: Image, team_count: int, team_size: int, color: Color) -> void:
+	var w := img.get_width()
+	var cy := int(img.get_height() * 0.38)
+	var slot_gap := 2
+	var side_gap := 4
+	var margin := 4
+	var available_w := w - margin * 2
+	# Shrinks characters just enough to fit every side within the design
+	# canvas -- a fixed size worked fine for 1v1's 2 figures but overflowed
+	# the canvas (and crashed _px_character's unclamped eye pixels, fixed
+	# above) once 1v1v1v1 needed 4 side-by-side clusters in the same width.
+	var char_size := 7
+	while char_size > 3:
+		var cluster_w := team_size * char_size + (team_size - 1) * slot_gap
+		var total_w := team_count * cluster_w + (team_count - 1) * side_gap
+		if total_w <= available_w:
+			break
+		char_size -= 1
+	var cluster_w := team_size * char_size + (team_size - 1) * slot_gap
+	var total_w := team_count * cluster_w + (team_count - 1) * side_gap
+	var start_x := w / 2 - total_w / 2
+	for side in team_count:
+		var side_color := color if side % 2 == 0 else color.darkened(0.3)
+		var side_x := start_x + side * (cluster_w + side_gap)
+		for slot in team_size:
+			_px_character(img, side_x + slot * (char_size + slot_gap), cy - char_size / 2, char_size, side_color)
 
 func _render_text(text: String, font_size: int) -> Image:
 	var viewport := SubViewport.new()
@@ -668,5 +736,10 @@ func _px_character(img: Image, x: int, y: int, size: int, color: Color) -> void:
 	_px_rect(img, x, y + size - 1, size, 1, color.darkened(0.2))
 	var eye := Color(0.05, 0.05, 0.08)
 	var eye_y := y + int(size * 0.4)
-	img.set_pixel(x + int(size * 0.3), eye_y, eye)
-	img.set_pixel(x + int(size * 0.65), eye_y, eye)
+	# Unlike the _px_rect calls above (which self-clamp), set_pixel throws
+	# on an out-of-bounds index -- confirmed by a real crash from
+	# _draw_playlist_figures placing characters near the edge of a small
+	# design canvas (34px wide, 4-a-side). Clamp the same way _px_rect does
+	# rather than trusting every caller to keep eyes in-bounds.
+	_px_rect(img, x + int(size * 0.3), eye_y, 1, 1, eye)
+	_px_rect(img, x + int(size * 0.65), eye_y, 1, 1, eye)

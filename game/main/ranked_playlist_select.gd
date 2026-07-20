@@ -21,8 +21,17 @@ func _build_card(playlist_id: String) -> Button:
 	btn.text = ""
 	btn.custom_minimum_size = Vector2(170, 150)
 	btn.focus_mode = Control.FOCUS_ALL
+	btn.clip_contents = true
 	UIStyle.style_button(btn, UIStyle.COLOR_RANKED, 14, false)
 	btn.pressed.connect(_on_playlist_pressed.bind(playlist_id))
+
+	# A whole-card painting (see the Art Tool's Icons page "Playlist Card
+	# Art" section) replaces the procedural icon/name/sub-label layout below
+	# entirely -- same "never hard-fail on missing custom content" rule as
+	# every other painted button, falls back to the plain layout when no art
+	# exists for this playlist yet.
+	if UIStyle.apply_bar_art(btn, "playlist_cards", playlist_id):
+		return btn
 
 	var layout := VBoxContainer.new()
 	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
