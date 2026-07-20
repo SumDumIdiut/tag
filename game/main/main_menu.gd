@@ -110,6 +110,14 @@ func _build_bar(mode: Dictionary) -> Button:
 		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		art.texture = tex
 		art.stretch_mode = TextureRect.STRETCH_SCALE
+		# Without this, TextureRect's default EXPAND_KEEP_SIZE lets the
+		# texture's own native resolution fight the anchor-based FULL_RECT
+		# sizing below, leaving part of the button's own colored panel
+		# (drawn behind this as its stylebox) visible past the art's edge
+		# whenever the button's real rect doesn't land exactly on
+		# BAR_SIZE's 190x360. Same fix UIStyle.add_background's own
+		# background TextureRect already applies.
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		btn.add_child(art)
 		return btn
