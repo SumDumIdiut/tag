@@ -121,8 +121,19 @@ const ctx = canvas.getContext('2d');
 // blocks WebSockets outright.
 const POLL_FALLBACK_MS = 1000;
 const STALE_AFTER_MS = 3000;
-const PLAYER_RADIUS_PX = 20;
 const TILE_SIZE_PX = 10;
+// The actual body sprite's real size in world units (see
+// SkinCatalog.VISUAL_WIDTH/HEIGHT in game/cosmetics/skin_catalog.gd) --
+// drawn at exactly this many world units wide, scaled the same as
+// everything else, so a player's on-screen size is always geometrically
+// correct relative to the tiles around them instead of an arbitrary fixed
+// pixel radius.
+const PLAYER_WORLD_SIZE = 40;
+// project.godot's window/size/viewport_width -- the real game's Camera2D
+// has no zoom override (1 world unit = 1 screen pixel), so this is
+// exactly how many world units wide a real player's own view is. Follow
+// mode frames the same way (see draw()'s baseScale).
+const GAME_VIEWPORT_WIDTH = 1152;
 
 // Mirrors TileCanvas.TILE_COLORS in game/main/tile_canvas.gd exactly, so
 // the arena reads as a real preview of the actual tiles rather than
@@ -234,18 +245,19 @@ function draw(state) {
 
   const arenaW = state.arenaWidth > 0 ? state.arenaWidth : 1000;
   const arenaH = state.arenaHeight > 0 ? state.arenaHeight : 600;
-  const baseScale = Math.min(w / arenaW, h / arenaH) * 0.92;
-  const scale = baseScale * view.zoom;
-
-  // Tile cell (0,0) is NOT necessarily world-pixel (0,0) -- the arena's
-  // tile bounding box isn't guaranteed centered on the origin, so both
-  // tiles and players (Player.global_position, already real world pixels)
-  // need to go through the SAME world->screen transform, anchored on the
-  // arena's actual center (arenaCenterX/Y, see server_match.gd's
-  // _compute_arena_bounds_px) rather than assuming symmetry.
+  const arenaFitScale = Math.min(w / arenaW, h / arenaH) * 0.92;
   const arenaCenterX = state.arenaCenterX || 0;
   const arenaCenterY = state.arenaCenterY || 0;
   const following = followIndex !== null && players[followIndex];
+  // Following someone frames the view the way actually playing would --
+  // the real game's Camera2D has no zoom override at all (1 world unit =
+  // 1 screen pixel) on a GAME_VIEWPORT_WIDTH-wide window, not "zoomed out
+  // enough to fit the whole arena," which is what following at
+  // arenaFitScale looked like before this. Not following still shows the
+  // whole arena, which has no in-game equivalent to match since no single
+  // camera ever frames that much at once during real play.
+  const baseScale = following ? (w / GAME_VIEWPORT_WIDTH) : arenaFitScale;
+  const scale = baseScale * view.zoom;
   let centerX = arenaCenterX, centerY = arenaCenterY;
   if (following) { centerX = following.x; centerY = following.y; }
   const offsetX = w / 2 - centerX * scale + (following ? 0 : view.offsetX);
@@ -273,18 +285,18 @@ function draw(state) {
     ctx.strokeRect(topLeft.x, topLeft.y, arenaW * scale, arenaH * scale);
   }
 
-  const spriteSize = PLAYER_RADIUS_PX * 2 * (scale / baseScale);
+  // True world size, not an arbitrary fixed pixel radius -- at any zoom
+  // level this stays geometrically correct relative to the tiles, exactly
+  // like the real game (no separate "icon scale" the actual renderer
+  // doesn't have either).
+  const spriteSize = PLAYER_WORLD_SIZE * scale;
   players.forEach((p, i) => {
     const pos = worldToScreen(p.x, p.y);
 
-    if (p.isIt) {
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, spriteSize / 2 + 8, 0, Math.PI * 2);
-      ctx.strokeStyle = '#ff4d4d';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-    }
-
+    // No glow/ring on the tagger -- the real game doesn't draw one either
+    // (a spectator can tell who's it the same way a player would: the
+    // roster list below, not a magic in-world highlight nothing in the
+    // actual client ever shows).
     const sprite = sprites[p.skinId] || sprites.red;
     // facing < 0 means the game's own remote_avatar.gd negates the
     // sprite's scale.x to flip it -- mirrored here as a canvas transform
@@ -337,6 +349,7 @@ function renderRoster(players) {
       const idx = Number(chip.dataset.index);
       followIndex = followIndex === idx ? null : idx;
       view.userAdjusted = false;
+      view.zoom = 1; // start each new follow at the real game's own 1:1 framing, not whatever zoom was left over from free panning
       updateRosterHighlight();
     });
   });
