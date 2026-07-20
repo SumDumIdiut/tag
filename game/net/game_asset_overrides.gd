@@ -31,6 +31,9 @@ static func ranked_bar_override_path(key: String) -> String:
 static func action_bar_override_path(key: String) -> String:
 	return "user://game_assets/action_bars/%s.png" % key
 
+static func playlist_card_override_path(key: String) -> String:
+	return "user://game_assets/playlist_cards/%s.png" % key
+
 ## Generic form of the category-specific helpers above -- new categories
 ## (see UIStyle.apply_bar_art, tools/art_tool.gd's Action Buttons section)
 ## use this directly instead of a new one-off wrapper function each time.

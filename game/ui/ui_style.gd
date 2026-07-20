@@ -278,14 +278,19 @@ static func prefix_icon(btn: Button, icon_type: String, color: Color) -> void:
 ## button already applied by style_button() as the fallback -- always safe
 ## to call speculatively, same "never hard-fail on missing custom content"
 ## rule the rest of the project follows.
-static func apply_bar_art(btn: Button, category: String, key: String) -> void:
+## Returns true if real art was found and applied, false if the caller is
+## left with the plain flat-colored fallback -- callers that build their own
+## extra child controls (icon/label) on top of the plain fallback (e.g.
+## ranked_playlist_select.gd's cards) use this to skip that procedural
+## layer entirely when full art already covers it.
+static func apply_bar_art(btn: Button, category: String, key: String) -> bool:
 	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.bar_override_path(category, key))
 	if not tex:
 		var path := "res://assets/icons/%s/%s.png" % [category, key]
 		if ResourceLoader.exists(path):
 			tex = load(path)
 	if not tex:
-		return
+		return false
 	btn.text = ""
 	btn.clip_contents = true
 	var art := TextureRect.new()
@@ -305,6 +310,7 @@ static func apply_bar_art(btn: Button, category: String, key: String) -> void:
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	btn.add_child(art)
+	return true
 
 static func title_label(text: String, size: int = 40) -> Label:
 	var l := Label.new()

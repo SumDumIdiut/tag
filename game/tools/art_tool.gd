@@ -41,6 +41,7 @@ const UpdateCheckerScript := preload("res://net/update_checker.gd")
 const UpdatePromptScene := preload("res://ui/update_prompt.gd")
 const TileCanvasScene := preload("res://main/tile_canvas.gd")
 const LevelData := preload("res://levels/level_data.gd")
+const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 
 const ZOOM := 18
 
@@ -122,6 +123,23 @@ To make one of these the game's real button art:
 
 A button with no file here just keeps using the plain flat-colored
 fallback -- you don't need to paint all nine at once.
+"""
+
+const PLAYLIST_CARD_INSTRUCTIONS_TEXT := """Each file here is one ranked playlist picker card's ENTIRE art -- icon
+figures, label, background, everything -- painted at 170x150, the exact
+size ranked_playlist_select.gd renders that card at.
+
+To make one of these the game's real card art:
+
+  1. Copy the file to game/assets/icons/playlist_cards/<key>.png, where
+     <key> is 1v1.png, 2v2.png, 1v1v1.png, or 1v1v1v1.png (matching the
+     file's own name here).
+  2. Commit the file -- no rebuild step needed, ranked_playlist_select.gd
+     checks for it at runtime and uses it in place of the procedural
+     icon/name/sub-label box automatically.
+
+A playlist with no file here just keeps using the procedural fallback --
+you don't need to paint all four at once.
 """
 
 const BACKGROUND_INSTRUCTIONS_TEXT := """Each file here is one menu screen's ENTIRE background, painted at
@@ -304,6 +322,20 @@ const ACTION_BAR_ZOOM := 2
 var _action_bar_images: Array[Image] = [] # index-matched to ACTION_BAR_KEYS
 var _current_action_bar_index := -1
 var _action_bar_select_buttons: Array[Button] = []
+
+# Ranked playlist picker's 4 cards (ranked_playlist_select.gd) -- same
+# whole-card painted-art shape as mode buttons/action bars above. Keys/
+# order must match PlaylistCatalog.PLAYLIST_ORDER, same "kept in sync by
+# convention" relationship every other *_KEYS list on this page already
+# has with its own real source of truth.
+const PLAYLIST_CARD_KEYS := ["1v1", "2v2", "1v1v1", "1v1v1v1"]
+const PLAYLIST_CARD_NAMES := ["1v1", "2v2", "1v1v1", "1v1v1v1"]
+const PLAYLIST_CARD_SIZE := Vector2i(170, 150) # matches ranked_playlist_select.gd's card custom_minimum_size
+const PLAYLIST_CARD_ART_DIR := "res://assets/icons/playlist_cards"
+const PLAYLIST_CARD_ZOOM := 4
+var _playlist_card_images: Array[Image] = [] # index-matched to PLAYLIST_CARD_KEYS
+var _current_playlist_card_index := -1
+var _playlist_card_select_buttons: Array[Button] = []
 
 var _import_file_dialog: FileDialog
 
@@ -1464,6 +1496,26 @@ func _build_icons_page() -> void:
 		select_box.add_child(btn)
 		_action_bar_select_buttons.append(btn)
 
+	var playlist_card_spacer := Control.new()
+	playlist_card_spacer.custom_minimum_size = Vector2(0, 8)
+	select_box.add_child(playlist_card_spacer)
+
+	# Same shared ButtonGroup again -- picking a playlist card here
+	# deselects whichever icon/mode button/background/action button was
+	# active.
+	select_box.add_child(_section_label("PLAYLIST CARD ART"))
+	_playlist_card_select_buttons.clear()
+	for i in PLAYLIST_CARD_NAMES.size():
+		var btn := Button.new()
+		btn.text = PLAYLIST_CARD_NAMES[i]
+		btn.toggle_mode = true
+		btn.button_group = icon_group
+		btn.custom_minimum_size = Vector2(0, 32)
+		UIStyle.style_button(btn, UIStyle.COLOR_RANKED, 10, false)
+		btn.pressed.connect(_show_playlist_card.bind(i))
+		select_box.add_child(btn)
+		_playlist_card_select_buttons.append(btn)
+
 	var canvas_panel := PanelContainer.new()
 	canvas_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	canvas_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1541,6 +1593,7 @@ func _build_icons_page() -> void:
 	_load_button_art_images()
 	_load_background_images()
 	_load_action_bar_images()
+	_load_playlist_card_images()
 	_show_icon(0)
 	_icon_select_buttons[0].button_pressed = true
 
@@ -1571,6 +1624,7 @@ func _show_icon(index: int) -> void:
 	_current_button_art_index = -1
 	_current_background_index = -1
 	_current_action_bar_index = -1
+	_current_playlist_card_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = (i == index)
 	for i in _button_art_select_buttons.size():
@@ -1579,6 +1633,8 @@ func _show_icon(index: int) -> void:
 		_background_select_buttons[i].button_pressed = false
 	for i in _action_bar_select_buttons.size():
 		_action_bar_select_buttons[i].button_pressed = false
+	for i in _playlist_card_select_buttons.size():
+		_playlist_card_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1619,6 +1675,7 @@ func _show_button_art(index: int) -> void:
 	_current_icon_index = -1
 	_current_background_index = -1
 	_current_action_bar_index = -1
+	_current_playlist_card_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
 	for i in _button_art_select_buttons.size():
@@ -1627,6 +1684,8 @@ func _show_button_art(index: int) -> void:
 		_background_select_buttons[i].button_pressed = false
 	for i in _action_bar_select_buttons.size():
 		_action_bar_select_buttons[i].button_pressed = false
+	for i in _playlist_card_select_buttons.size():
+		_playlist_card_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1663,6 +1722,7 @@ func _show_background(index: int) -> void:
 	_current_icon_index = -1
 	_current_button_art_index = -1
 	_current_action_bar_index = -1
+	_current_playlist_card_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
 	for i in _button_art_select_buttons.size():
@@ -1671,6 +1731,8 @@ func _show_background(index: int) -> void:
 		_background_select_buttons[i].button_pressed = (i == index)
 	for i in _action_bar_select_buttons.size():
 		_action_bar_select_buttons[i].button_pressed = false
+	for i in _playlist_card_select_buttons.size():
+		_playlist_card_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1706,6 +1768,7 @@ func _show_action_bar(index: int) -> void:
 	_current_icon_index = -1
 	_current_button_art_index = -1
 	_current_background_index = -1
+	_current_playlist_card_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
 	for i in _button_art_select_buttons.size():
@@ -1714,6 +1777,8 @@ func _show_action_bar(index: int) -> void:
 		_background_select_buttons[i].button_pressed = false
 	for i in _action_bar_select_buttons.size():
 		_action_bar_select_buttons[i].button_pressed = (i == index)
+	for i in _playlist_card_select_buttons.size():
+		_playlist_card_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1721,6 +1786,53 @@ func _show_action_bar(index: int) -> void:
 	icons_canvas_holder.add_child(canvas)
 	canvas.painted.connect(_on_painted)
 	canvas.painted.connect(func(): _action_bar_images[index] = canvas.image)
+	canvas.color_picked.connect(_on_eyedropper_picked)
+	_current_canvas = canvas
+	_apply_tool_state()
+
+## Loads each playlist's whole-card art (see PLAYLIST_CARD_KEYS/
+## ranked_playlist_select.gd) if it's already been painted and committed,
+## else a blank transparent PLAYLIST_CARD_SIZE canvas -- same "always
+## something real or an honest blank canvas" rule every other section on
+## this page follows.
+func _load_playlist_card_images() -> void:
+	_playlist_card_images.clear()
+	for key in PLAYLIST_CARD_KEYS:
+		var path := "%s/%s.png" % [PLAYLIST_CARD_ART_DIR, key]
+		var img: Image
+		if ResourceLoader.exists(path):
+			var tex: Texture2D = load(path)
+			img = tex.get_image() if tex else null
+			if img:
+				img.convert(Image.FORMAT_RGBA8)
+		if not img:
+			img = Image.create(PLAYLIST_CARD_SIZE.x, PLAYLIST_CARD_SIZE.y, false, Image.FORMAT_RGBA8)
+			img.fill(Color(0, 0, 0, 0))
+		_playlist_card_images.append(img)
+
+func _show_playlist_card(index: int) -> void:
+	_current_playlist_card_index = index
+	_current_icon_index = -1
+	_current_button_art_index = -1
+	_current_background_index = -1
+	_current_action_bar_index = -1
+	for i in _icon_select_buttons.size():
+		_icon_select_buttons[i].button_pressed = false
+	for i in _button_art_select_buttons.size():
+		_button_art_select_buttons[i].button_pressed = false
+	for i in _background_select_buttons.size():
+		_background_select_buttons[i].button_pressed = false
+	for i in _action_bar_select_buttons.size():
+		_action_bar_select_buttons[i].button_pressed = false
+	for i in _playlist_card_select_buttons.size():
+		_playlist_card_select_buttons[i].button_pressed = (i == index)
+	for child in icons_canvas_holder.get_children():
+		icons_canvas_holder.remove_child(child)
+		child.queue_free()
+	var canvas = PixelCanvasScene.new(_playlist_card_images[index], PLAYLIST_CARD_ZOOM)
+	icons_canvas_holder.add_child(canvas)
+	canvas.painted.connect(_on_painted)
+	canvas.painted.connect(func(): _playlist_card_images[index] = canvas.image)
 	canvas.color_picked.connect(_on_eyedropper_picked)
 	_current_canvas = canvas
 	_apply_tool_state()
@@ -2015,6 +2127,28 @@ func _on_export_pressed() -> void:
 			status_label.text = "Publishing action button art..."
 			var action_bars_result := await _publish_game_asset("action_bars", {"images": action_bar_images_payload})
 			publish_parts.append("action buttons (v%d)" % action_bars_result.get("version", 0) if action_bars_result.get("ok", false) else "action buttons failed: %s" % action_bars_result.get("error", ""))
+
+	if not _playlist_card_images.is_empty():
+		# Same one-file-per-key shape as mode button/action bar art.
+		var playlist_cards_out_dir := base_dir.path_join("edited_icons/playlist_cards")
+		DirAccess.make_dir_recursive_absolute(playlist_cards_out_dir)
+		for i in _playlist_card_images.size():
+			_playlist_card_images[i].save_png(playlist_cards_out_dir.path_join("%s.png" % PLAYLIST_CARD_KEYS[i]))
+		var f8 := FileAccess.open(playlist_cards_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
+		if f8:
+			f8.store_string(PLAYLIST_CARD_INSTRUCTIONS_TEXT)
+		status_parts.append(playlist_cards_out_dir)
+
+		# Only send cards actually painted (or already loaded from a prior
+		# override), same reasoning as every other category above.
+		var playlist_card_images_payload := {}
+		for i in _playlist_card_images.size():
+			if _image_has_content(_playlist_card_images[i]):
+				playlist_card_images_payload[PLAYLIST_CARD_KEYS[i]] = Marshalls.raw_to_base64(_playlist_card_images[i].save_png_to_buffer())
+		if not playlist_card_images_payload.is_empty():
+			status_label.text = "Publishing playlist card art..."
+			var playlist_cards_result := await _publish_game_asset("playlist_cards", {"images": playlist_card_images_payload})
+			publish_parts.append("playlist cards (v%d)" % playlist_cards_result.get("version", 0) if playlist_cards_result.get("ok", false) else "playlist cards failed: %s" % playlist_cards_result.get("error", ""))
 
 	if status_parts.is_empty():
 		status_label.text = "Nothing to export yet -- create a skin, hat, or trail first."

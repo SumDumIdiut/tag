@@ -34,6 +34,9 @@ const RANKED_BAR_KEYS := ["ready"]
 # across every screen that has that button (see ui/ui_style.gd's
 # apply_bar_art).
 const ACTION_BAR_KEYS := ["back", "connect", "watch", "host_server", "ready", "start_match", "login", "create_account", "logout"]
+# Mirrors art_tool.gd's PLAYLIST_CARD_KEYS / ranked_playlist_select.gd's
+# whole-card art check.
+const PLAYLIST_CARD_KEYS := ["1v1", "2v2", "1v1v1", "1v1v1v1"]
 
 # Multi-key categories publish as one file per key (like mode_buttons/
 # backgrounds/online_bars) rather than a single shared atlas image (like
@@ -47,6 +50,7 @@ const MULTI_KEY_CATEGORIES := {
 	"local_bars": [LOCAL_BAR_KEYS, GameAssetOverrides.local_bar_override_path],
 	"ranked_bars": [RANKED_BAR_KEYS, GameAssetOverrides.ranked_bar_override_path],
 	"action_bars": [ACTION_BAR_KEYS, GameAssetOverrides.action_bar_override_path],
+	"playlist_cards": [PLAYLIST_CARD_KEYS, GameAssetOverrides.playlist_card_override_path],
 }
 
 func check() -> void:
