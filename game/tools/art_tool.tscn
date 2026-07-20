@@ -106,13 +106,8 @@ text = "Create a custom skin or hat on the left to start painting."
 layout_mode = 2
 custom_minimum_size = Vector2(240, 0)
 
-[node name="RightScroll" type="ScrollContainer" parent="VBox/PaintPage/RightPanel"]
+[node name="RightBox" type="VBoxContainer" parent="VBox/PaintPage/RightPanel"]
 layout_mode = 2
-horizontal_scroll_mode = 0
-
-[node name="RightBox" type="VBoxContainer" parent="VBox/PaintPage/RightPanel/RightScroll"]
-layout_mode = 2
-size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
 [node name="PaintColorLabel" type="Label" parent="VBox/PaintPage/RightPanel/RightBox"]
