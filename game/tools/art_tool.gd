@@ -140,7 +140,7 @@ don't need to paint all three at once.
 @onready var canvas_holder: CenterContainer = $VBox/PaintPage/CanvasPanel/CanvasBox/CanvasHolder
 @onready var empty_state_label: Label = $VBox/PaintPage/CanvasPanel/CanvasBox/EmptyStateLabel
 @onready var toolbar: HBoxContainer = $VBox/PaintPage/CanvasPanel/CanvasBox/Toolbar
-@onready var color_picker: ColorPicker = $VBox/PaintPage/RightPanel/RightScroll/RightBox/ColorPicker
+@onready var color_picker: ColorPicker = $VBox/PaintPage/RightPanel/RightBox/ColorPicker
 
 @onready var big_preview_center: CenterContainer = $VBox/PreviewPage/BigPreviewPanel/BigPreviewCenter
 @onready var skin_select: OptionButton = $VBox/PreviewPage/SelectorRow/SkinSelectBox/SkinSelect
