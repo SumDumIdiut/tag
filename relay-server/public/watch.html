@@ -165,7 +165,17 @@ function draw(state) {
 function refresh() {
   fetch(`${BASE_PATH}/api/servers/${encodeURIComponent(serverId)}/state`)
     .then(r => {
-      if (!r.ok) throw new Error('not found');
+      // 404 specifically means this server id no longer exists at all --
+      // distinct from a network hiccup, and the most common real cause:
+      // servers get a brand-new random id every time the dedicated server
+      // process itself restarts, so an old bookmarked/shared Watch link
+      // can point at an id that's simply gone, not one that's just quiet
+      // right now. Surfacing that distinction (instead of one generic
+      // "offline" message for both cases) tells you what to actually do
+      // about it -- go back and click Watch again -- versus a transient
+      // failure that a future poll might just recover from on its own.
+      if (r.status === 404) throw new Error('gone');
+      if (!r.ok) throw new Error('network');
       return r.json();
     })
     .then(state => {
@@ -176,8 +186,10 @@ function refresh() {
       timerEl.textContent = state.updatedAt ? fmtTime(state.timeRemaining) : '--:--';
       draw(stale ? { players: [] } : state);
     })
-    .catch(() => {
-      subEl.textContent = 'Could not reach the relay server, or this server has gone offline.';
+    .catch(err => {
+      subEl.textContent = err.message === 'gone'
+        ? 'This link has expired -- the server was restarted since it was shared. Go back to the Server Browser and click Watch again.'
+        : 'Could not reach the relay server right now -- retrying automatically.';
       livePillEl.className = 'live-pill stale';
       liveTextEl.textContent = 'Offline';
       draw({ players: [] });
