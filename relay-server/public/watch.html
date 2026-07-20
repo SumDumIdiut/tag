@@ -38,7 +38,12 @@
   .stale .dot { background: #7b82a8; box-shadow: none; }
   .canvas-wrap {
     position: relative; border-radius: 14px; overflow: hidden;
-    border: 1.5px solid rgba(255,255,255,.09); background: #05060a;
+    border: 1.5px solid rgba(255,255,255,.09);
+    /* Same radial gradient the game's own UIStyle.add_background() uses
+       (BG_TOP/BG_BOTTOM, fill_from/fill_to 0.5,0.5 -> 1,1) -- the match
+       view should look like it's rendered by the actual game, not a
+       generic dark canvas. */
+    background: radial-gradient(circle at 30% 30%, rgb(27,28,40), rgb(11,12,19));
     aspect-ratio: 16 / 10; cursor: grab;
     touch-action: none;
   }
@@ -143,13 +148,19 @@ let loadedLevelId = undefined; // whichever level's tiles arenaTiles currently h
 
 // ─── Camera: pan/zoom/follow ───────────────────────────────────────────────
 let view = { offsetX: 0, offsetY: 0, zoom: 1, userAdjusted: false };
-let followClientId = null;
+// Tracked by roster POSITION, not clientId -- two bots run from the same
+// machine (this project's own local test harness) end up sharing one
+// user://client_id.txt and therefore an identical clientId, which made
+// clicking either chip highlight/follow both indiscriminately. Index into
+// the current players array is always unique within one state update,
+// which clientId isn't guaranteed to be.
+let followIndex = null;
 let dragging = false;
 let dragLast = null;
 
 function resetView() {
   view = { offsetX: 0, offsetY: 0, zoom: 1, userAdjusted: false };
-  followClientId = null;
+  followIndex = null;
   updateRosterHighlight();
 }
 resetViewBtn.addEventListener('click', resetView);
@@ -234,13 +245,11 @@ function draw(state) {
   // _compute_arena_bounds_px) rather than assuming symmetry.
   const arenaCenterX = state.arenaCenterX || 0;
   const arenaCenterY = state.arenaCenterY || 0;
+  const following = followIndex !== null && players[followIndex];
   let centerX = arenaCenterX, centerY = arenaCenterY;
-  if (followClientId) {
-    const followed = players.find(p => p.clientId === followClientId);
-    if (followed) { centerX = followed.x; centerY = followed.y; }
-  }
-  const offsetX = w / 2 - centerX * scale + (followClientId ? 0 : view.offsetX);
-  const offsetY = h / 2 - centerY * scale + (followClientId ? 0 : view.offsetY);
+  if (following) { centerX = following.x; centerY = following.y; }
+  const offsetX = w / 2 - centerX * scale + (following ? 0 : view.offsetX);
+  const offsetY = h / 2 - centerY * scale + (following ? 0 : view.offsetY);
   const worldToScreen = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
 
   // Arena tiles -- drawn from a static export of the level's own layout
@@ -265,7 +274,7 @@ function draw(state) {
   }
 
   const spriteSize = PLAYER_RADIUS_PX * 2 * (scale / baseScale);
-  players.forEach(p => {
+  players.forEach((p, i) => {
     const pos = worldToScreen(p.x, p.y);
 
     if (p.isIt) {
@@ -277,9 +286,19 @@ function draw(state) {
     }
 
     const sprite = sprites[p.skinId] || sprites.red;
+    // facing < 0 means the game's own remote_avatar.gd negates the
+    // sprite's scale.x to flip it -- mirrored here as a canvas transform
+    // so a player watched from the website actually turns to face the
+    // way they're moving, the same as in the real client, instead of
+    // always facing one fixed direction.
+    const flip = p.facing < 0;
     if (sprite.complete && sprite.naturalWidth > 0) {
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(sprite, pos.x - spriteSize / 2, pos.y - spriteSize / 2, spriteSize, spriteSize);
+      ctx.save();
+      ctx.translate(pos.x, pos.y);
+      if (flip) ctx.scale(-1, 1);
+      ctx.drawImage(sprite, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize);
+      ctx.restore();
     } else {
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, spriteSize / 2, 0, Math.PI * 2);
@@ -291,7 +310,7 @@ function draw(state) {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#e4e7f0';
     ctx.fillText(p.username || 'Player', pos.x, pos.y - spriteSize / 2 - 8);
-    if (followClientId === p.clientId) {
+    if (followIndex === i) {
       ctx.fillStyle = '#b6acf9';
       ctx.font = '700 10px -apple-system, sans-serif';
       ctx.fillText('FOLLOWING', pos.x, pos.y + spriteSize / 2 + 16);
@@ -301,13 +320,13 @@ function draw(state) {
 
 function updateRosterHighlight() {
   rosterEl.querySelectorAll('.roster-chip').forEach(chip => {
-    chip.classList.toggle('following', chip.dataset.clientId === followClientId);
+    chip.classList.toggle('following', Number(chip.dataset.index) === followIndex);
   });
 }
 
 function renderRoster(players) {
-  rosterEl.innerHTML = players.map(p => {
-    return '<button class="roster-chip" data-client-id="' + esc(p.clientId) + '">' +
+  rosterEl.innerHTML = players.map((p, i) => {
+    return '<button class="roster-chip" data-index="' + i + '">' +
       '<img src="sprites/' + esc(p.skinId || 'red') + '.png" alt="">' +
       esc(p.username || 'Player') +
       (p.isIt ? ' <span class="it-badge">IT</span>' : '') +
@@ -315,8 +334,8 @@ function renderRoster(players) {
   }).join('');
   rosterEl.querySelectorAll('.roster-chip').forEach(chip => {
     chip.addEventListener('click', () => {
-      const id = chip.dataset.clientId;
-      followClientId = followClientId === id ? null : id;
+      const idx = Number(chip.dataset.index);
+      followIndex = followIndex === idx ? null : idx;
       view.userAdjusted = false;
       updateRosterHighlight();
     });

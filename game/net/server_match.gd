@@ -255,6 +255,7 @@ func _report_state_summary() -> void:
 			"y": p.global_position.y,
 			"isIt": _tag_mode.is_it(p),
 			"skinId": _skin_ids.get(peer_id, "red"),
+			"facing": p.facing,
 		})
 	_network_manager.report_match_state_summary(lobby_id, {
 		"players": players,
