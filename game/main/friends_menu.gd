@@ -46,6 +46,7 @@ func _ready() -> void:
 	code_edit.text = SkinCatalog.client_id
 	code_edit.editable = false
 	code_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UIStyle.style_line_edit(code_edit)
 	code_row.add_child(code_edit)
 	var copy_btn := Button.new()
 	copy_btn.text = "  Copy"
@@ -63,6 +64,7 @@ func _ready() -> void:
 	_add_edit = LineEdit.new()
 	_add_edit.placeholder_text = "Friend's code"
 	_add_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UIStyle.style_line_edit(_add_edit)
 	add_row.add_child(_add_edit)
 	var add_btn := Button.new()
 	add_btn.text = "  Add Friend"
