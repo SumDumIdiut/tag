@@ -14,7 +14,12 @@ const PLAYER_SCENE := preload("res://player/player.tscn")
 const ARENA_SCENE := preload("res://levels/tag_arena.tscn")
 const LevelData := preload("res://levels/level_data.gd")
 const LEVEL_DATA_URL := "https://codecade.co.za/tag/api/levels/data/%s"
+const RANKED_LOOKUP_URL := "https://codecade.co.za/tag/api/ranked/%s"
 const TICK_RATE := 1.0 / 60.0
+
+## Fired once every ranked participant's elo/tier lookup has resolved (or
+## failed) -- see _fill_ranked_stats().
+signal _ranked_stats_fetched
 
 const ROUND_DURATION_SEC := 180.0
 
@@ -119,7 +124,48 @@ func _finish_setup() -> void:
 			"username": _usernames[peer_id], "skin_id": _skin_ids[peer_id],
 			"hat_id": _hat_ids[peer_id], "trail_id": _trail_ids[peer_id],
 		}
+	# Simulation is already ticking (players spawned, TagMode running) by this
+	# point -- only the client-facing "match started" notice waits on this, so
+	# a slow/unreachable relay costs a brief extra beat before the VS screen
+	# appears, never a stuck match.
+	if ranked:
+		await _fill_ranked_stats()
 	_network_manager.notify_match_started(lobby_id, roster, _network_manager.level_id)
+
+## Enriches each ranked participant's roster entry with their current elo/
+## tier (see match_intro.gd's VS screen) -- looked up server-side by the
+## already-private _client_ids, never sent to peers directly (client_id
+## itself stays server-only, same as everywhere else in this file). Fires
+## all lookups in parallel (one HTTPRequest each) rather than one after
+## another, so N players costs roughly one round-trip, not N. A lookup that
+## fails or times out just leaves that player's roster entry without
+## elo/tier -- match_intro.gd falls back to an "Unranked" placeholder
+## rather than blocking match start on the relay being briefly unreachable.
+func _fill_ranked_stats() -> void:
+	var pending_peers: Array = []
+	for peer_id in _client_ids.keys():
+		if not String(_client_ids[peer_id]).is_empty():
+			pending_peers.append(peer_id)
+	if pending_peers.is_empty():
+		return
+	var remaining := pending_peers.size()
+	for peer_id in pending_peers:
+		var req := HTTPRequest.new()
+		req.timeout = 3.0
+		add_child(req)
+		req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+			req.queue_free()
+			if response_code == 200:
+				var parsed = JSON.parse_string(body.get_string_from_utf8())
+				if typeof(parsed) == TYPE_DICTIONARY and parsed.has("elo") and roster.has(peer_id):
+					roster[peer_id]["elo"] = int(parsed.elo)
+					roster[peer_id]["tier"] = String(parsed.get("tier", "Bronze"))
+			remaining -= 1
+			if remaining <= 0:
+				_ranked_stats_fetched.emit()
+		)
+		req.request(RANKED_LOOKUP_URL % String(_client_ids[peer_id]))
+	await _ranked_stats_fetched
 
 ## Fires once when a ranked round's timer runs out. Ranks every participant
 ## still in the match by least time spent as "it" (ascending -- lowest is

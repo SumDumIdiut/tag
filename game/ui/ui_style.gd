@@ -22,6 +22,21 @@ const COLOR_NEUTRAL := Color(0.6, 0.63, 0.72)
 const BG_TOP := Color(0.106, 0.11, 0.157)
 const BG_BOTTOM := Color(0.043, 0.047, 0.075)
 
+## Matches relay-server/server.js's RANK_TIERS names exactly (case-sensitive
+## keys straight off /api/ranked/:clientId's "tier" field) -- used anywhere
+## a tier needs a color, e.g. match_intro.gd's ranked VS screen badges.
+const RANK_TIER_COLORS := {
+	"Bronze": Color(0.72, 0.47, 0.28),
+	"Silver": Color(0.75, 0.78, 0.82),
+	"Gold": Color(0.95, 0.8, 0.25),
+	"Platinum": Color(0.4, 0.85, 0.8),
+	"Diamond": Color(0.55, 0.8, 0.98),
+}
+const RANK_TIER_DEFAULT_COLOR := Color(0.6, 0.63, 0.72)
+
+static func tier_color(tier: String) -> Color:
+	return RANK_TIER_COLORS.get(tier, RANK_TIER_DEFAULT_COLOR)
+
 ## Matches project.godot's window/size/viewport_width/height -- a painted
 ## menu background (see the Art Tool's Icons page) is exported at exactly
 ## this size so it fills the screen at native resolution, same as

@@ -19,6 +19,7 @@ const BACKGROUND_OUT_DIR := "res://assets/backgrounds"
 const MODE_BUTTON_OUT_DIR := "res://assets/icons/mode_buttons"
 const ONLINE_BAR_OUT_DIR := "res://assets/icons/online_bars"
 const LOCAL_BAR_OUT_DIR := "res://assets/icons/local_bars"
+const RANKED_BAR_OUT_DIR := "res://assets/icons/ranked_bars"
 
 const BG_TOP := Color(0.106, 0.11, 0.157)
 const BG_MID := Color(0.07, 0.075, 0.11)
@@ -51,12 +52,20 @@ const PLAY_FINAL_SIZE := Vector2i(380, 64)
 const PLAY_DESIGN_SIZE := Vector2i(142, 24)
 const BACK_FINAL_SIZE := Vector2i(380, 36)
 const BACK_DESIGN_SIZE := Vector2i(168, 16)
+# The ranked VS reveal screen (match_intro.gd) gets a busier background than
+# every other screen -- 192x108 instead of the standard 144x81 gives the
+# light-ray/corner-flourish detail enough room to actually read once
+# upscaled, rather than smearing into noise.
+const RANKED_VS_BG_DESIGN_SIZE := Vector2i(192, 108)
+const READY_FINAL_SIZE := Vector2i(320, 64)
+const READY_DESIGN_SIZE := Vector2i(120, 24)
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BACKGROUND_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MODE_BUTTON_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(ONLINE_BAR_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(LOCAL_BAR_OUT_DIR))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(RANKED_BAR_OUT_DIR))
 
 	# No central icon here (unlike every other screen) -- the real UI
 	# already places two big Online/Local cards front-and-center over this
@@ -100,6 +109,14 @@ func _ready() -> void:
 	await _make_horizontal_bar_art(LOCAL_BAR_OUT_DIR, "play", COLOR_LOCAL, "play", "Play Tag", PLAY_FINAL_SIZE, PLAY_DESIGN_SIZE, 22)
 	await _make_horizontal_bar_art(LOCAL_BAR_OUT_DIR, "back", COLOR_NEUTRAL, "back_arrow", "Back", BACK_FINAL_SIZE, BACK_DESIGN_SIZE, 16)
 
+	# Ranked "match found" VS reveal (match_intro.gd) -- deliberately busier/
+	# flashier than every other screen's plain banded-sky treatment (light
+	# rays, denser stars, corner flourishes), since this is a one-off hype
+	# moment rather than a background players stare at during normal menu
+	# navigation.
+	_make_ranked_vs_background()
+	await _make_horizontal_bar_art(RANKED_BAR_OUT_DIR, "ready", COLOR_RANKED, "crown", "Ready!", READY_FINAL_SIZE, READY_DESIGN_SIZE, 20)
+
 	print("GENERATE_DONE")
 	get_tree().quit()
 
@@ -132,6 +149,58 @@ func _make_background(key: String, color: Color, icon: String, color2: Color = C
 	img.resize(BG_FINAL_SIZE.x, BG_FINAL_SIZE.y, Image.INTERPOLATE_NEAREST)
 	img.save_png("%s/%s.png" % [BACKGROUND_OUT_DIR, key])
 	print("painted background: ", key)
+
+## A deliberately busier composition than _make_background()'s plain banded
+## sky -- radiating light rays behind the impending VS cards, denser stars,
+## and corner flourish streaks -- for match_intro.gd's ranked "match found"
+## reveal specifically. Saved under the "match_intro_ranked" screen key,
+## separate from the plain "match_intro" background casual matches keep.
+func _make_ranked_vs_background() -> void:
+	var img := Image.create(RANKED_VS_BG_DESIGN_SIZE.x, RANKED_VS_BG_DESIGN_SIZE.y, false, Image.FORMAT_RGBA8)
+	_paint_banded_sky(img, COLOR_RANKED)
+	_paint_light_rays(img, COLOR_RANKED)
+	_scatter_stars(img, "match_intro_ranked_a")
+	_scatter_stars(img, "match_intro_ranked_b")
+	_px_corner_flourish(img, COLOR_RANKED)
+	_px_rect(img, 0, RANKED_VS_BG_DESIGN_SIZE.y - 7, RANKED_VS_BG_DESIGN_SIZE.x, 7, BG_BOTTOM.darkened(0.2))
+	_px_border(img, COLOR_RANKED)
+	img.resize(BG_FINAL_SIZE.x, BG_FINAL_SIZE.y, Image.INTERPOLATE_NEAREST)
+	img.save_png("%s/match_intro_ranked.png" % BACKGROUND_OUT_DIR)
+	print("painted ranked vs background")
+
+## Alternating light/dark diagonal wedges radiating from center -- a classic
+## "impact/reveal" motif, and most of what makes this background read as
+## busier than every other screen's plain gradient.
+func _paint_light_rays(img: Image, color: Color) -> void:
+	var w := img.get_width()
+	var h := img.get_height()
+	var cx := w / 2.0
+	var cy := h / 2.0
+	var ray_color := Color(color.r, color.g, color.b, 1.0)
+	for y in h:
+		for x in w:
+			var ang := atan2(float(y) - cy, float(x) - cx)
+			var seg := int(floor((ang + PI) / (PI / 10.0))) # 20 wedges around the circle
+			if seg % 2 == 0:
+				var px := img.get_pixel(x, y)
+				img.set_pixel(x, y, px.lerp(ray_color, 0.16))
+
+## Small streaked chevrons in each corner, pointing inward -- cheap extra
+## "this is a busy/energetic screen" detail beyond the plain border every
+## other background gets.
+func _px_corner_flourish(img: Image, color: Color) -> void:
+	var w := img.get_width()
+	var h := img.get_height()
+	var n := int(minf(w, h) * 0.16)
+	var accent := color.lightened(0.35)
+	for corner in 4:
+		var dx := 1 if corner % 2 == 0 else -1
+		var dy := 1 if corner < 2 else -1
+		var ox := 0 if corner % 2 == 0 else w
+		var oy := 0 if corner < 2 else h
+		for i in n:
+			_px_rect(img, ox + dx * i, oy + dy * (n - i), 2, 2, accent)
+			_px_rect(img, ox + dx * (i + 4), oy + dy * (n - i), 1, 1, accent)
 
 ## Shared by the 2 mode buttons and the 5 online-submenu bars -- same
 ## composition (background scene + icon + character + label) at whatever

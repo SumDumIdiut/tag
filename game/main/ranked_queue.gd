@@ -107,7 +107,7 @@ func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary, level_id:
 	if _cancelled:
 		return
 	var scene := MATCH_INTRO_SCENE.instantiate()
-	scene.setup(my_id, roster, level_id)
+	scene.setup(my_id, roster, level_id, true)
 	get_tree().root.add_child(scene)
 	get_tree().current_scene.queue_free()
 	get_tree().current_scene = scene
