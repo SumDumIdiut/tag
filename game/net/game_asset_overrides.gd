@@ -19,6 +19,9 @@ static func mode_button_override_path(key: String) -> String:
 static func background_override_path(key: String) -> String:
 	return "user://game_assets/backgrounds/%s.png" % key
 
+static func online_bar_override_path(key: String) -> String:
+	return "user://game_assets/online_bars/%s.png" % key
+
 ## Loads a downloaded override PNG straight off disk (not through
 ## ResourceLoader -- these are raw files GameAssetUpdater wrote directly,
 ## never imported into the project) as a ready-to-use Texture2D, or null if

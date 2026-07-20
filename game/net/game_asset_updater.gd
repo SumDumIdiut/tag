@@ -1,8 +1,8 @@
 extends Node
 class_name GameAssetUpdater
 
-# Checks the relay's built-in-art manifest (icons/mode_buttons/backgrounds --
-# see relay-server/server.js's "HTTP: game assets" section, and art_tool.gd's
+# Checks the relay's built-in-art manifest (icons/mode_buttons/backgrounds/
+# online_bars -- see relay-server/server.js's "HTTP: game assets" section, and art_tool.gd's
 # Export Edits button, the one thing that publishes to it) against whatever
 # this client last downloaded, and offers to fetch anything newer. Distinct
 # from UpdateChecker/UpdatePrompt (whole-binary updates, requires a
@@ -23,6 +23,19 @@ const BACKGROUND_KEYS := [
 	"lobby_room", "host_setup", "login_screen", "match_intro", "match_results",
 	"multiplayer_connect", "quick_play", "ranked_queue", "server_browser",
 ]
+# Mirrors online_menu.gd's 5 bars -- see tools/generate_menu_art.gd.
+const ONLINE_BAR_KEYS := ["quick_play", "ranked", "browse_servers", "host_server", "friends"]
+
+# Multi-key categories publish as one file per key (like mode_buttons/
+# backgrounds/online_bars) rather than a single shared atlas image (like
+# icons/tiles) -- this maps each such category to its key list and override-
+# path function so _download_category doesn't need one hand-written branch
+# per category.
+const MULTI_KEY_CATEGORIES := {
+	"mode_buttons": [MODE_BUTTON_KEYS, GameAssetOverrides.mode_button_override_path],
+	"backgrounds": [BACKGROUND_KEYS, GameAssetOverrides.background_override_path],
+	"online_bars": [ONLINE_BAR_KEYS, GameAssetOverrides.online_bar_override_path],
+}
 
 func check() -> void:
 	var req := HTTPRequest.new()
@@ -77,19 +90,13 @@ func download_and_apply(categories: Array, manifest: Dictionary) -> bool:
 	return all_ok
 
 func _download_category(category: String) -> bool:
-	if category == "mode_buttons":
+	if MULTI_KEY_CATEGORIES.has(category):
+		var keys: Array = MULTI_KEY_CATEGORIES[category][0]
+		var path_fn: Callable = MULTI_KEY_CATEGORIES[category][1]
 		var any_ok := false
-		for key in MODE_BUTTON_KEYS:
+		for key in keys:
 			var ok: bool = await _download_file(
-				"%s/mode_buttons/%s/download" % [DOWNLOAD_BASE, key], GameAssetOverrides.mode_button_override_path(key)
-			)
-			any_ok = any_ok or ok
-		return any_ok
-	if category == "backgrounds":
-		var any_ok := false
-		for key in BACKGROUND_KEYS:
-			var ok: bool = await _download_file(
-				"%s/backgrounds/%s/download" % [DOWNLOAD_BASE, key], GameAssetOverrides.background_override_path(key)
+				"%s/%s/%s/download" % [DOWNLOAD_BASE, category, key], path_fn.call(key)
 			)
 			any_ok = any_ok or ok
 		return any_ok

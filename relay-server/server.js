@@ -108,7 +108,7 @@ const MAX_LEVEL_UPLOAD_BYTES = 150 * 1024;
 const GAME_ASSETS_DIR = path.join(DATA_DIR, 'game_assets');
 const GAME_ASSETS_MANIFEST_PATH = path.join(DATA_DIR, 'game_assets_manifest.json');
 const ASSET_PUBLISH_KEY = process.env.ASSET_PUBLISH_KEY || '';
-const GAME_ASSET_CATEGORIES = ['icons', 'mode_buttons', 'backgrounds'];
+const GAME_ASSET_CATEGORIES = ['icons', 'mode_buttons', 'backgrounds', 'online_bars'];
 const MODE_BUTTON_KEYS = ['online', 'local']; // mirrors art_tool.gd's MODE_BUTTON_KEYS
 // Mirrors art_tool.gd's BACKGROUND_KEYS -- every menu screen with a
 // paintable background (see game/ui/ui_style.gd's add_background).
@@ -117,6 +117,17 @@ const BACKGROUND_KEYS = [
   'lobby_room', 'host_setup', 'login_screen', 'match_intro', 'match_results',
   'multiplayer_connect', 'quick_play', 'ranked_queue', 'server_browser',
 ];
+// Mirrors game/main/online_menu.gd's 5 bars.
+const ONLINE_BAR_KEYS = ['quick_play', 'ranked', 'browse_servers', 'host_server', 'friends'];
+// Categories that publish as one file per key (like a per-key subfolder)
+// rather than a single shared atlas image (like icons/tiles) -- maps each
+// to its key list so the publish/download routes below don't need one
+// hand-written branch per category.
+const MULTI_KEY_CATEGORIES = {
+  mode_buttons: MODE_BUTTON_KEYS,
+  backgrounds: BACKGROUND_KEYS,
+  online_bars: ONLINE_BAR_KEYS,
+};
 // A full-screen background (1152x648, far bigger than any icon/mode-button
 // canvas) needs more headroom than those -- bumped along with the
 // express.json limit below to match.
@@ -140,8 +151,9 @@ fs.mkdirSync(SKIN_IMAGE_DIR, { recursive: true });
 fs.mkdirSync(LEVEL_DATA_DIR, { recursive: true });
 const MATCHES_DIR = path.join(DATA_DIR, 'matches'); // one file per match, mirrors SKIN_IMAGE_DIR/LEVEL_DATA_DIR's one-file-per-id pattern
 fs.mkdirSync(MATCHES_DIR, { recursive: true });
-fs.mkdirSync(path.join(GAME_ASSETS_DIR, 'mode_buttons'), { recursive: true });
-fs.mkdirSync(path.join(GAME_ASSETS_DIR, 'backgrounds'), { recursive: true });
+for (const category of Object.keys(MULTI_KEY_CATEGORIES)) {
+  fs.mkdirSync(path.join(GAME_ASSETS_DIR, category), { recursive: true });
+}
 
 function loadGameAssetsManifest() {
   try { return JSON.parse(fs.readFileSync(GAME_ASSETS_MANIFEST_PATH, 'utf-8')); }
@@ -874,7 +886,7 @@ app.get('/api/game-assets/manifest', (req, res) => {
   res.json(gameAssetsManifest);
 });
 
-// Shared by mode_buttons and backgrounds -- both publish as a set of
+// Shared by every MULTI_KEY_CATEGORIES entry -- each publishes as a set of
 // independent named images (one file per key) rather than a single shared
 // atlas the way icons does. Returns an error string, or null on success.
 function publishMultiKeyImages(category, keys, images) {
@@ -902,9 +914,8 @@ app.post('/api/game-assets/:category/publish', (req, res) => {
   if (!verifyAssetKey(req.body.key)) return res.status(401).json({ error: 'bad or missing publish key' });
   if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
 
-  if (category === 'mode_buttons' || category === 'backgrounds') {
-    const keys = category === 'mode_buttons' ? MODE_BUTTON_KEYS : BACKGROUND_KEYS;
-    const err = publishMultiKeyImages(category, keys, req.body.images);
+  if (MULTI_KEY_CATEGORIES[category]) {
+    const err = publishMultiKeyImages(category, MULTI_KEY_CATEGORIES[category], req.body.images);
     if (err) return res.status(400).json({ error: err });
   } else {
     let bytes;
@@ -923,7 +934,7 @@ app.post('/api/game-assets/:category/publish', (req, res) => {
 
 app.get('/api/game-assets/:category/download', (req, res) => {
   const category = req.params.category;
-  if (!GAME_ASSET_CATEGORIES.includes(category) || category === 'mode_buttons' || category === 'backgrounds') return res.status(404).end();
+  if (!GAME_ASSET_CATEGORIES.includes(category) || MULTI_KEY_CATEGORIES[category]) return res.status(404).end();
   const imgPath = path.join(GAME_ASSETS_DIR, category + '.png');
   if (!fs.existsSync(imgPath)) return res.status(404).end();
   res.set('Content-Type', 'image/png');
@@ -931,20 +942,12 @@ app.get('/api/game-assets/:category/download', (req, res) => {
   fs.createReadStream(imgPath).pipe(res);
 });
 
-app.get('/api/game-assets/backgrounds/:key/download', (req, res) => {
+app.get('/api/game-assets/:category/:key/download', (req, res) => {
+  const category = req.params.category;
   const key = req.params.key;
-  if (!BACKGROUND_KEYS.includes(key)) return res.status(404).end();
-  const imgPath = path.join(GAME_ASSETS_DIR, 'backgrounds', key + '.png');
-  if (!fs.existsSync(imgPath)) return res.status(404).end();
-  res.set('Content-Type', 'image/png');
-  res.set('Cache-Control', 'no-cache');
-  fs.createReadStream(imgPath).pipe(res);
-});
-
-app.get('/api/game-assets/mode_buttons/:key/download', (req, res) => {
-  const key = req.params.key;
-  if (!MODE_BUTTON_KEYS.includes(key)) return res.status(404).end();
-  const imgPath = path.join(GAME_ASSETS_DIR, 'mode_buttons', key + '.png');
+  const keys = MULTI_KEY_CATEGORIES[category];
+  if (!keys || !keys.includes(key)) return res.status(404).end();
+  const imgPath = path.join(GAME_ASSETS_DIR, category, key + '.png');
   if (!fs.existsSync(imgPath)) return res.status(404).end();
   res.set('Content-Type', 'image/png');
   res.set('Cache-Control', 'no-cache');

@@ -17,7 +17,7 @@ extends Node
 
 const BACKGROUND_OUT_DIR := "res://assets/backgrounds"
 const MODE_BUTTON_OUT_DIR := "res://assets/icons/mode_buttons"
-const BAR_ICON_OUT_DIR := "res://assets/icons/online_bars"
+const ONLINE_BAR_OUT_DIR := "res://assets/icons/online_bars"
 
 const BG_TOP := Color(0.106, 0.11, 0.157)
 const BG_MID := Color(0.07, 0.075, 0.11)
@@ -34,13 +34,14 @@ const BG_FINAL_SIZE := Vector2i(1152, 648)
 const BG_DESIGN_SIZE := Vector2i(144, 81) # 8x upscale
 const BTN_FINAL_SIZE := Vector2i(190, 360)
 const BTN_DESIGN_SIZE := Vector2i(38, 72) # 5x upscale
-const BAR_ICON_FINAL_SIZE := Vector2i(96, 96)
-const BAR_ICON_DESIGN_SIZE := Vector2i(32, 32) # 3x upscale
+# Matches online_menu.tscn's bar custom_minimum_size exactly.
+const BAR_FINAL_SIZE := Vector2i(170, 290)
+const BAR_DESIGN_SIZE := Vector2i(34, 58) # 5x upscale
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BACKGROUND_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MODE_BUTTON_OUT_DIR))
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BAR_ICON_OUT_DIR))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(ONLINE_BAR_OUT_DIR))
 
 	# No central icon here (unlike every other screen) -- the real UI
 	# already places two big Online/Local cards front-and-center over this
@@ -63,30 +64,23 @@ func _ready() -> void:
 	_make_background("ranked_queue", COLOR_RANKED, "crown")
 	_make_background("server_browser", COLOR_ONLINE, "signal")
 
-	await _make_button("online", COLOR_ONLINE, "globe", "ONLINE")
-	await _make_button("local", COLOR_LOCAL, "house", "LOCAL")
+	await _make_bar_art(MODE_BUTTON_OUT_DIR, "online", COLOR_ONLINE, "globe", "ONLINE", BTN_FINAL_SIZE, BTN_DESIGN_SIZE, 28)
+	await _make_bar_art(MODE_BUTTON_OUT_DIR, "local", COLOR_LOCAL, "house", "LOCAL", BTN_FINAL_SIZE, BTN_DESIGN_SIZE, 28)
 
-	# Small standalone icons for the Online submenu's 5 plain bars (Quick
-	# Play/Ranked/Browse Servers/Host Server/Friends) -- see online_menu.gd.
-	# Same icon library as the backgrounds/buttons above, just cropped to
-	# an icon-only glyph with no scene/label of its own since these sit on
-	# top of an existing styled button rather than replacing it outright.
-	_make_bar_icon("quick_play", COLOR_QUICKPLAY, "bolt")
-	_make_bar_icon("ranked", COLOR_RANKED, "crown")
-	_make_bar_icon("browse_servers", COLOR_ONLINE, "signal")
-	_make_bar_icon("host_server", COLOR_ONLINE, "gear")
-	_make_bar_icon("friends", COLOR_SHOP, "heart")
+	# Full whole-bar art for the Online submenu's 5 plain bars (Quick Play/
+	# Ranked/Browse Servers/Host Server/Friends) -- see online_menu.gd.
+	# Same composition as the mode buttons above (background scene + icon +
+	# character + label), not just a small icon glyph -- a first pass that
+	# only added an icon on top of the existing styled button looked
+	# inconsistent sitting next to the fully-painted mode buttons.
+	await _make_bar_art(ONLINE_BAR_OUT_DIR, "quick_play", COLOR_QUICKPLAY, "bolt", "Quick Play", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 18)
+	await _make_bar_art(ONLINE_BAR_OUT_DIR, "ranked", COLOR_RANKED, "crown", "Ranked", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 18)
+	await _make_bar_art(ONLINE_BAR_OUT_DIR, "browse_servers", COLOR_ONLINE, "signal", "Browse Servers", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 16)
+	await _make_bar_art(ONLINE_BAR_OUT_DIR, "host_server", COLOR_ONLINE, "gear", "Host Server", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 16)
+	await _make_bar_art(ONLINE_BAR_OUT_DIR, "friends", COLOR_SHOP, "heart", "Friends", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 18)
 
 	print("GENERATE_DONE")
 	get_tree().quit()
-
-func _make_bar_icon(key: String, color: Color, icon: String) -> void:
-	var img := Image.create(BAR_ICON_DESIGN_SIZE.x, BAR_ICON_DESIGN_SIZE.y, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
-	_draw_icon(img, icon, BAR_ICON_DESIGN_SIZE.x / 2, BAR_ICON_DESIGN_SIZE.y / 2, 11, color)
-	img.resize(BAR_ICON_FINAL_SIZE.x, BAR_ICON_FINAL_SIZE.y, Image.INTERPOLATE_NEAREST)
-	img.save_png("%s/%s.png" % [BAR_ICON_OUT_DIR, key])
-	print("painted bar icon: ", key)
 
 # ─── Background composition ─────────────────────────────────────────────
 
@@ -118,22 +112,25 @@ func _make_background(key: String, color: Color, icon: String, color2: Color = C
 	img.save_png("%s/%s.png" % [BACKGROUND_OUT_DIR, key])
 	print("painted background: ", key)
 
-func _make_button(key: String, color: Color, icon: String, label_text: String) -> void:
-	var img := Image.create(BTN_DESIGN_SIZE.x, BTN_DESIGN_SIZE.y, false, Image.FORMAT_RGBA8)
+## Shared by the 2 mode buttons and the 5 online-submenu bars -- same
+## composition (background scene + icon + character + label) at whatever
+## size/font each one actually renders at.
+func _make_bar_art(out_dir: String, key: String, color: Color, icon: String, label_text: String, final_size: Vector2i, design_size: Vector2i, font_size: int) -> void:
+	var img := Image.create(design_size.x, design_size.y, false, Image.FORMAT_RGBA8)
 	_paint_banded_sky(img, color)
 	_scatter_stars(img, key)
-	_draw_icon(img, icon, BTN_DESIGN_SIZE.x / 2, 20, 11, color)
-	_px_character(img, BTN_DESIGN_SIZE.x / 2 - 4, 38, 8, color)
-	_px_rect(img, 0, BTN_DESIGN_SIZE.y - 16, BTN_DESIGN_SIZE.x, 16, BG_BOTTOM.darkened(0.3))
+	_draw_icon(img, icon, design_size.x / 2, int(design_size.y * 0.28), int(design_size.x * 0.3), color)
+	_px_character(img, design_size.x / 2 - 4, int(design_size.y * 0.53), 8, color)
+	_px_rect(img, 0, design_size.y - 16, design_size.x, 16, BG_BOTTOM.darkened(0.3))
 	_px_border(img, color)
-	img.resize(BTN_FINAL_SIZE.x, BTN_FINAL_SIZE.y, Image.INTERPOLATE_NEAREST)
+	img.resize(final_size.x, final_size.y, Image.INTERPOLATE_NEAREST)
 	# Real font rendering (crisp, not pixelated) for the label -- composited
 	# on top of the pixel-art scene after upscaling, same as most pixel-art
 	# games keep their UI text sharp over a blocky-pixel backdrop.
-	var text_img := await _render_text(label_text, 28)
-	_blit_centered(img, text_img, BTN_FINAL_SIZE.x / 2, BTN_FINAL_SIZE.y - 44)
-	img.save_png("%s/%s.png" % [MODE_BUTTON_OUT_DIR, key])
-	print("painted button: ", key)
+	var text_img := await _render_text(label_text, font_size)
+	_blit_centered(img, text_img, final_size.x / 2, final_size.y - 44)
+	img.save_png("%s/%s.png" % [out_dir, key])
+	print("painted bar art: ", key)
 
 func _render_text(text: String, font_size: int) -> Image:
 	var viewport := SubViewport.new()
