@@ -344,6 +344,18 @@ function renderRoster(players) {
 }
 
 let lastRosterKey = '';
+// The real client never snaps a remote player straight to each new server
+// tick either -- RemoteAvatar interpolates from the last confirmed state
+// toward the new one (see game/player/remote_avatar.gd). Updates only
+// arrive here every ~100ms (MATCH_STATE_INTERVAL_SEC in relay_client.gd),
+// not every 60Hz tick, so snapping positions directly would look
+// noticeably choppier than the real game even with everything else
+// matching -- these two snapshots let the render loop (tick(), below)
+// smoothly lerp between them every animation frame instead.
+let prevSnapshot = null;   // {players, at}
+let targetSnapshot = null; // {players, at}
+const EXPECTED_UPDATE_MS = 150; // matches relay_client.gd's cadence with a little slack for jitter
+
 function applyState(state) {
   latestState = state;
   const age = Date.now() - (state.updatedAt || 0);
@@ -351,16 +363,32 @@ function applyState(state) {
   livePillEl.className = 'live-pill' + (stale ? ' stale' : '');
   liveTextEl.textContent = stale ? 'No match live' : 'Live';
   timerEl.textContent = state.updatedAt ? fmtTime(state.timeRemaining) : '--:--';
-  const shown = stale ? { players: [] } : state;
-  if (!stale) {
-    ensureArenaLoaded(state.levelId || '');
-    const rosterKey = shown.players.map(p => p.clientId + p.isIt).join(',');
-    if (rosterKey !== lastRosterKey) { lastRosterKey = rosterKey; renderRoster(shown.players); }
-  } else if (lastRosterKey !== '') {
-    lastRosterKey = '';
-    rosterEl.innerHTML = '';
+  if (stale) {
+    prevSnapshot = null;
+    targetSnapshot = null;
+    if (lastRosterKey !== '') { lastRosterKey = ''; rosterEl.innerHTML = ''; }
+    return;
   }
-  draw(shown);
+  ensureArenaLoaded(state.levelId || '');
+  const rosterKey = state.players.map(p => p.clientId + p.isIt).join(',');
+  if (rosterKey !== lastRosterKey) { lastRosterKey = rosterKey; renderRoster(state.players); }
+  prevSnapshot = targetSnapshot;
+  targetSnapshot = { players: state.players, at: Date.now() };
+}
+
+// Interpolated player positions for right now, between the last two
+// received snapshots -- everything else (isIt, skinId, facing, username)
+// comes straight from the newer snapshot since those aren't meaningfully
+// "in between" states the way a position is.
+function interpolatedPlayers() {
+  if (!targetSnapshot) return [];
+  if (!prevSnapshot) return targetSnapshot.players;
+  const t = Math.min(1, (Date.now() - targetSnapshot.at) / EXPECTED_UPDATE_MS);
+  return targetSnapshot.players.map((p, i) => {
+    const prev = prevSnapshot.players[i];
+    if (!prev || prev.clientId !== p.clientId) return p; // roster changed since the last snapshot -- just show the real position
+    return { ...p, x: prev.x + (p.x - prev.x) * t, y: prev.y + (p.y - prev.y) * t };
+  });
 }
 
 // ─── Live transport: WebSocket push, HTTP polling as a fallback ───────────
@@ -411,11 +439,13 @@ function connectWatch() {
   };
 }
 
-// ─── Render loop (camera can move even between state updates -- following
-// a moving player needs to redraw every frame, not just when new data
-// arrives) ───────────────────────────────────────────────────────────────
+// ─── Render loop -- every animation frame, not just when a new state
+// arrives, both for the position interpolation above and because
+// following a moving player needs the camera to keep re-centering even
+// between updates. ──────────────────────────────────────────────────────
 function tick() {
-  draw(Date.now() - (latestState.updatedAt || 0) > STALE_AFTER_MS ? { players: [] } : latestState);
+  const stale = !targetSnapshot || Date.now() - targetSnapshot.at > STALE_AFTER_MS;
+  draw(stale ? { players: [] } : { ...latestState, players: interpolatedPlayers() });
   requestAnimationFrame(tick);
 }
 
