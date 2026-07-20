@@ -140,7 +140,7 @@ don't need to paint all three at once.
 @onready var canvas_holder: CenterContainer = $VBox/PaintPage/CanvasPanel/CanvasBox/CanvasHolder
 @onready var empty_state_label: Label = $VBox/PaintPage/CanvasPanel/CanvasBox/EmptyStateLabel
 @onready var toolbar: HBoxContainer = $VBox/PaintPage/CanvasPanel/CanvasBox/Toolbar
-@onready var color_picker: ColorPicker = $VBox/PaintPage/RightPanel/RightBox/ColorPicker
+@onready var color_picker: ColorPicker = $VBox/PaintPage/RightPanel/RightScroll/RightBox/ColorPicker
 
 @onready var big_preview_center: CenterContainer = $VBox/PreviewPage/BigPreviewPanel/BigPreviewCenter
 @onready var skin_select: OptionButton = $VBox/PreviewPage/SelectorRow/SkinSelectBox/SkinSelect
@@ -302,7 +302,13 @@ var _button_art_select_buttons: Array[Button] = []
 var _import_file_dialog: FileDialog
 
 func _ready() -> void:
-	get_window().size = Vector2i(1300, 860)
+	# 860 wasn't tall enough: Title + PageTabRow + BottomRow (~213px) plus a
+	# page's own right-hand color column -- a stock ColorPicker alone wants
+	# ~700px -- already summed to more than the old window's usable height
+	# on the default Paint page, before any tab-specific content. Since
+	# VBox's full-rect anchoring can't shrink below its children's minimum
+	# size, that overflow silently pushed everything above it up the page.
+	get_window().size = Vector2i(1300, 940)
 	get_window().title = "Tag Art Tool"
 	UIStyle.add_background(self)
 	_setup_page_tabs()
@@ -1506,9 +1512,17 @@ func _build_tiles_page() -> void:
 	right_panel.custom_minimum_size = Vector2(220, 0)
 	right_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
 	tiles_page.add_child(right_panel)
+	# See the same ScrollContainer on the Icons page's right column -- a
+	# stock ColorPicker's own ~700px minimum height plus this column's help
+	# label was already right at the edge of the window's available height;
+	# this keeps any future overflow here from pushing the whole toolbar up.
+	var right_scroll := ScrollContainer.new()
+	right_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	right_panel.add_child(right_scroll)
 	var right_box := VBoxContainer.new()
+	right_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right_box.add_theme_constant_override("separation", 8)
-	right_panel.add_child(right_box)
+	right_scroll.add_child(right_box)
 	right_box.add_child(_section_label("COLOR"))
 	tiles_color_picker = ColorPicker.new()
 	right_box.add_child(tiles_color_picker)
@@ -1519,6 +1533,15 @@ func _build_tiles_page() -> void:
 	var tiles_help := Label.new()
 	tiles_help.text = "Paint each tile at its native 10x10 size -- zoomed in for editing, this is exactly how it tiles across every platform in-game."
 	tiles_help.autowrap_mode = TextServer.AUTOWRAP_WORD
+	# Without an explicit wrap width, an autowrap Label built while its page
+	# is still hidden (visible=false until its tab is first clicked) can't
+	# know how wide right_panel will actually be yet -- Godot falls back to
+	# wrapping at ~0 width, so every word lands on its own line and the
+	# reported minimum height balloons to 10x+ what it should be. Since
+	# VBox's own full-rect anchoring can't shrink below its children's
+	# minimum size, that bogus height pushes the whole toolbar (and
+	# everything above it) up the page the instant the tab is shown.
+	tiles_help.custom_minimum_size.x = 200
 	tiles_help.add_theme_font_size_override("font_size", 12)
 	tiles_help.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
 	right_box.add_child(tiles_help)
@@ -1652,9 +1675,21 @@ func _build_icons_page() -> void:
 	right_panel.custom_minimum_size = Vector2(220, 0)
 	right_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
 	icons_page.add_child(right_panel)
+	# A stock ColorPicker alone wants ~700px of height -- fine next to just a
+	# title label (see Paint page's static ColorPicker), but stacked with the
+	# help text and Import button below it here, the column's total minimum
+	# height exceeded the window's. Since VBox's full-rect anchoring can't
+	# shrink below its children's minimum size, that overflow pushed the
+	# whole toolbar (and everything above it) up the instant this page
+	# became visible. A ScrollContainer absorbs any future overflow here
+	# instead of forcing the page -- and everything above it -- to grow.
+	var right_scroll := ScrollContainer.new()
+	right_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	right_panel.add_child(right_scroll)
 	var right_box := VBoxContainer.new()
+	right_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right_box.add_theme_constant_override("separation", 8)
-	right_panel.add_child(right_box)
+	right_scroll.add_child(right_box)
 	right_box.add_child(_section_label("COLOR"))
 	icons_color_picker = ColorPicker.new()
 	right_box.add_child(icons_color_picker)
@@ -1665,6 +1700,9 @@ func _build_icons_page() -> void:
 	var icons_help := Label.new()
 	icons_help.text = "Icons are re-tinted per usage in-game -- each mode bar applies its own accent color on top of whatever's painted here. Stick to white/grayscale (like the built-in defaults) so that re-tinting still reads correctly; a specific hue here will look wrong once multiplied by a bar's own color."
 	icons_help.autowrap_mode = TextServer.AUTOWRAP_WORD
+	# See tiles_help above -- same fix, more critical here since this page
+	# starts hidden and stacks two long autowrap labels in one column.
+	icons_help.custom_minimum_size.x = 200
 	icons_help.add_theme_font_size_override("font_size", 12)
 	icons_help.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
 	right_box.add_child(icons_help)
@@ -1680,6 +1718,8 @@ func _build_icons_page() -> void:
 	var import_help := Label.new()
 	import_help.text = "Loads a PNG from disk into the clipboard -- use Selection > Stamp to place it anywhere on the current canvas, then Select + Move to drag it into position. Works on any page's canvas, including whole mode-button art below."
 	import_help.autowrap_mode = TextServer.AUTOWRAP_WORD
+	# See tiles_help above -- same fix.
+	import_help.custom_minimum_size.x = 200
 	import_help.add_theme_font_size_override("font_size", 12)
 	import_help.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
 	right_box.add_child(import_help)
