@@ -31,6 +31,13 @@ var _coalesced_input := {} # peer_id -> Dictionary, merged since the last tick
 var _tag_mode: TagMode
 var _arena: Node2D
 var _tick := 0
+# Throttles report_match_state_summary() (see NetworkManager) to roughly
+# once a second instead of every physics tick -- the website's live match
+# viewer only needs to look "live enough," not interpolation-smooth, and
+# RelayClient's own reporting timer runs at the same cadence, so anything
+# more frequent here would just be discarded work.
+const STATE_SUMMARY_INTERVAL_TICKS := 60
+var _arena_size_px := Vector2.ZERO
 ## Set once by _finish_setup() and kept for the lifetime of the match --
 ## a late-joining spectator (see NetworkManager._server_register_spectator)
 ## needs this exact shape to send as its own "_client_match_started" payload,
@@ -81,6 +88,7 @@ func _fetch_custom_arena(id: String) -> void:
 	req.request(LEVEL_DATA_URL % id)
 
 func _finish_setup() -> void:
+	_arena_size_px = _compute_arena_size_px()
 	var spawn_points := _arena.get_node("SpawnPoints").get_children()
 	spawn_points.shuffle()
 
@@ -226,5 +234,48 @@ func _physics_process(delta: float) -> void:
 	for spectator_peer_id in _network_manager.get_spectators(lobby_id):
 		_network_manager.push_match_state(spectator_peer_id, _tick, states)
 
+	if _tick % STATE_SUMMARY_INTERVAL_TICKS == 0:
+		_report_state_summary()
+
+## A JSON-safe, much-smaller echo of `states` above -- position/is_it per
+## player plus the round timer, keyed by the stable client_id (not peer_id,
+## which means nothing outside this process) so the website can label
+## players consistently. See NetworkManager.report_match_state_summary and
+## RelayClient's own reporting timer for where this actually goes.
+func _report_state_summary() -> void:
+	var players := []
+	for peer_id in _players.keys():
+		var p: Player = _players[peer_id]
+		players.append({
+			"clientId": _client_ids.get(peer_id, ""),
+			"username": _usernames.get(peer_id, "Player"),
+			"x": p.global_position.x,
+			"y": p.global_position.y,
+			"isIt": _tag_mode.is_it(p),
+		})
+	_network_manager.report_match_state_summary(lobby_id, {
+		"players": players,
+		"timeRemaining": _tag_mode.round_timer,
+		"arenaWidth": _arena_size_px.x,
+		"arenaHeight": _arena_size_px.y,
+	})
+
+## Mirrors tag_tileset.tres's texture_region_size (10x10) -- see
+## build_tileset.gd's TILE_SIZE, the source of truth for this value.
+const TILE_SIZE_PX := 10
+
+## Tile-grid bounding box of whatever arena actually got built (built-in or
+## a fetched custom level, see _finish_setup/_fetch_custom_arena above),
+## converted to pixels -- the website's live match viewer (watch.html)
+## needs this once, up front, to size its canvas/scale player positions
+## correctly, since a custom level's dimensions aren't known ahead of time.
+func _compute_arena_size_px() -> Vector2:
+	var tiles: TileMapLayer = _arena.get_node_or_null("Tiles")
+	if not tiles:
+		return Vector2.ZERO
+	var used_rect := tiles.get_used_rect()
+	return Vector2(used_rect.size) * TILE_SIZE_PX
+
 func teardown() -> void:
+	_network_manager.clear_match_state_summary(lobby_id)
 	queue_free()

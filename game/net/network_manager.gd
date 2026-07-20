@@ -91,6 +91,28 @@ func get_spectators(lobby_id: int) -> Array:
 		return []
 	return _spectators.get(lobby_id, [])
 
+# lobby_id -> {players: [{clientId, username, x, y, isIt}], timeRemaining,
+# arenaWidth, arenaHeight} -- a much-lower-frequency, JSON-safe echo of the
+# per-tick `states` dict ServerMatch already builds for push_match_state,
+# kept here (not inside ServerMatch/RelayClient directly) since RelayClient
+# has no reference to any particular lobby's ServerMatch instance, only to
+# this autoload. RelayClient's own timer reads this and reports it up to
+# the relay for the website's live match viewer (see relay-server/public/
+## watch.html) -- the native client's own spectate view never reads this,
+# it gets full state over push_match_state instead.
+var latest_match_summaries := {}
+
+## Called by ServerMatch on its own throttled timer (not every physics
+## tick -- this only ever needs to be "live enough for a webpage," not
+## interpolation-smooth). Overwrites any previous summary for this lobby;
+## cleared by clear_match_state_summary() once the match ends so a stale
+## snapshot can't linger past what RelayClient last reported.
+func report_match_state_summary(lobby_id: int, summary: Dictionary) -> void:
+	latest_match_summaries[lobby_id] = summary
+
+func clear_match_state_summary(lobby_id: int) -> void:
+	latest_match_summaries.erase(lobby_id)
+
 ## WebSockets (not ENet/raw UDP) specifically because this needs to be
 ## reachable through a Cloudflare Tunnel -- Cloudflare's edge can proxy a
 ## WebSocket connection to an arbitrary public hostname, but can't carry

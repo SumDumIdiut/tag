@@ -16,6 +16,13 @@ class_name RelayClient
 
 const HEARTBEAT_INTERVAL_SEC := 5.0
 const RECONNECT_DELAY_SEC := 5.0
+# Separate from (and faster than) the heartbeat above -- HEARTBEAT_INTERVAL_SEC
+# is sized for "is this server still alive," which 5s is plenty responsive
+# for; the website's live match viewer (watch.html) wants to feel closer to
+# live than that. Matches ServerMatch's own STATE_SUMMARY_INTERVAL_TICKS
+# (60 ticks @ 60Hz = 1s), so this never fires faster than fresh data
+# actually exists.
+const MATCH_STATE_INTERVAL_SEC := 1.0
 # Generous headroom -- up to MAX_LOBBY_PLAYERS worth of match state can be
 # pushed every physics tick; relying on WebSocketPeer's small defaults here
 # risks silently dropped or errored packets under load.
@@ -32,6 +39,7 @@ var _server_id: String = ""
 var _register_sent := false
 var _heartbeat_timer: Timer
 var _reconnect_timer: Timer
+var _match_state_timer: Timer
 var _pairs: Array[_BridgePair] = []
 
 class _BridgePair:
@@ -57,6 +65,11 @@ func _ready() -> void:
 	_reconnect_timer.one_shot = true
 	_reconnect_timer.timeout.connect(_connect_control)
 	add_child(_reconnect_timer)
+
+	_match_state_timer = Timer.new()
+	_match_state_timer.wait_time = MATCH_STATE_INTERVAL_SEC
+	_match_state_timer.timeout.connect(_send_match_state)
+	add_child(_match_state_timer)
 
 	_connect_control()
 
@@ -102,6 +115,7 @@ func _poll_control() -> void:
 		_register_sent = false
 		_control = null
 		_heartbeat_timer.stop()
+		_match_state_timer.stop()
 		_reconnect_timer.start()
 
 func _handle_control_message(raw: PackedByteArray) -> void:
@@ -115,6 +129,7 @@ func _handle_control_message(raw: PackedByteArray) -> void:
 			print("RelayClient: registered as server id %s" % _server_id)
 			_heartbeat_timer.start()
 			_send_heartbeat()
+			_match_state_timer.start()
 		"connect_request":
 			_start_bridge(str(msg.get("token", "")))
 
@@ -126,6 +141,23 @@ func _send_heartbeat() -> void:
 		"playerCount": NetworkManager.get_player_count(),
 		"clientIds": NetworkManager.get_connected_client_ids(),
 	})
+
+## One message per currently in-progress lobby on this server (usually just
+## one in practice) -- see NetworkManager.latest_match_summaries, kept
+## updated by each lobby's own ServerMatch. Silently sends nothing if no
+## match is in progress right now, rather than an empty/stale message.
+func _send_match_state() -> void:
+	if _control == null or _control.get_ready_state() != WebSocketPeer.STATE_OPEN or _server_id.is_empty():
+		return
+	for lobby_id in NetworkManager.latest_match_summaries.keys():
+		var summary: Dictionary = NetworkManager.latest_match_summaries[lobby_id]
+		_send_json(_control, {
+			"type": "match_state",
+			"players": summary.get("players", []),
+			"timeRemaining": summary.get("timeRemaining", 0.0),
+			"arenaWidth": summary.get("arenaWidth", 0.0),
+			"arenaHeight": summary.get("arenaHeight", 0.0),
+		})
 
 func _send_json(peer: WebSocketPeer, data: Dictionary) -> void:
 	peer.send_text(JSON.stringify(data))

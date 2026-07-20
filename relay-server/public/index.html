@@ -82,7 +82,8 @@ function render(servers) {
       '<div>' +
         '<div class="card-name">' + esc(s.name) + '</div>' +
         '<div class="card-meta">Created ' + fmtAge(s.createdAt) + '</div>' +
-        '<button class="connect-link" data-url="' + esc(connectUrl) + '" onclick="copyConnect(this)">Copy connect link</button>' +
+        '<button class="connect-link" data-url="' + esc(connectUrl) + '" onclick="copyConnect(this)">Copy connect link</button> ' +
+        '<a class="connect-link" href="watch.html?id=' + encodeURIComponent(s.id) + '">Watch</a>' +
       '</div>' +
       '<div class="players">' +
         '<div class="players-count">' + s.playerCount + '/' + s.maxPlayers + '</div>' +
