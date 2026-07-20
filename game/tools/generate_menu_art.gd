@@ -71,13 +71,21 @@ func _make_background(key: String, color: Color, icon: String, color2: Color = C
 	var img := Image.create(BG_DESIGN_SIZE.x, BG_DESIGN_SIZE.y, false, Image.FORMAT_RGBA8)
 	_paint_banded_sky(img, color)
 	_scatter_stars(img, key)
-	# Bottom-right corner, not dead-center -- every one of these screens
-	# puts its own title text and/or cards through the exact vertical
-	# center, so a bold icon there collided directly with real foreground
-	# UI (confirmed by screenshot on main_menu and online_menu). A smaller
-	# corner watermark stays out of every screen's actual content area
-	# instead of trying to predict each one's specific layout.
-	_draw_icon(img, icon, int(BG_DESIGN_SIZE.x * 0.84), int(BG_DESIGN_SIZE.y * 0.7), 14, color, color2)
+	# A corner placement (tried first) mostly ended up hidden behind
+	# whichever card happened to sit there, or cropped out of view
+	# entirely depending on the screen's own layout -- confirmed by
+	# screenshot, all that was actually visible on several screens was the
+	# star scatter alone, reading as noise rather than deliberate art.
+	# Big and dead-center is the only placement that's reliably in frame
+	# on every screen regardless of its content; drawn onto a separate
+	# transparent layer and blended in at low alpha (see _blend_onto) so
+	# it stays a watermark behind foreground text/cards instead of a hard
+	# collision with them.
+	if icon != "none":
+		var icon_img := Image.create(BG_DESIGN_SIZE.x, BG_DESIGN_SIZE.y, false, Image.FORMAT_RGBA8)
+		icon_img.fill(Color(0, 0, 0, 0))
+		_draw_icon(icon_img, icon, BG_DESIGN_SIZE.x / 2, int(BG_DESIGN_SIZE.y * 0.48), 28, color, color2)
+		_blend_onto(img, icon_img, 0.32)
 	_px_rect(img, 0, BG_DESIGN_SIZE.y - 6, BG_DESIGN_SIZE.x, 6, BG_BOTTOM.darkened(0.2))
 	_px_border(img, color)
 	# resize() modifies in place (no return value) -- INTERPOLATE_NEAREST
@@ -136,6 +144,17 @@ func _blit_centered(dst: Image, src: Image, cx: int, cy: int) -> void:
 			var dy := oy + y
 			if dx >= 0 and dx < dst.get_width() and dy >= 0 and dy < dst.get_height():
 				dst.set_pixel(dx, dy, dst.get_pixel(dx, dy).lerp(px, px.a))
+
+## Composites `src` onto `dst` (same size) at `alpha` -- used to lay a big,
+## centered icon over a background as a translucent watermark rather than a
+## hard-edged, fully-opaque shape that would collide with foreground text.
+func _blend_onto(dst: Image, src: Image, alpha: float) -> void:
+	for y in src.get_height():
+		for x in src.get_width():
+			var px := src.get_pixel(x, y)
+			if px.a <= 0.01:
+				continue
+			dst.set_pixel(x, y, dst.get_pixel(x, y).lerp(px, px.a * alpha))
 
 # ─── Shared base treatment ───────────────────────────────────────────────
 
