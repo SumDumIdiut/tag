@@ -1094,9 +1094,17 @@ app.get('/', (req, res) => {
     const html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf-8');
     _indexHtmlCache = html.replace('</head>', `<script>window.__BASE_PATH__=${JSON.stringify(BASE_PATH)};</script></head>`);
   }
+  // Without this, a plain res.send() carries only an auto-generated ETag
+  // and no freshness info at all -- enough for some browsers to serve an
+  // old cached copy of this exact page (with whatever __BASE_PATH__ value
+  // happened to be injected at the time it was first cached) indefinitely
+  // without ever re-checking the server, which is indistinguishable from
+  // "the site is broken" to whoever's looking at a stale tab. This page is
+  // tiny and re-fetching it on every visit costs nothing.
+  res.set('Cache-Control', 'no-store');
   res.send(_indexHtmlCache);
 });
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { etag: false, lastModified: false, cacheControl: false, setHeaders: res => res.set('Cache-Control', 'no-store') }));
 
 realApp.use(BASE_PATH || '/', app);
 
