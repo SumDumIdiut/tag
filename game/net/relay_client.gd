@@ -20,11 +20,14 @@ const RECONNECT_DELAY_SEC := 5.0
 # is sized for "is this server still alive," which 5s is plenty responsive
 # for; the website's live match viewer (watch.html) wants to feel closer to
 # live than that. Matches ServerMatch's own STATE_SUMMARY_INTERVAL_TICKS
-# (6 ticks @ 60Hz = 100ms), so this never fires faster than fresh data
-# actually exists. The relay pushes each of these straight to any browser
+# (15 ticks @ 60Hz = 250ms) -- was 100ms, dialed back after noticeable
+# real-gameplay input lag on a machine already busy hosting several
+# matches; watch.html interpolates client-side regardless, so this only
+# trades a little freshness for meaningfully less work on this process's
+# own main thread. The relay pushes each of these straight to any browser
 # watching over its own WebSocket the moment it arrives (see relay-server's
 # "match_state" broadcast) rather than making the browser poll for it.
-const MATCH_STATE_INTERVAL_SEC := 0.1
+const MATCH_STATE_INTERVAL_SEC := 0.25
 # Generous headroom -- up to MAX_LOBBY_PLAYERS worth of match state can be
 # pushed every physics tick; relying on WebSocketPeer's small defaults here
 # risks silently dropped or errored packets under load.

@@ -33,12 +33,16 @@ var _arena: Node2D
 var _tick := 0
 # Throttles report_match_state_summary() (see NetworkManager) instead of
 # running every physics tick -- the website's live match viewer doesn't
-# need full 60Hz precision, but with the relay now pushing this over a
-# WebSocket the moment it arrives (not polled), 10Hz reads as genuinely
-# live rather than the choppy 1Hz an earlier pass here used. RelayClient's
-# own reporting timer runs at the same cadence, so anything more frequent
-# here would just be discarded work between ticks.
-const STATE_SUMMARY_INTERVAL_TICKS := 6
+# need full 60Hz precision. Was 6 (10Hz); dialed back to 15 (4Hz) after
+# noticeable real-gameplay input lag on a machine already busy hosting
+# several matches -- watch.html now interpolates between updates on the
+# client side regardless (see prevSnapshot/targetSnapshot there), so a
+# lower report rate still reads as smooth motion; it just costs less
+# main-thread work building/sending a summary on this process's own tick
+# loop, on top of the real per-tick player-state RPCs that already happen
+# at full 60Hz for actual connected players. RelayClient's own reporting
+# timer runs at the same cadence.
+const STATE_SUMMARY_INTERVAL_TICKS := 15
 var _arena_bounds := {"size": Vector2.ZERO, "center": Vector2.ZERO}
 ## Set once by _finish_setup() and kept for the lifetime of the match --
 ## a late-joining spectator (see NetworkManager._server_register_spectator)

@@ -375,7 +375,7 @@ let lastRosterKey = '';
 // smoothly lerp between them every animation frame instead.
 let prevSnapshot = null;   // {players, at}
 let targetSnapshot = null; // {players, at}
-const EXPECTED_UPDATE_MS = 150; // matches relay_client.gd's cadence with a little slack for jitter
+const EXPECTED_UPDATE_MS = 320; // matches relay_client.gd's MATCH_STATE_INTERVAL_SEC (250ms) with a little slack for jitter
 
 function applyState(state) {
   latestState = state;
