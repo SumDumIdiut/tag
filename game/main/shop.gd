@@ -28,7 +28,7 @@ var _button_group := ButtonGroup.new()
 var _mode := "skin" # "skin", "hat", or "trail"
 
 func _ready() -> void:
-	UIStyle.add_background(self)
+	UIStyle.add_background(self, "shop")
 	UIStyle.style_button(skins_tab_button, UIStyle.COLOR_SHOP, 8)
 	UIStyle.style_button(hats_tab_button, UIStyle.COLOR_SHOP, 8)
 	UIStyle.style_button(trails_tab_button, UIStyle.COLOR_SHOP, 8)

@@ -10,7 +10,7 @@ const UIStyle := preload("res://ui/ui_style.gd")
 @onready var back_button: Button = $VBox/BackButton
 
 func _ready() -> void:
-	UIStyle.add_background(self)
+	UIStyle.add_background(self, "local_menu")
 	$VBox/SettingsPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_LOCAL))
 	# Same plain flat-color-no-glow bar treatment online_menu.gd's row uses --
 	# Local only has the one real destination (there's nothing to arrange in

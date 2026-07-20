@@ -91,7 +91,6 @@ func _on_download_pressed() -> void:
 		_skip_button.disabled = false
 		return
 
-	GameAssetOverrides.apply_tile_texture_override()
 	_status_label.text = "Updated -- new art is live now."
 	applied.emit()
 	await get_tree().create_timer(1.2).timeout

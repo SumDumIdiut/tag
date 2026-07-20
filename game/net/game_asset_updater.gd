@@ -1,8 +1,8 @@
 extends Node
 class_name GameAssetUpdater
 
-# Checks the relay's built-in-art manifest (tiles/icons/mode_buttons -- see
-# relay-server/server.js's "HTTP: game assets" section, and art_tool.gd's
+# Checks the relay's built-in-art manifest (icons/mode_buttons/backgrounds --
+# see relay-server/server.js's "HTTP: game assets" section, and art_tool.gd's
 # Export Edits button, the one thing that publishes to it) against whatever
 # this client last downloaded, and offers to fetch anything newer. Distinct
 # from UpdateChecker/UpdatePrompt (whole-binary updates, requires a
@@ -15,7 +15,14 @@ signal check_completed(result: Dictionary) # {available: bool, categories: Array
 const MANIFEST_URL := "https://codecade.co.za/tag/api/game-assets/manifest"
 const DOWNLOAD_BASE := "https://codecade.co.za/tag/api/game-assets"
 const VERSIONS_PATH := "user://game_asset_versions.json"
-const MODE_BUTTON_KEYS := ["online", "local", "sandbox"] # mirrors art_tool.gd's MODE_BUTTON_KEYS
+const MODE_BUTTON_KEYS := ["online", "local"] # mirrors art_tool.gd's MODE_BUTTON_KEYS
+# Mirrors art_tool.gd's BACKGROUND_KEYS -- every menu screen with a
+# paintable background (see UIStyle.add_background).
+const BACKGROUND_KEYS := [
+	"main_menu", "online_menu", "local_menu", "shop", "friends_menu",
+	"lobby_room", "host_setup", "login_screen", "match_intro", "match_results",
+	"multiplayer_connect", "quick_play", "ranked_queue", "server_browser",
+]
 
 func check() -> void:
 	var req := HTTPRequest.new()
@@ -75,6 +82,14 @@ func _download_category(category: String) -> bool:
 		for key in MODE_BUTTON_KEYS:
 			var ok: bool = await _download_file(
 				"%s/mode_buttons/%s/download" % [DOWNLOAD_BASE, key], GameAssetOverrides.mode_button_override_path(key)
+			)
+			any_ok = any_ok or ok
+		return any_ok
+	if category == "backgrounds":
+		var any_ok := false
+		for key in BACKGROUND_KEYS:
+			var ok: bool = await _download_file(
+				"%s/backgrounds/%s/download" % [DOWNLOAD_BASE, key], GameAssetOverrides.background_override_path(key)
 			)
 			any_ok = any_ok or ok
 		return any_ok

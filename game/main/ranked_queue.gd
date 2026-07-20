@@ -28,7 +28,7 @@ var _username := ""
 var _cancelled := false
 
 func _ready() -> void:
-	UIStyle.add_background(self)
+	UIStyle.add_background(self, "ranked_queue")
 	$VBox/StatusPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_RANKED))
 	UIStyle.style_back_button(back_button)
 	_setup_pulsing_icon()

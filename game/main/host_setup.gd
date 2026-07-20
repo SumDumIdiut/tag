@@ -21,7 +21,7 @@ var _map_level_ids: Array[String] = [""]
 var _cancelled := false
 
 func _ready() -> void:
-	UIStyle.add_background(self)
+	UIStyle.add_background(self, "host_setup")
 	UIStyle.style_button(host_button, UIStyle.COLOR_ONLINE)
 	UIStyle.style_back_button(back_button)
 

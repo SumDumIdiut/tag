@@ -12,20 +12,17 @@ class_name LevelData
 #
 # {"tiles": [[x, y, tile_type], ...], "spawn_points": [[x, y], ...],
 #  "platforms": [{"start": [x, y], "end": [x, y], "period_sec": n}, ...]}
-# tile_type is 0-10, matching tag_tileset.tres's 11 atlas-x tiles (all at
-# atlas-y 0): 0-8 are 3 base types (boundary/pillar/platform) x 3 art
-# variants (Piece/Corner/Internal), encoded variant-major as variant_index *
-# 3 + type_index -- see build_tileset.gd's TILES/VARIANT_NAMES, the source
-# of truth for this ordering. 9-10 are Ice/Bouncy, appended after (see
-# art_tool.gd's EXTRA_TILE_NAMES). (Values 0/1/2 are deliberately still
-# exactly Boundary/Pillar/Platform's Piece variant, same as the original
-# 3-tile format, so every level published before variants existed still
-# decodes to the same tiles it always did.) tiles/spawn_points coordinates:
-# tile-grid cells for tiles, world/pixel position for spawn points
-# (straight into Marker2D.position). "platforms" is optional (older/
-# simpler levels just omit it) -- start/end are tile-grid cells too, the
-# two points a MovingPlatform pendulums between; see moving_platform.gd for
-# why no position for these is ever sent over the network at match time.
+# tile_type is always 0 -- a single regular tile, no Boundary/Pillar/
+# Platform split, no art variants, no Ice/Bouncy behavior tiles (an earlier
+# version of the format had all of that; the field is kept in the wire
+# format purely so older published levels still decode without a migration
+# step, but every tile now renders/behaves identically regardless of its
+# value). tiles/spawn_points coordinates: tile-grid cells for tiles, world/
+# pixel position for spawn points (straight into Marker2D.position).
+# "platforms" is optional (older/simpler levels just omit it) -- start/end
+# are tile-grid cells too, the two points a MovingPlatform pendulums
+# between; see moving_platform.gd for why no position for these is ever
+# sent over the network at match time.
 #
 # No waypoints/AI-pathing in this format -- custom levels simply aren't
 # offered for Sandbox/bot matches, only real player-vs-player ones.
@@ -60,12 +57,10 @@ static func is_valid(data: Dictionary) -> bool:
 		var tile_type = entry[2]
 		if typeof(tile_type) != TYPE_FLOAT and typeof(tile_type) != TYPE_INT:
 			return false
-		# 11 atlas tiles: 3 base types x 3 art variants (indices 0-8) plus the
-		# 2 special behavior tiles appended after them, Ice and Bouncy
-		# (indices 9-10, see art_tool.gd's EXTRA_TILE_NAMES). Mirrors the same
-		# fix in relay-server/server.js's isValidLevelData -- this was also
-		# still capped at 8, meaning the Art Tool refused to even publish a
-		# level containing an Ice or Bouncy tile in the first place.
+		# Any value 0-10 is accepted (not just 0) purely so a level
+		# published before the tile-type/variant system was removed still
+		# validates -- build_arena_from_data() below ignores the value
+		# either way and always renders the one remaining tile.
 		if int(tile_type) < 0 or int(tile_type) > 10:
 			return false
 	for entry in spawns:
@@ -111,8 +106,10 @@ static func build_arena_from_data(data: Dictionary) -> Node2D:
 	for entry in data.get("tiles", []):
 		var x := int(entry[0])
 		var y := int(entry[1])
-		var tile_type := int(entry[2])
-		tiles_layer.set_cell(Vector2i(x, y), 0, Vector2i(tile_type, 0))
+		# entry[2] (the old tile_type) is intentionally ignored -- the atlas
+		# only has one tile now, at (0, 0), regardless of what value an
+		# older published level happens to have stored there.
+		tiles_layer.set_cell(Vector2i(x, y), 0, Vector2i(0, 0))
 	arena.add_child(tiles_layer)
 
 	var spawn_points := Node2D.new()

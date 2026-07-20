@@ -30,7 +30,7 @@ func setup(ranking: Array, my_peer_id: int) -> void:
 	_my_peer_id = my_peer_id
 
 func _ready() -> void:
-	UIStyle.add_background(self)
+	UIStyle.add_background(self, "match_results")
 	$VBox/PlacementsPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_RANKED))
 	UIStyle.style_button(continue_button, UIStyle.COLOR_QUICKPLAY)
 	continue_button.pressed.connect(_on_continue_pressed)

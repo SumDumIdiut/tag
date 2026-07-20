@@ -22,26 +22,64 @@ const COLOR_NEUTRAL := Color(0.6, 0.63, 0.72)
 const BG_TOP := Color(0.106, 0.11, 0.157)
 const BG_BOTTOM := Color(0.043, 0.047, 0.075)
 
-## Adds the shared dark backdrop as the first child of `root` -- call once
-## from a screen's _ready(), before any other setup, so it renders behind
+## Matches project.godot's window/size/viewport_width/height -- a painted
+## menu background (see the Art Tool's Icons page) is exported at exactly
+## this size so it fills the screen at native resolution, same as
+## MODE_BUTTON_SIZE matching main_menu.gd's BAR_SIZE.
+const BACKGROUND_SIZE := Vector2i(1152, 648)
+const BACKGROUND_ART_DIR := "res://assets/backgrounds"
+
+## Adds a screen's backdrop as the first child of `root` -- call once from a
+## screen's _ready(), before any other setup, so it renders behind
 ## everything else without needing every screen's own .tscn to carry a
 ## duplicate gradient sub-resource.
-static func add_background(root: Control) -> void:
-	var grad := Gradient.new()
-	grad.colors = PackedColorArray([BG_TOP, BG_BOTTOM])
-	var tex := GradientTexture2D.new()
-	tex.gradient = grad
-	tex.fill = GradientTexture2D.FILL_RADIAL
-	tex.fill_from = Vector2(0.5, 0.5)
-	tex.fill_to = Vector2(1.0, 1.0)
-	var bg := TextureRect.new()
-	bg.texture = tex
-	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	bg.stretch_mode = TextureRect.STRETCH_SCALE
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+## `screen_key`: identifies which menu screen this is (e.g. "main_menu",
+## "online_menu") so a friend's painted background (see the Art Tool's
+## Icons page > MENU BACKGROUNDS) can be looked up for it -- a downloaded
+## override (GameAssetOverrides) wins over whatever got baked in at CI
+## time, same "newest wins" rule the mode-button art already follows. Left
+## empty (the default), this always falls back to the plain procedural
+## gradient -- used by screens that intentionally don't take a painted
+## background, e.g. the Art Tool's own UI.
+static func add_background(root: Control, screen_key: String = "") -> void:
+	var bg: Control
+	var tex: Texture2D = _load_background_texture(screen_key) if not screen_key.is_empty() else null
+	if tex:
+		var art := TextureRect.new()
+		art.texture = tex
+		art.stretch_mode = TextureRect.STRETCH_SCALE
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		art.set_anchors_preset(Control.PRESET_FULL_RECT)
+		bg = art
+	else:
+		var grad := Gradient.new()
+		grad.colors = PackedColorArray([BG_TOP, BG_BOTTOM])
+		var grad_tex := GradientTexture2D.new()
+		grad_tex.gradient = grad
+		grad_tex.fill = GradientTexture2D.FILL_RADIAL
+		grad_tex.fill_from = Vector2(0.5, 0.5)
+		grad_tex.fill_to = Vector2(1.0, 1.0)
+		var grad_rect := TextureRect.new()
+		grad_rect.texture = grad_tex
+		grad_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		grad_rect.stretch_mode = TextureRect.STRETCH_SCALE
+		grad_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		grad_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+		bg = grad_rect
 	root.add_child(bg)
 	root.move_child(bg, 0)
+
+## Override (a friend's painted background downloaded live, see
+## GameAssetUpdater) first, baked-into-this-build second, same fallback
+## order main_menu.gd already uses for mode-button art.
+static func _load_background_texture(screen_key: String) -> Texture2D:
+	var tex := GameAssetOverrides.load_override_texture(GameAssetOverrides.background_override_path(screen_key))
+	if tex:
+		return tex
+	var art_path := "%s/%s.png" % [BACKGROUND_ART_DIR, screen_key]
+	if ResourceLoader.exists(art_path):
+		return load(art_path)
+	return null
 
 static func button_box(color: Color, bg_alpha: float, border_alpha: float, radius: int = 10) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()

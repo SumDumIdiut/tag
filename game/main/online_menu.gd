@@ -10,7 +10,7 @@ const UIStyle := preload("res://ui/ui_style.gd")
 @onready var back_button: Button = $VBox/BackButton
 
 func _ready() -> void:
-	UIStyle.add_background(self)
+	UIStyle.add_background(self, "online_menu")
 	# Plain vertical bars, same shape as the top-level mode cards
 	# (main_menu.gd's BAR_SIZE) but no glow behind them -- just the
 	# button's own color fill/border, whatever's actually painted there via

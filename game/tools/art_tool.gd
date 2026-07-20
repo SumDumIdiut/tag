@@ -1,26 +1,25 @@
 extends Control
 
 # Standalone paint tool, exported as its own executable (TagArtTool.exe, see
-# export_presets.cfg's "Art Tool" preset). Five pages, switched at the top
+# export_presets.cfg's "Art Tool" preset). Four pages, switched at the top
 # like a dedicated app rather than one cramped screen: PAINT (create/edit
 # any number of independent custom skins, hats, and trails -- no pre-made
 # defaults, every one starts as a blank canvas), PREVIEW (a single large render of
 # any skin/hat combination, picked from real dropdowns), LEVEL (paint a
-# tile-based map and publish it live -- see game/levels/level_data.gd),
-# TILES (paint the actual texture of the game's built-in tile types --
-# boundary/pillar/platform, each with 3 art variants -- which the Level
-# page's TileCanvas currently only ever renders as flat placeholder colors;
-# see _build_tiles_page), and ICONS, which covers two independent things
-# sharing one canvas/toolbar: small mode-bar badge icons (originally 100%
-# procedural CanvasItem drawing with no image asset at all; see
-# ui/mode_icon.gd's atlas-with-procedural-fallback loading) and whole
-# mode-button art (an entire main-menu button -- background, character,
-# label, everything -- painted as one 190x360 image per mode, replacing the
-# procedural box outright when present; see main_menu.gd's
-# MODE_BUTTON_ART_PATH). Both support Import Image (loads a PNG from disk
-# into the clipboard) plus the existing Selection > Stamp/Move tools for
-# composing from other elements without a dedicated drag-and-drop layer
-# system.
+# tile-based map and publish it live -- see game/levels/level_data.gd; tiles
+# themselves are a single fixed regular tile now, nothing to paint there),
+# and ICONS, which covers three independent things sharing one canvas/
+# toolbar: small mode-bar badge icons (originally 100% procedural CanvasItem
+# drawing with no image asset at all; see ui/mode_icon.gd's atlas-with-
+# procedural-fallback loading), whole mode-button art (an entire main-menu
+# button -- background, character, label, everything -- painted as one
+# 190x360 image per mode, replacing the procedural box outright when
+# present; see main_menu.gd's MODE_BUTTON_ART_PATH), and whole menu-screen
+# backgrounds (a full GAME_VIEWPORT_WIDTH x GAME_VIEWPORT_HEIGHT image per
+# screen, replacing UIStyle.add_background()'s procedural gradient when
+# present). All three support Import Image (loads a PNG from disk into the
+# clipboard) plus the existing Selection > Stamp/Move tools for composing
+# from other elements without a dedicated drag-and-drop layer system.
 #
 # Custom skins/hats are unrelated to the game's built-in 8 colors -- they're
 # painted in real color directly, the same way the game's own in-shop
@@ -74,27 +73,6 @@ they add it with one command:
 and it's live for everyone immediately, no build or restart needed.
 """
 
-const TILE_INSTRUCTIONS_TEXT := """tag_tiles.png is a horizontal strip, one 10x10 tile per slot, 11 slots in
-this exact order: Boundary Piece, Pillar Piece, Platform Piece, Boundary
-Corner, Pillar Corner, Platform Corner, Boundary Internal, Pillar
-Internal, Platform Internal, Ice, Bouncy -- the same layout tools/
-build_tileset.gd generates and game/levels/tag_tileset.tres reads from.
-(Slots 0-2 are the same Boundary/Pillar/Platform tiles the original 3-tile
-atlas had, in the same order -- the 6 Corner/Internal slots and the 2
-behavior slots (Ice/Bouncy, see player.gd) were each appended after, never
-inserted, so already-published levels keep decoding the same way.)
-
-To make this the game's real tile texture:
-
-  1. Copy this file to game/assets/tiles/tag_tiles.png, overwriting the
-     existing one.
-  2. Re-run tools/build_tileset.gd from inside the Godot editor (it
-     regenerates tag_tileset.tres's atlas regions/collision from the new
-     image -- the tile size and tile order must stay exactly as they are
-     here, or the regions will point at the wrong pixels).
-  3. Commit both changed files.
-"""
-
 const ICON_INSTRUCTIONS_TEXT := """tag_icons.png is a horizontal strip, one 64x64 icon per slot, 6 slots in
 this exact order: Globe, Controller, Box, Bolt, Star, Tag -- the same
 layout tools/build_icon_atlas.gd generates and game/ui/mode_icon.gd reads
@@ -119,14 +97,28 @@ main_menu.gd renders that button at.
 To make one of these the game's real button art:
 
   1. Copy the file to game/assets/icons/mode_buttons/<key>.png, where
-     <key> is online.png, local.png, or sandbox.png (matching the file's
-     own name here).
+     <key> is online.png or local.png (matching the file's own name here).
   2. Commit the file -- no rebuild step needed, main_menu.gd checks for
      it at runtime and uses it in place of the procedural glow/portrait/
      label box automatically.
 
 A mode with no file here just keeps using the procedural fallback -- you
-don't need to paint all three at once.
+don't need to paint both at once.
+"""
+
+const BACKGROUND_INSTRUCTIONS_TEXT := """Each file here is one menu screen's ENTIRE background, painted at
+1152x648, the game's real viewport size.
+
+To make one of these the game's real screen background:
+
+  1. Copy the file to game/assets/backgrounds/<key>.png -- see the
+     filename here for <key> (main_menu.png, online_menu.png, etc).
+  2. Commit the file -- no rebuild step needed, UIStyle.add_background()
+     checks for it at runtime and uses it in place of the procedural
+     gradient automatically.
+
+A screen with no file here just keeps using the procedural gradient -- you
+don't need to paint all of them at once.
 """
 
 @onready var paint_tab_button: Button = $VBox/PageTabRow/PaintTabButton
@@ -179,10 +171,9 @@ var _mirror_h := false
 var _mirror_v := false
 var _show_grid := false
 # Which ColorPicker currently feeds _apply_tool_state() -- the Paint and
-# Tiles pages each have their own (only one is ever visible/relevant at a
+# Icons pages each have their own (only one is ever visible/relevant at a
 # time), set by _setup_page_tabs()'s tab handlers.
 var _active_color_picker: ColorPicker = null
-var tiles_color_picker: ColorPicker
 
 var _custom_skins := {} # id -> {part_name -> Image}
 var _skin_names := {} # id -> display name
@@ -223,49 +214,6 @@ var _level_button_group := ButtonGroup.new()
 var _level_props_container: VBoxContainer
 var _level_props_content: VBoxContainer
 
-# ─── Tiles page (paint the actual texture of the built-in tile types) ───────
-const TILE_TEXTURE_SIZE := 10 # must match tools/build_tileset.gd's TILE_SIZE
-const TILE_ATLAS_PATH := "res://assets/tiles/tag_tiles.png"
-# Same names/order tile_canvas.gd's TILE_COLORS and build_tileset.gd's TILES/
-# VARIANT_NAMES all already use -- keeping the order identical is what makes
-# tile_index() here line up with atlas slot i in the exported strip. Each
-# base type now has 3 art variants (a straight edge Piece, a Corner, and a
-# fully-surrounded Internal), so a hand-placed level can use the
-# right-looking piece at a platform's edges/corners instead of one flat
-# texture tiling awkwardly everywhere -- see _build_tiles_page/_build_level_
-# page below, both of which pick a tile index via tile_index().
-const TILE_TYPE_NAMES := ["Boundary", "Pillar", "Platform"]
-const TILE_VARIANT_NAMES := ["Piece", "Corner", "Internal"]
-# Two behaviorally-real floor types (see player.gd's tile-behavior lookup,
-# build_tileset.gd's "behavior" custom data layer) -- single flat tiles
-# appended after the type/variant grid above (indices 9, 10), not part of
-# it: v1 scope is one art variant each, not the full Piece/Corner/Internal
-# treatment every other type gets.
-const EXTRA_TILE_NAMES := ["Ice", "Bouncy"]
-const TILE_TEXTURE_ZOOM := 34 # a 10x10 image needs a much bigger per-pixel
-# zoom than a 32x48 skin part to be comfortably paintable at all.
-
-## variant_index * 3 + type_index, NOT type-major -- this is what keeps
-## indices 0/1/2 exactly Boundary/Pillar/Platform's Piece variant, matching
-## the original 3-tile atlas, so tag_arena.tscn's already-painted cells and
-## any level already published before variants existed still render as the
-## same tile they always did (see build_tileset.gd's TILES comment).
-static func tile_index(type_idx: int, variant_idx: int) -> int:
-	return variant_idx * TILE_TYPE_NAMES.size() + type_idx
-
-var tiles_tab_button: Button
-var tiles_page: HBoxContainer
-var tiles_toolbar: Container
-var tiles_canvas_holder: CenterContainer
-var _tile_images: Array[Image] = [] # index-matched to tile_index()
-var _current_tile_index := -1
-var _tile_select_buttons: Array[Button] = [] # index-matched to tile_index()
-
-# Level page's placement palette: which (type, variant) pair PAINT currently
-# stamps onto the grid -- Internal is the default variant since it's the
-# "fill" piece most of a platform's interior actually uses.
-var _level_selected_type := 0
-var _level_selected_variant := 2
 
 # ─── Icons page (paint the main menu's procedural mode-bar badge icons) ─────
 const ICON_TEXTURE_SIZE := 64 # must match tools/build_icon_atlas.gd's ICON_SIZE
@@ -299,6 +247,30 @@ const MODE_BUTTON_ZOOM := 2 # 190x360 is already large -- a much smaller per-pix
 var _button_art_images: Array[Image] = [] # index-matched to MODE_BUTTON_KEYS
 var _current_button_art_index := -1
 var _button_art_select_buttons: Array[Button] = []
+
+# Whole-screen custom background art for every menu screen -- an
+# alternative to UIStyle.add_background()'s procedural radial gradient:
+# paint the entire screen background as one image, the real game viewport
+# size (see UIStyle.BACKGROUND_SIZE), so what's painted here is exactly
+# what shows up in-game. Keys/order must match every UIStyle.add_background
+# call site across game/main/*.gd (also mirrored in
+# game_asset_updater.gd's BACKGROUND_KEYS and relay-server/server.js's,
+# same "kept in sync by convention" relationship MODE_BUTTON_KEYS already
+# has across those same 3 files).
+const BACKGROUND_KEYS := [
+	"main_menu", "online_menu", "local_menu", "shop", "friends_menu",
+	"lobby_room", "host_setup", "login_screen", "match_intro", "match_results",
+	"multiplayer_connect", "quick_play", "ranked_queue", "server_browser",
+]
+const BACKGROUND_NAMES := [
+	"Main Menu", "Online Menu", "Local Menu", "Shop", "Friends",
+	"Lobby Room", "Host Setup", "Login Screen", "Match Intro", "Match Results",
+	"Direct Connect", "Quick Play", "Ranked Queue", "Server Browser",
+]
+const BACKGROUND_ZOOM := 1 # already full game-viewport size, no per-pixel zoom needed
+var _background_images: Array[Image] = [] # index-matched to BACKGROUND_KEYS
+var _current_background_index := -1
+var _background_select_buttons: Array[Button] = []
 var _import_file_dialog: FileDialog
 
 func _ready() -> void:
@@ -315,7 +287,6 @@ func _ready() -> void:
 	_build_sidebar()
 	_build_shared_toolbar(toolbar)
 	_build_level_page()
-	_build_tiles_page()
 	_build_icons_page()
 	_active_color_picker = color_picker
 	color_picker.color_changed.connect(_on_color_picked_from_wheel)
@@ -342,17 +313,11 @@ func _on_update_check_completed(result: Dictionary) -> void:
 	prompt.setup(result.version, result.download_url)
 
 func _setup_page_tabs() -> void:
-	# TilesTabButton/TilesPage aren't in the .tscn -- built and inserted
+	# IconsTabButton/IconsPage isn't in the .tscn -- built and inserted
 	# alongside the other three entirely in code, right next to the tab row/
 	# page container that already own the other tabs, so there's nothing
 	# scene-file-specific about how this one is wired in.
 	var tab_row: HBoxContainer = paint_tab_button.get_parent()
-	tiles_tab_button = Button.new()
-	tiles_tab_button.custom_minimum_size = Vector2(140, 38)
-	tiles_tab_button.toggle_mode = true
-	tiles_tab_button.text = "Tiles"
-	tab_row.add_child(tiles_tab_button)
-
 	icons_tab_button = Button.new()
 	icons_tab_button.custom_minimum_size = Vector2(140, 38)
 	icons_tab_button.toggle_mode = true
@@ -363,18 +328,15 @@ func _setup_page_tabs() -> void:
 	paint_tab_button.button_group = tab_group
 	preview_tab_button.button_group = tab_group
 	level_tab_button.button_group = tab_group
-	tiles_tab_button.button_group = tab_group
 	icons_tab_button.button_group = tab_group
 	UIStyle.style_button(paint_tab_button, UIStyle.COLOR_SHOP, 10)
 	UIStyle.style_button(preview_tab_button, UIStyle.COLOR_ONLINE, 10)
 	UIStyle.style_button(level_tab_button, UIStyle.COLOR_SANDBOX, 10)
-	UIStyle.style_button(tiles_tab_button, UIStyle.COLOR_RANKED, 10)
 	UIStyle.style_button(icons_tab_button, UIStyle.COLOR_LOCAL, 10)
 	paint_tab_button.pressed.connect(func():
 		paint_page.visible = true
 		preview_page.visible = false
 		level_page.visible = false
-		tiles_page.visible = false
 		icons_page.visible = false
 		export_button.visible = true
 		_active_color_picker = color_picker
@@ -384,7 +346,6 @@ func _setup_page_tabs() -> void:
 		paint_page.visible = false
 		preview_page.visible = true
 		level_page.visible = false
-		tiles_page.visible = false
 		icons_page.visible = false
 		export_button.visible = true
 		_refresh_preview_selectors()
@@ -394,25 +355,13 @@ func _setup_page_tabs() -> void:
 		paint_page.visible = false
 		preview_page.visible = false
 		level_page.visible = true
-		tiles_page.visible = false
 		icons_page.visible = false
 		export_button.visible = false
-	)
-	tiles_tab_button.pressed.connect(func():
-		paint_page.visible = false
-		preview_page.visible = false
-		level_page.visible = false
-		tiles_page.visible = true
-		icons_page.visible = false
-		export_button.visible = true
-		_active_color_picker = tiles_color_picker
-		_apply_tool_state()
 	)
 	icons_tab_button.pressed.connect(func():
 		paint_page.visible = false
 		preview_page.visible = false
 		level_page.visible = false
-		tiles_page.visible = false
 		icons_page.visible = true
 		export_button.visible = true
 		_active_color_picker = icons_color_picker
@@ -765,7 +714,7 @@ func _clear_canvas_holder() -> void:
 	_current_canvas = null
 
 ## Builds the full tool suite into `container` (the Paint page's `toolbar`
-## or the Tiles page's `tiles_toolbar`) -- one call site, shared by both
+## or the Icons page's `icons_toolbar`) -- one call site, shared by both
 ## pages, so every tool (shapes, selection, mirror, transforms, palette
 ## actions, zoom) works identically everywhere instead of being
 ## reimplemented per page. Wrapped in an HFlowContainer so the now much
@@ -1043,61 +992,19 @@ func _build_level_page() -> void:
 	level_canvas_center.add_child(_tile_canvas)
 	_tile_canvas.selection_changed.connect(_refresh_level_properties_panel)
 
-	# Type swatches pick which base tile (Boundary/Pillar/Platform) PAINT
-	# places; the variant row alongside them picks which of that type's 3
-	## art pieces (Piece/Corner/Internal) gets placed -- both feed into
-	# _apply_level_tile_type(), which is also where PAINT mode + the actual
-	# tile_index() get set, so pressing either kind of button places tiles
-	# immediately rather than needing a separate "apply" step.
+	# A single regular tile -- no more type/variant swatches to pick between,
+	# PAINT just places it.
 	var level_tool_group := ButtonGroup.new()
-	for t in TILE_TYPE_NAMES.size():
-		var swatch := Button.new()
-		swatch.text = TILE_TYPE_NAMES[t]
-		swatch.toggle_mode = true
-		swatch.button_group = level_tool_group
-		swatch.button_pressed = (t == 0)
-		UIStyle.style_button(swatch, TileCanvas.TILE_COLORS[tile_index(t, 2)], 8)
-		swatch.pressed.connect(func():
-			_level_selected_type = t
-			_apply_level_tile_type()
-		)
-		level_toolbar.add_child(swatch)
+	var paint_btn := Button.new()
+	paint_btn.text = "Paint"
+	paint_btn.toggle_mode = true
+	paint_btn.button_group = level_tool_group
+	paint_btn.button_pressed = true
+	UIStyle.style_button(paint_btn, TileCanvas.TILE_COLOR, 8)
+	paint_btn.pressed.connect(func(): _tile_canvas.tool = TileCanvas.Tool.PAINT)
+	level_toolbar.add_child(paint_btn)
 
 	level_toolbar.add_child(VSeparator.new())
-
-	# Separate ButtonGroup from level_tool_group above -- variant is an
-	# independent axis from "which top-level tool mode is active"
-	# (paint-a-type/erase/spawn), so it must stay togglable on its own.
-	var variant_group := ButtonGroup.new()
-	for v in TILE_VARIANT_NAMES.size():
-		var variant_btn := Button.new()
-		variant_btn.text = TILE_VARIANT_NAMES[v]
-		variant_btn.toggle_mode = true
-		variant_btn.button_group = variant_group
-		variant_btn.button_pressed = (v == _level_selected_variant)
-		UIStyle.style_button(variant_btn, UIStyle.COLOR_NEUTRAL, 8)
-		variant_btn.pressed.connect(func():
-			_level_selected_variant = v
-			_apply_level_tile_type()
-		)
-		level_toolbar.add_child(variant_btn)
-
-	level_toolbar.add_child(VSeparator.new())
-
-	# Ice/Bouncy (see EXTRA_TILE_NAMES) place directly via PAINT, same as the
-	# type swatches above -- single flat tile each, no variant row.
-	for e in EXTRA_TILE_NAMES.size():
-		var extra_idx := TILE_TYPE_NAMES.size() * TILE_VARIANT_NAMES.size() + e
-		var extra_btn := Button.new()
-		extra_btn.text = EXTRA_TILE_NAMES[e]
-		extra_btn.toggle_mode = true
-		extra_btn.button_group = level_tool_group
-		UIStyle.style_button(extra_btn, TileCanvas.TILE_COLORS[extra_idx], 8)
-		extra_btn.pressed.connect(func():
-			_tile_canvas.tool = TileCanvas.Tool.PAINT
-			_tile_canvas.current_tile_type = extra_idx
-		)
-		level_toolbar.add_child(extra_btn)
 
 	var erase_btn := Button.new()
 	erase_btn.text = "Erase"
@@ -1188,16 +1095,8 @@ func _build_level_page() -> void:
 	)
 	_build_level_properties_panel(level_right_box)
 
-	_apply_level_tile_type()
-	_on_add_level_pressed()
-
-## Pushes the currently-selected (type, variant) pair onto the TileCanvas
-## and switches it to PAINT mode -- called by both the type swatches and the
-## variant row, since either one changing should immediately affect what
-## the next click paints, not just the swatch that was actually clicked.
-func _apply_level_tile_type() -> void:
 	_tile_canvas.tool = TileCanvas.Tool.PAINT
-	_tile_canvas.current_tile_type = tile_index(_level_selected_type, _level_selected_variant)
+	_on_add_level_pressed()
 
 func _on_add_level_pressed() -> void:
 	var id := "level_%d" % _next_level_num
@@ -1426,180 +1325,14 @@ func _on_publish_level_pressed() -> void:
 ## machinery the Paint page uses, and its own ColorPicker (the Paint page's
 ## is hidden while this page is showing, so it needs an independent one to
 ## stay usable -- see _active_color_picker).
-func _build_tiles_page() -> void:
-	var vbox: VBoxContainer = paint_page.get_parent()
-	tiles_page = HBoxContainer.new()
-	tiles_page.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	tiles_page.add_theme_constant_override("separation", 12)
-	tiles_page.visible = false
-	vbox.add_child(tiles_page)
-	vbox.move_child(tiles_page, level_page.get_index() + 1)
-
-	var select_panel := PanelContainer.new()
-	select_panel.custom_minimum_size = Vector2(180, 0)
-	select_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
-	tiles_page.add_child(select_panel)
-	var select_box := VBoxContainer.new()
-	select_box.add_theme_constant_override("separation", 6)
-	select_panel.add_child(select_box)
-	select_box.add_child(_section_label("TILE TYPES"))
-
-	# Grouped by base type (Boundary/Pillar/Platform), each with its own row
-	# of 3 variant buttons (Piece/Corner/Internal) -- 9 total selectable
-	# textures, one ButtonGroup shared across all of them so exactly one is
-	# ever the active canvas.
-	var tile_group := ButtonGroup.new()
-	var grid_total := TILE_TYPE_NAMES.size() * TILE_VARIANT_NAMES.size()
-	_tile_select_buttons.resize(grid_total + EXTRA_TILE_NAMES.size())
-	for t in TILE_TYPE_NAMES.size():
-		var type_label := _section_label(TILE_TYPE_NAMES[t].to_upper())
-		type_label.add_theme_font_size_override("font_size", 11)
-		select_box.add_child(type_label)
-		var variant_row := HBoxContainer.new()
-		variant_row.add_theme_constant_override("separation", 4)
-		select_box.add_child(variant_row)
-		for v in TILE_VARIANT_NAMES.size():
-			var idx := tile_index(t, v)
-			var btn := Button.new()
-			btn.text = TILE_VARIANT_NAMES[v]
-			btn.toggle_mode = true
-			btn.button_group = tile_group
-			btn.custom_minimum_size = Vector2(0, 36)
-			btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			UIStyle.style_button(btn, TileCanvas.TILE_COLORS[idx], 8, false)
-			btn.pressed.connect(_show_tile.bind(idx))
-			variant_row.add_child(btn)
-			_tile_select_buttons[idx] = btn
-
-	select_box.add_child(_section_label("SPECIAL"))
-	var extra_row := HBoxContainer.new()
-	extra_row.add_theme_constant_override("separation", 4)
-	select_box.add_child(extra_row)
-	for e in EXTRA_TILE_NAMES.size():
-		var idx := grid_total + e
-		var btn := Button.new()
-		btn.text = EXTRA_TILE_NAMES[e]
-		btn.toggle_mode = true
-		btn.button_group = tile_group
-		btn.custom_minimum_size = Vector2(0, 36)
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		UIStyle.style_button(btn, TileCanvas.TILE_COLORS[idx], 8, false)
-		btn.pressed.connect(_show_tile.bind(idx))
-		extra_row.add_child(btn)
-		_tile_select_buttons[idx] = btn
-
-	var canvas_panel := PanelContainer.new()
-	canvas_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	canvas_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	canvas_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
-	tiles_page.add_child(canvas_panel)
-	var canvas_box := VBoxContainer.new()
-	canvas_panel.add_child(canvas_box)
-
-	tiles_toolbar = HBoxContainer.new()
-	canvas_box.add_child(tiles_toolbar)
-	_build_shared_toolbar(tiles_toolbar)
-
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	canvas_box.add_child(scroll)
-	tiles_canvas_holder = CenterContainer.new()
-	tiles_canvas_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tiles_canvas_holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.add_child(tiles_canvas_holder)
-
-	var right_panel := PanelContainer.new()
-	right_panel.custom_minimum_size = Vector2(220, 0)
-	right_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
-	tiles_page.add_child(right_panel)
-	# See the same ScrollContainer on the Icons page's right column -- a
-	# stock ColorPicker's own ~700px minimum height plus this column's help
-	# label was already right at the edge of the window's available height;
-	# this keeps any future overflow here from pushing the whole toolbar up.
-	var right_scroll := ScrollContainer.new()
-	right_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	right_panel.add_child(right_scroll)
-	var right_box := VBoxContainer.new()
-	right_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_box.add_theme_constant_override("separation", 8)
-	right_scroll.add_child(right_box)
-	right_box.add_child(_section_label("COLOR"))
-	tiles_color_picker = ColorPicker.new()
-	right_box.add_child(tiles_color_picker)
-	tiles_color_picker.color_changed.connect(func(color: Color):
-		if _current_canvas:
-			_current_canvas.paint_color = color
-	)
-	var tiles_help := Label.new()
-	tiles_help.text = "Paint each tile at its native 10x10 size -- zoomed in for editing, this is exactly how it tiles across every platform in-game."
-	tiles_help.autowrap_mode = TextServer.AUTOWRAP_WORD
-	# Without an explicit wrap width, an autowrap Label built while its page
-	# is still hidden (visible=false until its tab is first clicked) can't
-	# know how wide right_panel will actually be yet -- Godot falls back to
-	# wrapping at ~0 width, so every word lands on its own line and the
-	# reported minimum height balloons to 10x+ what it should be. Since
-	# VBox's own full-rect anchoring can't shrink below its children's
-	# minimum size, that bogus height pushes the whole toolbar (and
-	# everything above it) up the page the instant the tab is shown.
-	tiles_help.custom_minimum_size.x = 200
-	tiles_help.add_theme_font_size_override("font_size", 12)
-	tiles_help.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
-	right_box.add_child(tiles_help)
-
-	_load_tile_images()
-	_show_tile(0)
-	_tile_select_buttons[0].button_pressed = true
-
-## Loads the atlas already baked into the build (flat, slightly-shaded
-## placeholder colors today -- see build_tileset.gd) and slices it into one
-## Image per (type, variant) texture plus the two EXTRA_TILE_NAMES slots, so
-## the Tiles page always opens with something real on the canvas instead of
-## a blank transparent square.
-## Falls back to a flat-color square per slot if the atlas can't be loaded
-## or is still the old narrower size for any reason (e.g. running this tool
-## against a stripped-down or stale export), so the page is never left
-## totally broken.
-func _load_tile_images() -> void:
-	_tile_images.clear()
-	# load() (not Image.load_from_file) so this also works from the exported
-	# .pck TagArtTool.exe actually ships as, not just when run from source.
-	var atlas: Image = null
-	var atlas_tex: Texture2D = load(TILE_ATLAS_PATH)
-	if atlas_tex:
-		atlas = atlas_tex.get_image()
-	var total := TILE_TYPE_NAMES.size() * TILE_VARIANT_NAMES.size() + EXTRA_TILE_NAMES.size()
-	for i in total:
-		var tile_img: Image
-		if atlas and not atlas.is_empty() and (i + 1) * TILE_TEXTURE_SIZE <= atlas.get_width():
-			tile_img = atlas.get_region(Rect2i(i * TILE_TEXTURE_SIZE, 0, TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE))
-			tile_img.convert(Image.FORMAT_RGBA8)
-		else:
-			tile_img = Image.create(TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE, false, Image.FORMAT_RGBA8)
-			tile_img.fill(TileCanvas.TILE_COLORS[i])
-		_tile_images.append(tile_img)
-
-func _show_tile(index: int) -> void:
-	_current_tile_index = index
-	for i in _tile_select_buttons.size():
-		_tile_select_buttons[i].button_pressed = (i == index)
-	for child in tiles_canvas_holder.get_children():
-		tiles_canvas_holder.remove_child(child)
-		child.queue_free()
-	var canvas = PixelCanvasScene.new(_tile_images[index], TILE_TEXTURE_ZOOM)
-	tiles_canvas_holder.add_child(canvas)
-	canvas.painted.connect(_on_painted)
-	canvas.color_picked.connect(_on_eyedropper_picked)
-	_current_canvas = canvas
-	_apply_tool_state()
-
-## Builds the Icons page entirely in code, mirroring _build_tiles_page()
-## exactly: a left-hand list of the 6 procedural mode-bar icon types, a
-## canvas panel driven by the same _build_shared_toolbar/_current_canvas
-## machinery, and its own ColorPicker. Unlike Tiles/skins, icons are baked
-## and painted in white/grayscale (see the file header comment) since
-## they're re-tinted per usage at runtime -- the right-panel help text below
-## says so directly, since painting a specific hue here would silently look
-## wrong in-game rather than erroring anywhere obvious.
+## Builds the Icons page entirely in code: a left-hand list of the 6
+## procedural mode-bar icon types, a canvas panel driven by the shared
+## _build_shared_toolbar/_current_canvas machinery, and its own ColorPicker.
+## Unlike skins, icons are baked and painted in white/grayscale (see the file
+## header comment) since they're re-tinted per usage at runtime -- the
+## right-panel help text below says so directly, since painting a specific
+## hue here would silently look wrong in-game rather than erroring anywhere
+## obvious.
 func _build_icons_page() -> void:
 	var vbox: VBoxContainer = paint_page.get_parent()
 	icons_page = HBoxContainer.new()
@@ -1607,15 +1340,23 @@ func _build_icons_page() -> void:
 	icons_page.add_theme_constant_override("separation", 12)
 	icons_page.visible = false
 	vbox.add_child(icons_page)
-	vbox.move_child(icons_page, tiles_page.get_index() + 1)
+	vbox.move_child(icons_page, level_page.get_index() + 1)
 
 	var select_panel := PanelContainer.new()
 	select_panel.custom_minimum_size = Vector2(180, 0)
 	select_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
 	icons_page.add_child(select_panel)
+	# 6 icons + 2 mode buttons + 14 backgrounds is too many entries for a
+	# fixed-height sidebar -- see the ScrollContainer on the right-hand color
+	# column above for the same overflow-into-the-whole-page bug this
+	# prevents.
+	var select_scroll := ScrollContainer.new()
+	select_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	select_panel.add_child(select_scroll)
 	var select_box := VBoxContainer.new()
+	select_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	select_box.add_theme_constant_override("separation", 6)
-	select_panel.add_child(select_box)
+	select_scroll.add_child(select_box)
 	select_box.add_child(_section_label("MENU ICONS"))
 
 	var icon_group := ButtonGroup.new()
@@ -1650,6 +1391,25 @@ func _build_icons_page() -> void:
 		btn.pressed.connect(_show_button_art.bind(i))
 		select_box.add_child(btn)
 		_button_art_select_buttons.append(btn)
+
+	var background_spacer := Control.new()
+	background_spacer.custom_minimum_size = Vector2(0, 8)
+	select_box.add_child(background_spacer)
+
+	# Same shared ButtonGroup again -- picking a screen background here
+	# deselects whichever icon/mode button was active, and vice versa.
+	select_box.add_child(_section_label("MENU BACKGROUNDS"))
+	_background_select_buttons.clear()
+	for i in BACKGROUND_NAMES.size():
+		var btn := Button.new()
+		btn.text = BACKGROUND_NAMES[i]
+		btn.toggle_mode = true
+		btn.button_group = icon_group
+		btn.custom_minimum_size = Vector2(0, 32)
+		UIStyle.style_button(btn, UIStyle.COLOR_RANKED, 10, false)
+		btn.pressed.connect(_show_background.bind(i))
+		select_box.add_child(btn)
+		_background_select_buttons.append(btn)
 
 	var canvas_panel := PanelContainer.new()
 	canvas_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1726,6 +1486,7 @@ func _build_icons_page() -> void:
 
 	_load_icon_images()
 	_load_button_art_images()
+	_load_background_images()
 	_show_icon(0)
 	_icon_select_buttons[0].button_pressed = true
 
@@ -1754,10 +1515,13 @@ func _load_icon_images() -> void:
 func _show_icon(index: int) -> void:
 	_current_icon_index = index
 	_current_button_art_index = -1
+	_current_background_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = (i == index)
 	for i in _button_art_select_buttons.size():
 		_button_art_select_buttons[i].button_pressed = false
+	for i in _background_select_buttons.size():
+		_background_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1796,10 +1560,13 @@ func _load_button_art_images() -> void:
 func _show_button_art(index: int) -> void:
 	_current_button_art_index = index
 	_current_icon_index = -1
+	_current_background_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
 	for i in _button_art_select_buttons.size():
 		_button_art_select_buttons[i].button_pressed = (i == index)
+	for i in _background_select_buttons.size():
+		_background_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1807,6 +1574,47 @@ func _show_button_art(index: int) -> void:
 	icons_canvas_holder.add_child(canvas)
 	canvas.painted.connect(_on_painted)
 	canvas.painted.connect(func(): _button_art_images[index] = canvas.image)
+	canvas.color_picked.connect(_on_eyedropper_picked)
+	_current_canvas = canvas
+	_apply_tool_state()
+
+## Loads each screen's whole-background art (see BACKGROUND_KEYS/
+## UIStyle.add_background) if it's already been painted and committed, else
+## a blank transparent UIStyle.BACKGROUND_SIZE canvas -- same "always
+## something real or an honest blank canvas" rule _load_icon_images()/
+## _load_button_art_images() follow.
+func _load_background_images() -> void:
+	_background_images.clear()
+	for key in BACKGROUND_KEYS:
+		var path := "%s/%s.png" % [UIStyle.BACKGROUND_ART_DIR, key]
+		var img: Image
+		if ResourceLoader.exists(path):
+			var tex: Texture2D = load(path)
+			img = tex.get_image() if tex else null
+			if img:
+				img.convert(Image.FORMAT_RGBA8)
+		if not img:
+			img = Image.create(UIStyle.BACKGROUND_SIZE.x, UIStyle.BACKGROUND_SIZE.y, false, Image.FORMAT_RGBA8)
+			img.fill(Color(0, 0, 0, 0))
+		_background_images.append(img)
+
+func _show_background(index: int) -> void:
+	_current_background_index = index
+	_current_icon_index = -1
+	_current_button_art_index = -1
+	for i in _icon_select_buttons.size():
+		_icon_select_buttons[i].button_pressed = false
+	for i in _button_art_select_buttons.size():
+		_button_art_select_buttons[i].button_pressed = false
+	for i in _background_select_buttons.size():
+		_background_select_buttons[i].button_pressed = (i == index)
+	for child in icons_canvas_holder.get_children():
+		icons_canvas_holder.remove_child(child)
+		child.queue_free()
+	var canvas = PixelCanvasScene.new(_background_images[index], BACKGROUND_ZOOM)
+	icons_canvas_holder.add_child(canvas)
+	canvas.painted.connect(_on_painted)
+	canvas.painted.connect(func(): _background_images[index] = canvas.image)
 	canvas.color_picked.connect(_on_eyedropper_picked)
 	_current_canvas = canvas
 	_apply_tool_state()
@@ -2012,22 +1820,6 @@ func _on_export_pressed() -> void:
 			f5.store_string(TRAIL_INSTRUCTIONS_TEXT)
 		status_parts.append(trails_out_dir)
 
-	if not _tile_images.is_empty():
-		var tiles_out_dir := base_dir.path_join("edited_tiles")
-		DirAccess.make_dir_recursive_absolute(tiles_out_dir)
-		var atlas := Image.create(TILE_TEXTURE_SIZE * _tile_images.size(), TILE_TEXTURE_SIZE, false, Image.FORMAT_RGBA8)
-		for i in _tile_images.size():
-			atlas.blit_rect(_tile_images[i], Rect2i(Vector2i.ZERO, Vector2i(TILE_TEXTURE_SIZE, TILE_TEXTURE_SIZE)), Vector2i(i * TILE_TEXTURE_SIZE, 0))
-		atlas.save_png(tiles_out_dir.path_join("tag_tiles.png"))
-		var f3 := FileAccess.open(tiles_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
-		if f3:
-			f3.store_string(TILE_INSTRUCTIONS_TEXT)
-		status_parts.append(tiles_out_dir)
-
-		status_label.text = "Publishing tiles..."
-		var tiles_result := await _publish_game_asset("tiles", {"imageBase64": Marshalls.raw_to_base64(atlas.save_png_to_buffer())})
-		publish_parts.append("tiles (v%d)" % tiles_result.get("version", 0) if tiles_result.get("ok", false) else "tiles failed: %s" % tiles_result.get("error", ""))
-
 	if not _icon_images.is_empty():
 		var icons_out_dir := base_dir.path_join("edited_icons")
 		DirAccess.make_dir_recursive_absolute(icons_out_dir)
@@ -2070,6 +1862,31 @@ func _on_export_pressed() -> void:
 			status_label.text = "Publishing mode button art..."
 			var buttons_result := await _publish_game_asset("mode_buttons", {"images": images_payload})
 			publish_parts.append("mode buttons (v%d)" % buttons_result.get("version", 0) if buttons_result.get("ok", false) else "mode buttons failed: %s" % buttons_result.get("error", ""))
+
+	if not _background_images.is_empty():
+		# Same one-file-per-key shape as mode button art, just a different
+		# key set/canvas size -- see BACKGROUND_KEYS.
+		var backgrounds_out_dir := base_dir.path_join("edited_icons/backgrounds")
+		DirAccess.make_dir_recursive_absolute(backgrounds_out_dir)
+		for i in _background_images.size():
+			_background_images[i].save_png(backgrounds_out_dir.path_join("%s.png" % BACKGROUND_KEYS[i]))
+		var f6 := FileAccess.open(backgrounds_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
+		if f6:
+			f6.store_string(BACKGROUND_INSTRUCTIONS_TEXT)
+		status_parts.append(backgrounds_out_dir)
+
+		# Only send screens actually painted (or already loaded from a prior
+		# override), same reasoning as mode button art above -- exporting
+		# after touching up one screen shouldn't republish the other 13
+		# still-blank canvases over whatever's live.
+		var bg_images_payload := {}
+		for i in _background_images.size():
+			if _image_has_content(_background_images[i]):
+				bg_images_payload[BACKGROUND_KEYS[i]] = Marshalls.raw_to_base64(_background_images[i].save_png_to_buffer())
+		if not bg_images_payload.is_empty():
+			status_label.text = "Publishing menu backgrounds..."
+			var backgrounds_result := await _publish_game_asset("backgrounds", {"images": bg_images_payload})
+			publish_parts.append("backgrounds (v%d)" % backgrounds_result.get("version", 0) if backgrounds_result.get("ok", false) else "backgrounds failed: %s" % backgrounds_result.get("error", ""))
 
 	if status_parts.is_empty():
 		status_label.text = "Nothing to export yet -- create a skin, hat, or trail first."
