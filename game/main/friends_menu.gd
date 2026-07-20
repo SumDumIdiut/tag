@@ -48,8 +48,9 @@ func _ready() -> void:
 	code_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	code_row.add_child(code_edit)
 	var copy_btn := Button.new()
-	copy_btn.text = "Copy"
+	copy_btn.text = "  Copy"
 	UIStyle.style_button(copy_btn, ACCENT, 8)
+	UIStyle.prefix_icon(copy_btn, "copy", ACCENT)
 	copy_btn.pressed.connect(func():
 		DisplayServer.clipboard_set(SkinCatalog.client_id)
 		_status_label.text = "Copied to clipboard."
@@ -64,8 +65,9 @@ func _ready() -> void:
 	_add_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	add_row.add_child(_add_edit)
 	var add_btn := Button.new()
-	add_btn.text = "Add Friend"
+	add_btn.text = "  Add Friend"
 	UIStyle.style_button(add_btn, UIStyle.COLOR_SHOP, 8)
+	UIStyle.prefix_icon(add_btn, "heart", UIStyle.COLOR_SHOP)
 	add_btn.pressed.connect(_on_add_pressed)
 	add_row.add_child(add_btn)
 
@@ -86,6 +88,7 @@ func _ready() -> void:
 	back_btn.text = "Back"
 	back_btn.custom_minimum_size = Vector2(0, 40)
 	UIStyle.style_back_button(back_btn)
+	UIStyle.apply_bar_art(back_btn, "action_bars", "back")
 	back_btn.pressed.connect(_on_back_pressed)
 	vbox.add_child(back_btn)
 

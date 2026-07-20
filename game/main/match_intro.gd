@@ -144,25 +144,7 @@ func _build_vs_layout() -> void:
 	var accent: Color = UIStyle.COLOR_RANKED if _ranked else UIStyle.COLOR_ONLINE
 	UIStyle.style_button(ready_btn, accent, 18)
 	if _ranked:
-		_apply_ready_button_art(ready_btn)
+		UIStyle.apply_bar_art(ready_btn, "ranked_bars", "ready")
 	ready_btn.pressed.connect(_proceed)
 	bottom_box.add_child(ready_btn)
 	skip_button = ready_btn
-
-func _apply_ready_button_art(btn: Button) -> void:
-	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.ranked_bar_override_path("ready"))
-	if not tex:
-		var path := "res://assets/icons/ranked_bars/ready.png"
-		if ResourceLoader.exists(path):
-			tex = load(path)
-	if not tex:
-		return
-	btn.text = ""
-	btn.clip_contents = true
-	var art := TextureRect.new()
-	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	art.texture = tex
-	art.stretch_mode = TextureRect.STRETCH_SCALE
-	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	btn.add_child(art)

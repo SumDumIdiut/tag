@@ -25,6 +25,15 @@ const BACKGROUND_KEYS := [
 ]
 # Mirrors online_menu.gd's 5 bars -- see tools/generate_menu_art.gd.
 const ONLINE_BAR_KEYS := ["quick_play", "ranked", "browse_servers", "host_server", "friends"]
+# Mirrors local_menu.gd's Play Tag button (Back moved to ACTION_BAR_KEYS,
+# shared with every other screen's Back).
+const LOCAL_BAR_KEYS := ["play"]
+# Mirrors match_intro.gd's ranked VS reveal "Ready!" button.
+const RANKED_BAR_KEYS := ["ready"]
+# Mirrors art_tool.gd's ACTION_BAR_KEYS -- one shared image per key reused
+# across every screen that has that button (see ui/ui_style.gd's
+# apply_bar_art).
+const ACTION_BAR_KEYS := ["back", "connect", "watch", "host_server", "ready", "start_match", "login", "create_account", "logout"]
 
 # Multi-key categories publish as one file per key (like mode_buttons/
 # backgrounds/online_bars) rather than a single shared atlas image (like
@@ -35,6 +44,9 @@ const MULTI_KEY_CATEGORIES := {
 	"mode_buttons": [MODE_BUTTON_KEYS, GameAssetOverrides.mode_button_override_path],
 	"backgrounds": [BACKGROUND_KEYS, GameAssetOverrides.background_override_path],
 	"online_bars": [ONLINE_BAR_KEYS, GameAssetOverrides.online_bar_override_path],
+	"local_bars": [LOCAL_BAR_KEYS, GameAssetOverrides.local_bar_override_path],
+	"ranked_bars": [RANKED_BAR_KEYS, GameAssetOverrides.ranked_bar_override_path],
+	"action_bars": [ACTION_BAR_KEYS, GameAssetOverrides.action_bar_override_path],
 }
 
 func check() -> void:

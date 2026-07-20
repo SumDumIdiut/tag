@@ -20,6 +20,7 @@ const MODE_BUTTON_OUT_DIR := "res://assets/icons/mode_buttons"
 const ONLINE_BAR_OUT_DIR := "res://assets/icons/online_bars"
 const LOCAL_BAR_OUT_DIR := "res://assets/icons/local_bars"
 const RANKED_BAR_OUT_DIR := "res://assets/icons/ranked_bars"
+const ACTION_BAR_OUT_DIR := "res://assets/icons/action_bars"
 
 const BG_TOP := Color(0.106, 0.11, 0.157)
 const BG_MID := Color(0.07, 0.075, 0.11)
@@ -50,8 +51,6 @@ const BAR_DESIGN_SIZE := Vector2i(34, 58) # 5x upscale
 # design height).
 const PLAY_FINAL_SIZE := Vector2i(380, 64)
 const PLAY_DESIGN_SIZE := Vector2i(142, 24)
-const BACK_FINAL_SIZE := Vector2i(380, 36)
-const BACK_DESIGN_SIZE := Vector2i(168, 16)
 # The ranked VS reveal screen (match_intro.gd) gets a busier background than
 # every other screen -- 192x108 instead of the standard 144x81 gives the
 # light-ray/corner-flourish detail enough room to actually read once
@@ -60,12 +59,35 @@ const RANKED_VS_BG_DESIGN_SIZE := Vector2i(192, 108)
 const READY_FINAL_SIZE := Vector2i(320, 64)
 const READY_DESIGN_SIZE := Vector2i(120, 24)
 
+# One shared category for every plain full-width utility bar across the app
+# that isn't already covered by a more specific category above (server
+# browser's Connect/Watch, host setup's Host Server, lobby room's Ready/
+# Start Match, login screen's Log In/Create Account/Log Out, and "back" --
+# reused as-is for every Back/Cancel/Leave button in the app, since they're
+# all the same "exit this screen" action regardless of screen). Data-driven
+# (one entry per button) rather than one hand-written call per button, since
+## there are a dozen of these and they're otherwise identical in shape.
+const ACTION_BAR_FINAL_SIZE := Vector2i(380, 44)
+const ACTION_BAR_DESIGN_SIZE := Vector2i(168, 20)
+const ACTION_BARS := {
+	"back": {"color": COLOR_NEUTRAL, "icon": "back_arrow", "label": "Back"},
+	"connect": {"color": COLOR_ONLINE, "icon": "link", "label": "Connect"},
+	"watch": {"color": COLOR_ONLINE, "icon": "eye", "label": "Watch"},
+	"host_server": {"color": COLOR_ONLINE, "icon": "gear", "label": "Host Server"},
+	"ready": {"color": COLOR_ONLINE, "icon": "check", "label": "Ready"},
+	"start_match": {"color": COLOR_ONLINE, "icon": "play", "label": "Start Match"},
+	"login": {"color": COLOR_SHOP, "icon": "door", "label": "Log In"},
+	"create_account": {"color": COLOR_ONLINE, "icon": "plus", "label": "Create Account"},
+	"logout": {"color": COLOR_RANKED, "icon": "back_arrow", "label": "Log Out"},
+}
+
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BACKGROUND_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MODE_BUTTON_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(ONLINE_BAR_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(LOCAL_BAR_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(RANKED_BAR_OUT_DIR))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(ACTION_BAR_OUT_DIR))
 
 	# No central icon here (unlike every other screen) -- the real UI
 	# already places two big Online/Local cards front-and-center over this
@@ -103,11 +125,11 @@ func _ready() -> void:
 	await _make_bar_art(ONLINE_BAR_OUT_DIR, "host_server", COLOR_ONLINE, "gear", "Host Server", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 16)
 	await _make_bar_art(ONLINE_BAR_OUT_DIR, "friends", COLOR_SHOP, "heart", "Friends", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 18)
 
-	# Local menu's Play Tag / Back -- same painted treatment as every other
-	# real button in the app, just in a wide landscape shape instead of the
-	# tall portrait one every other bar/button above uses.
+	# Local menu's Play Tag -- same painted treatment as every other real
+	# button in the app, just in a wide landscape shape instead of the tall
+	# portrait one every other bar/button above uses. Its Back button now
+	# uses the shared action_bars/back.png below, like every other screen.
 	await _make_horizontal_bar_art(LOCAL_BAR_OUT_DIR, "play", COLOR_LOCAL, "play", "Play Tag", PLAY_FINAL_SIZE, PLAY_DESIGN_SIZE, 22)
-	await _make_horizontal_bar_art(LOCAL_BAR_OUT_DIR, "back", COLOR_NEUTRAL, "back_arrow", "Back", BACK_FINAL_SIZE, BACK_DESIGN_SIZE, 16)
 
 	# Ranked "match found" VS reveal (match_intro.gd) -- deliberately busier/
 	# flashier than every other screen's plain banded-sky treatment (light
@@ -116,6 +138,13 @@ func _ready() -> void:
 	# navigation.
 	_make_ranked_vs_background()
 	await _make_horizontal_bar_art(RANKED_BAR_OUT_DIR, "ready", COLOR_RANKED, "crown", "Ready!", READY_FINAL_SIZE, READY_DESIGN_SIZE, 20)
+
+	# Every remaining plain utility bar across the app (server browser,
+	# host setup, lobby room, login screen, and every Back/Cancel/Leave
+	# button anywhere) -- see ACTION_BARS.
+	for key in ACTION_BARS.keys():
+		var def: Dictionary = ACTION_BARS[key]
+		await _make_horizontal_bar_art(ACTION_BAR_OUT_DIR, key, def.color, def.icon, def.label, ACTION_BAR_FINAL_SIZE, ACTION_BAR_DESIGN_SIZE, 18)
 
 	print("GENERATE_DONE")
 	get_tree().quit()
@@ -346,6 +375,11 @@ func _draw_icon(img: Image, icon: String, cx: int, cy: int, r: int, color: Color
 		"faceoff": _icon_faceoff(img, cx, cy, r, color, color2)
 		"play": _icon_play(img, cx, cy, r, color)
 		"back_arrow": _icon_back_arrow(img, cx, cy, r, color)
+		"eye": _icon_eye(img, cx, cy, r, color)
+		"copy": _icon_copy(img, cx, cy, r, color)
+		"check": _icon_check(img, cx, cy, r, color)
+		"send": _icon_send(img, cx, cy, r, color)
+		"plus": _icon_plus(img, cx, cy, r, color)
 
 # ─── Icon library (all operate in small pixel units around cx,cy) ────────
 
@@ -494,6 +528,50 @@ func _icon_play(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
 func _icon_back_arrow(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
 	_px_triangle(img, cx + int(r * 0.5), cy - r, cx + int(r * 0.5), cy + r, cx - r, cy, color)
 	_px_rect(img, cx, cy - 2, int(r * 0.9), 4, color)
+
+## An open eye -- two mirrored curves (approximated as short diagonal
+## strokes, matching this file's other hand-placed-shape icons rather than
+## a true bezier) meeting at points, plus a pupil.
+func _icon_eye(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
+	var w := int(r * 1.4)
+	_px_line(img, cx - w, cy, cx, cy - int(r * 0.6), color)
+	_px_line(img, cx, cy - int(r * 0.6), cx + w, cy, color)
+	_px_line(img, cx - w, cy, cx, cy + int(r * 0.6), color)
+	_px_line(img, cx, cy + int(r * 0.6), cx + w, cy, color)
+	_px_circle(img, cx, cy, int(r * 0.35), color)
+
+## Two overlapping squares (the universal "copy/duplicate" glyph) -- the
+## back one outlined only, the front one filled, so they read as distinct
+## sheets even at small sizes.
+func _icon_copy(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
+	var s := int(r * 1.1)
+	_px_rect(img, cx - int(r * 0.2), cy - r, s, s, color.darkened(0.3))
+	_px_rect(img, cx - int(r * 0.2) + 2, cy - r + 2, s - 4, s - 4, Color(0, 0, 0, 0))
+	_px_rect(img, cx - r, cy - int(r * 0.2), s, s, color)
+
+func _icon_check(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
+	_px_line(img, cx - r, cy, cx - int(r * 0.2), cy + r, color)
+	_px_line(img, cx - int(r * 0.2), cy + r, cx + r, cy - r, color)
+
+## A simple paper-plane triangle (the universal "send" glyph) -- a wide
+## flat-backed arrow pointing up-right.
+func _icon_send(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
+	var pts := PackedVector2Array([
+		Vector2(cx - r, cy + int(r * 0.6)), Vector2(cx + r, cy - r), Vector2(cx + int(r * 0.1), cy + int(r * 0.1)),
+	])
+	draw_poly(img, pts, color)
+	_px_line(img, cx - r, cy + int(r * 0.6), cx + int(r * 0.1), cy + int(r * 0.1), color.darkened(0.3))
+
+func _icon_plus(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
+	var thickness := maxi(2, int(r * 0.35))
+	_px_rect(img, cx - thickness / 2, cy - r, thickness, r * 2, color)
+	_px_rect(img, cx - r, cy - thickness / 2, r * 2, thickness, color)
+
+## draw_colored_polygon needs >=3 points and Image has no built-in polygon
+## fill -- reuses _px_triangle's scanline approach for an arbitrary
+## triangle (the only shape _icon_send needs).
+func draw_poly(img: Image, pts: PackedVector2Array, color: Color) -> void:
+	_px_triangle(img, int(pts[0].x), int(pts[0].y), int(pts[1].x), int(pts[1].y), int(pts[2].x), int(pts[2].y), color)
 
 func _icon_faceoff(img: Image, cx: int, cy: int, r: int, color1: Color, color2: Color) -> void:
 	_px_character(img, cx - r, cy - 4, 9, color1)

@@ -107,6 +107,22 @@ func _draw() -> void:
 	var s: Vector2 = size
 	var c: Vector2 = s * 0.5
 	match icon_type:
+		"team":
+			draw_rect(Rect2(s.x * 0.12, s.y * 0.3, s.x * 0.42, s.y * 0.55), icon_color)
+			draw_rect(Rect2(s.x * 0.46, s.y * 0.15, s.x * 0.42, s.y * 0.55), icon_color.darkened(0.25))
+		"send":
+			var pts := PackedVector2Array([
+				Vector2(0.05, 0.75), Vector2(0.95, 0.05), Vector2(0.4, 0.55),
+			])
+			for i in pts.size():
+				pts[i] = pts[i] * s
+			draw_colored_polygon(pts, icon_color)
+			draw_line(Vector2(0.05, 0.75) * s, Vector2(0.4, 0.55) * s, icon_color.darkened(0.4), line_width * 0.7)
+		"copy":
+			var back_rect := Rect2(s.x * 0.32, s.y * 0.05, s.x * 0.55, s.y * 0.55)
+			draw_rect(back_rect, icon_color.darkened(0.3), false, line_width * 0.6)
+			var front_rect := Rect2(s.x * 0.13, s.y * 0.4, s.x * 0.55, s.y * 0.55)
+			draw_rect(front_rect, icon_color, true)
 		"clock":
 			draw_arc(c, s.x * 0.42, 0.0, TAU, 40, icon_color, line_width)
 			draw_line(c, c + Vector2(0, -s.y * 0.28), icon_color, line_width * 0.8)
