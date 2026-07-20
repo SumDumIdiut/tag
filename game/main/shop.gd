@@ -1,16 +1,16 @@
 extends Control
 
-# Lets a player pick from the shared skin/hat catalogs (built-in skin colors
-# plus any custom images the server has on record) and draw their own. Skin
-# and hat selections are stored server-side (see SkinCatalog) keyed by an
-# anonymous client id -- two independent equip slots, switched between via
-# the tab buttons.
+# Lets a player pick from the shared skin/hat/trail catalogs (built-in skin
+# colors plus any custom images the Art Tool has published). Drawing your
+# own is Art-Tool-only now, not something the client itself offers -- skin
+# and hat/trail selections are stored server-side (see SkinCatalog) keyed
+# by an anonymous client id, three independent equip slots switched
+# between via the tab buttons.
 #
 # Cards are built entirely in code (no per-cosmetic scene files) so adding
 # an item to a catalog is purely a data change -- neutral-toned border, big
 # centered preview art, an EQUIPPED badge on your current pick.
 
-const SKIN_EDITOR_SCENE := preload("res://main/skin_editor.tscn")
 const UIStyle := preload("res://ui/ui_style.gd")
 
 @onready var skin_grid: GridContainer = $VBox/ScrollContainer/SkinGrid
@@ -19,7 +19,6 @@ const UIStyle := preload("res://ui/ui_style.gd")
 @onready var skins_tab_button: Button = $VBox/TabBar/SkinsTabButton
 @onready var hats_tab_button: Button = $VBox/TabBar/HatsTabButton
 @onready var trails_tab_button: Button = $VBox/TabBar/TrailsTabButton
-@onready var draw_button: Button = $VBox/DrawButton
 
 const CARD_SIZE := Vector2(140, 184)
 const BANNER_HEIGHT_FRACTION := 0.3
@@ -33,14 +32,12 @@ func _ready() -> void:
 	UIStyle.style_button(skins_tab_button, UIStyle.COLOR_SHOP, 8)
 	UIStyle.style_button(hats_tab_button, UIStyle.COLOR_SHOP, 8)
 	UIStyle.style_button(trails_tab_button, UIStyle.COLOR_SHOP, 8)
-	UIStyle.style_button(draw_button, UIStyle.COLOR_SHOP)
 	UIStyle.style_back_button(back_button)
 
 	back_button.pressed.connect(_on_back_pressed)
 	skins_tab_button.pressed.connect(func(): _set_mode("skin"))
 	hats_tab_button.pressed.connect(func(): _set_mode("hat"))
 	trails_tab_button.pressed.connect(func(): _set_mode("trail"))
-	draw_button.pressed.connect(_on_draw_pressed)
 	SkinCatalog.catalog_loaded.connect(_refresh_grid)
 	# A custom skin/hat/trail's texture (from a previous session, or one just
 	# added) can still be in flight when this screen opens -- re-render once
@@ -61,7 +58,6 @@ func _set_mode(mode: String) -> void:
 	skins_tab_button.button_pressed = (mode == "skin")
 	hats_tab_button.button_pressed = (mode == "hat")
 	trails_tab_button.button_pressed = (mode == "trail")
-	draw_button.text = "+ Draw a %s" % mode.capitalize()
 	_refresh_grid()
 
 func _refresh_grid() -> void:
@@ -228,13 +224,6 @@ func _on_item_pressed(id: String, kind: String) -> void:
 		_: SkinCatalog.select_skin(id)
 	status_label.text = ""
 	_refresh_grid()
-
-func _on_draw_pressed() -> void:
-	var editor := SKIN_EDITOR_SCENE.instantiate()
-	editor.setup(_mode)
-	get_tree().root.add_child(editor)
-	get_tree().current_scene.queue_free()
-	get_tree().current_scene = editor
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")

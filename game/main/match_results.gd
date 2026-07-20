@@ -36,11 +36,6 @@ func _ready() -> void:
 	continue_button.pressed.connect(_on_continue_pressed)
 	for entry in _ranking:
 		placements_box.add_child(_build_row(entry))
-		# Only the actual winner hears this -- a spectator's _my_peer_id (-1,
-		# see net_game.gd) never matches any real entry's peer_id here, so
-		# they correctly hear nothing.
-		if int(entry.get("peer_id", -1)) == _my_peer_id and int(entry.get("place", 0)) == 1:
-			SFX.play("victory")
 	rank_label.text = "Fetching your updated rank..."
 	_fetch_my_rank()
 

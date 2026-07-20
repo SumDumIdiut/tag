@@ -75,11 +75,6 @@ columns = 4
 theme_override_constants/h_separation = 12
 theme_override_constants/v_separation = 12
 
-[node name="DrawButton" type="Button" parent="VBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 40)
-text = "+ Draw a Skin"
-
 [node name="StatusLabel" type="Label" parent="VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.4, 0.4, 1)

@@ -73,10 +73,10 @@ const TRAIL_WIDTH := 16
 const TRAIL_HEIGHT := 16
 
 const BUILTIN_TRAILS := [
-	{"id": "sparks", "name": "Sparks", "color": Color(0.95, 0.8, 0.25)},
-	{"id": "smoke", "name": "Smoke", "color": Color(0.6, 0.6, 0.65)},
-	{"id": "embers", "name": "Embers", "color": Color(0.85, 0.3, 0.15)},
-	{"id": "frost", "name": "Frost", "color": Color(0.55, 0.8, 0.95)},
+	{"id": "sparks", "name": "Sparks", "shape": "sparks", "color": Color(0.95, 0.8, 0.25)},
+	{"id": "smoke", "name": "Smoke", "shape": "smoke", "color": Color(0.6, 0.6, 0.65)},
+	{"id": "embers", "name": "Embers", "shape": "embers", "color": Color(0.85, 0.3, 0.15)},
+	{"id": "frost", "name": "Frost", "shape": "frost", "color": Color(0.55, 0.8, 0.95)},
 ]
 
 const CHARACTER_SHADE_AMOUNT := 0.18
@@ -335,7 +335,7 @@ func _load_or_paint_trail(id: String) -> Texture2D:
 		if t.id == id:
 			def = t
 			break
-	return ImageTexture.create_from_image(_paint_trail_image(def.get("color", Color.WHITE)))
+	return ImageTexture.create_from_image(_paint_trail_image(def.get("shape", "sparks"), def.get("color", Color.WHITE)))
 
 func _builtin_color(id: String) -> Color:
 	for s in BUILTIN_SKINS:
@@ -426,39 +426,107 @@ func _make_hat_texture(id: String) -> ImageTexture:
 			break
 	return ImageTexture.create_from_image(_paint_hat_image(def.get("shape", "cap"), def.get("color", Color.WHITE)))
 
-## Hats no longer ship with a pre-designed silhouette -- every shape starts
-## as just a plain square outline marking the paintable bounds, and the
-## actual design is entirely up to whoever draws it (see the Art Tool,
-## tools/art_tool.gd). `shape` is kept as a parameter for API stability
-## (BUILTIN_HATS still names 4 independent hat slots to draw into) even
-## though the outline itself doesn't vary by shape.
-func _paint_hat_image(_shape: String, color: Color) -> Image:
+## Each of the 4 hat shapes gets its own recognizable silhouette (a friend
+## can still repaint over any of it via the Art Tool -- this is just the
+## default look rather than a blank outline). `base`/`shade`/`highlight` are
+## either a real per-hat color triple (_paint_hat_image) or the neutral
+## TEMPLATE_* marker triple (paint_hat_template) -- same geometry either way,
+## see paint_character_template for the same pattern on the body.
+func _draw_hat_shape(img: Image, shape: String, base: Color, shade: Color, highlight: Color) -> void:
+	match shape:
+		"beanie":
+			_fill_ellipse(img, 9, 9, 7, 7.5, base)
+			_fill_ellipse(img, 9, 7, 6, 5.5, highlight)
+			_fill_rect(img, 1, 11, 17, 16, base)
+			_fill_rect(img, 1, 11, 17, 13, highlight)
+			_fill_rect(img, 1, 14, 17, 16, shade)
+			_fill_ellipse(img, 9, 1, 1.8, 1.8, highlight)
+		"tophat":
+			_fill_rect(img, 1, 12, 17, 16, shade)
+			_fill_rect(img, 1, 12, 17, 13, highlight)
+			_fill_rect(img, 5, 1, 13, 13, base)
+			_fill_rect(img, 5, 1, 13, 3, highlight)
+			_fill_rect(img, 5, 8, 13, 11, shade)
+		"crown":
+			_fill_rect(img, 2, 10, 16, 16, base)
+			_fill_rect(img, 2, 10, 16, 12, highlight)
+			_fill_rect(img, 2, 13, 16, 16, shade)
+			_fill_triangle_up(img, 5, 2, 10, 2.5, base)
+			_fill_triangle_up(img, 9, 0, 10, 3, base)
+			_fill_triangle_up(img, 13, 2, 10, 2.5, base)
+			_fill_ellipse(img, 5, 3, 1, 1, highlight)
+			_fill_ellipse(img, 9, 1, 1.2, 1.2, highlight)
+			_fill_ellipse(img, 13, 3, 1, 1, highlight)
+			_fill_ellipse(img, 9, 13, 1.4, 1.4, highlight)
+		_: # "cap" and any unrecognized shape fall back to a cap silhouette
+			_fill_ellipse(img, 8, 10, 6.5, 7, base)
+			_fill_ellipse(img, 8, 8, 6, 5, highlight)
+			_fill_rect(img, 9, 11, 18, 14, base)
+			_fill_rect(img, 9, 11, 18, 12, highlight)
+			_fill_rect(img, 9, 13, 18, 14, shade)
+
+func _paint_hat_image(shape: String, color: Color) -> Image:
 	var img := Image.create(HAT_WIDTH, HAT_HEIGHT, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	_stroke_rect(img, 0, 0, HAT_WIDTH, HAT_HEIGHT, color)
+	_draw_hat_shape(img, shape, color, color.darkened(HAT_SHADE_AMOUNT), color.lightened(HAT_HIGHLIGHT_AMOUNT))
 	return img
 
-## Same idea, marker-substituted the same way as paint_character_template.
-func paint_hat_template(_shape: String) -> Image:
+## Same shape, marker-substituted the same way as paint_character_template.
+func paint_hat_template(shape: String) -> Image:
 	var img := Image.create(HAT_WIDTH, HAT_HEIGHT, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	_stroke_rect(img, 0, 0, HAT_WIDTH, HAT_HEIGHT, TEMPLATE_BASE)
+	_draw_hat_shape(img, shape, TEMPLATE_BASE, TEMPLATE_SHADE, TEMPLATE_HIGHLIGHT)
 	return img
 
-## Trails ship the same way hats now do -- no pre-designed silhouette, just a
-## plain square outline marking the paintable bounds, left entirely up to
-## whoever draws it (see the Art Tool).
-func _paint_trail_image(color: Color) -> Image:
+## Same idea as _draw_hat_shape, one recognizable particle silhouette per
+## trail id instead of a blank outline.
+func _draw_trail_shape(img: Image, shape: String, base: Color, shade: Color, highlight: Color) -> void:
+	match shape:
+		"smoke":
+			_fill_ellipse(img, 8, 11, 5, 4, base)
+			_fill_ellipse(img, 7, 10, 2, 1.5, highlight)
+			_fill_ellipse(img, 6, 7, 3.5, 3, base)
+			_fill_ellipse(img, 5, 6, 1.5, 1.2, highlight)
+			var faded := Color(base.r, base.g, base.b, base.a * 0.7)
+			_fill_ellipse(img, 10, 4, 2.2, 2, faded)
+			_fill_ellipse(img, 9, 3, 1, 0.8, highlight)
+		"embers":
+			_fill_ellipse(img, 8, 9, 4.5, 4.5, shade)
+			_fill_ellipse(img, 8, 9, 3, 3, base)
+			_fill_ellipse(img, 8, 9, 1.6, 1.6, highlight)
+			_fill_ellipse(img, 3, 3, 0.9, 0.9, base)
+			_fill_ellipse(img, 13, 4, 0.7, 0.7, highlight)
+		"frost":
+			_fill_triangle_up(img, 8, 2, 8, 5, base)
+			_fill_triangle_down(img, 8, 14, 8, 5, base)
+			_fill_triangle_up(img, 8, 4, 8, 2.5, highlight)
+			_fill_triangle_down(img, 8, 12, 8, 2.5, highlight)
+			_fill_ellipse(img, 2, 8, 1, 1, base)
+			_fill_ellipse(img, 14, 8, 1, 1, base)
+			_fill_ellipse(img, 8, 8, 1, 1, highlight)
+		_: # "sparks" and any unrecognized shape fall back to a spark burst
+			_fill_rect(img, 7, 1, 9, 6, base)
+			_fill_rect(img, 7, 10, 9, 15, base)
+			_fill_rect(img, 1, 7, 6, 9, base)
+			_fill_rect(img, 10, 7, 15, 9, base)
+			_fill_ellipse(img, 8, 8, 2.2, 2.2, base)
+			_fill_ellipse(img, 8, 8, 1.1, 1.1, highlight)
+			_fill_ellipse(img, 3, 3, 0.8, 0.8, highlight)
+			_fill_ellipse(img, 13, 3, 0.8, 0.8, highlight)
+			_fill_ellipse(img, 3, 13, 0.8, 0.8, highlight)
+			_fill_ellipse(img, 13, 13, 0.8, 0.8, highlight)
+
+func _paint_trail_image(shape: String, color: Color) -> Image:
 	var img := Image.create(TRAIL_WIDTH, TRAIL_HEIGHT, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	_stroke_rect(img, 0, 0, TRAIL_WIDTH, TRAIL_HEIGHT, color)
+	_draw_trail_shape(img, shape, color, color.darkened(HAT_SHADE_AMOUNT), color.lightened(HAT_HIGHLIGHT_AMOUNT))
 	return img
 
 ## Same idea, marker-substituted the same way as paint_hat_template.
-func paint_trail_template() -> Image:
+func paint_trail_template(shape: String) -> Image:
 	var img := Image.create(TRAIL_WIDTH, TRAIL_HEIGHT, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	_stroke_rect(img, 0, 0, TRAIL_WIDTH, TRAIL_HEIGHT, TEMPLATE_BASE)
+	_draw_trail_shape(img, shape, TEMPLATE_BASE, TEMPLATE_SHADE, TEMPLATE_HIGHLIGHT)
 	return img
 
 ## Turns an edited template into a real, per-color image: marker regions
@@ -505,15 +573,6 @@ func _fill_rect(img: Image, x0: int, y0: int, x1: int, y1: int, color: Color) ->
 		for x in range(maxi(x0, 0), mini(x1, img.get_width())):
 			img.set_pixel(x, y, color)
 
-## A 1px rectangular border (not filled) -- used for the hat templates,
-## which mark their paintable bounds as an outline for a friend to draw
-## into rather than a pre-made silhouette.
-func _stroke_rect(img: Image, x0: int, y0: int, x1: int, y1: int, color: Color, thickness: int = 1) -> void:
-	_fill_rect(img, x0, y0, x1, y0 + thickness, color)
-	_fill_rect(img, x0, y1 - thickness, x1, y1, color)
-	_fill_rect(img, x0, y0, x0 + thickness, y1, color)
-	_fill_rect(img, x1 - thickness, y0, x1, y1, color)
-
 func _fill_ellipse(img: Image, cx: float, cy: float, rx: float, ry: float, color: Color) -> void:
 	var x0 := maxi(int(cx - rx - 1.0), 0)
 	var x1 := mini(int(cx + rx + 1.0), img.get_width())
@@ -525,6 +584,28 @@ func _fill_ellipse(img: Image, cx: float, cy: float, rx: float, ry: float, color
 			var dy := (y + 0.5 - cy) / ry
 			if dx * dx + dy * dy <= 1.0:
 				img.set_pixel(x, y, color)
+
+## A solid triangle with its point at the top (apex_y) widening down to
+## base_y -- used for the crown's spikes and the frost trail's upper facet.
+func _fill_triangle_up(img: Image, apex_x: float, apex_y: float, base_y: float, half_width: float, color: Color) -> void:
+	var h := base_y - apex_y
+	if h <= 0:
+		return
+	for y in range(int(apex_y), int(base_y) + 1):
+		var t := (y - apex_y) / h
+		var w := half_width * t
+		_fill_rect(img, int(apex_x - w), y, int(apex_x + w) + 1, y + 1, color)
+
+## Same as _fill_triangle_up but pointing down -- the base sits at base_y and
+## it narrows to a point at apex_y (apex_y > base_y).
+func _fill_triangle_down(img: Image, apex_x: float, apex_y: float, base_y: float, half_width: float, color: Color) -> void:
+	var h := apex_y - base_y
+	if h <= 0:
+		return
+	for y in range(int(base_y), int(apex_y) + 1):
+		var t := (y - base_y) / h
+		var w := half_width * (1.0 - t)
+		_fill_rect(img, int(apex_x - w), y, int(apex_x + w) + 1, y + 1, color)
 
 func _fetch_custom_texture(id: String) -> void:
 	if _fetch_in_flight.has(id):
