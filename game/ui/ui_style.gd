@@ -73,6 +73,12 @@ static func style_button(btn: Button, color: Color, radius: int = 10, grow: bool
 	btn.add_theme_stylebox_override("normal", button_box(color, 0.14, 0.35, radius))
 	btn.add_theme_stylebox_override("hover", button_box(color, 0.26, 0.75, radius))
 	btn.add_theme_stylebox_override("pressed", button_box(color, 0.4, 1.0, radius))
+	# A toggled-on button that's still under the mouse (e.g. right after you
+	# click it) uses this state, not "pressed" -- left unset, it fell back to
+	# the engine's default theme box, which has different border/padding
+	# than button_box() and made the button visibly resize/jump the instant
+	# it became both selected and hovered.
+	btn.add_theme_stylebox_override("hover_pressed", button_box(color, 0.4, 1.0, radius))
 	btn.add_theme_stylebox_override("focus", button_box(color, 0.26, 0.75, radius))
 	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	btn.clip_contents = false

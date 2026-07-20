@@ -458,12 +458,17 @@ func _draw_hat_shape(img: Image, shape: String, base: Color, shade: Color, highl
 			_fill_ellipse(img, 9, 1, 1.2, 1.2, highlight)
 			_fill_ellipse(img, 13, 3, 1, 1, highlight)
 			_fill_ellipse(img, 9, 13, 1.4, 1.4, highlight)
-		_: # "cap" and any unrecognized shape fall back to a cap silhouette
-			_fill_ellipse(img, 8, 10, 6.5, 7, base)
-			_fill_ellipse(img, 8, 8, 6, 5, highlight)
-			_fill_rect(img, 9, 11, 18, 14, base)
-			_fill_rect(img, 9, 11, 18, 12, highlight)
-			_fill_rect(img, 9, 13, 18, 14, shade)
+		_: # "cap" and any unrecognized shape fall back to a cap silhouette,
+			# drawn front-on (round dome + a centered brim below it) rather
+			# than the traditional side-profile bill -- a side bill kept
+			# reading as "leaning off the head" no matter how it was
+			# centered at this canvas size, unlike the other 3 hats which
+			# are naturally left/right symmetric.
+			_fill_ellipse(img, 9, 8, 6, 6.5, base)
+			_fill_ellipse(img, 9, 6, 5, 4.5, highlight)
+			_fill_rect(img, 4, 12, 14, 15, base)
+			_fill_rect(img, 4, 12, 14, 13, highlight)
+			_fill_rect(img, 4, 14, 14, 15, shade)
 
 func _paint_hat_image(shape: String, color: Color) -> Image:
 	var img := Image.create(HAT_WIDTH, HAT_HEIGHT, false, Image.FORMAT_RGBA8)
