@@ -8,19 +8,17 @@ const UpdatePromptScene := preload("res://ui/update_prompt.gd")
 const GameAssetUpdaterScript := preload("res://net/game_asset_updater.gd")
 const GameAssetUpdatePromptScene := preload("res://ui/game_asset_update_prompt.gd")
 
-# Three top-level destinations, each fanning out to its own related
-# sub-screens instead of a flat list of five unrelated modes: ONLINE now
-# covers everything network-related (quick play, ranked, browse/host/direct
-# connect -- see online_menu.tscn), LOCAL is bot practice, SANDBOX is the
-# raw movement-testing arena (movement_test.tscn), promoted out of Local's
-# menu to stand on its own. Shop doesn't fit "a mode to play" so it isn't
-# one of the three bars -- see the small corner button built in _ready()
-# instead. skin/hat pick which real in-game character (see CharacterPreview)
-# fronts each bar -- built-in skin colors line up 1:1 with the bar accents.
+# Two top-level destinations, each fanning out to its own related
+# sub-screens instead of a flat list of unrelated modes: ONLINE covers
+# everything network-related (quick play, ranked, browse/host/direct
+# connect -- see online_menu.tscn), LOCAL is bot practice. Shop doesn't fit
+# "a mode to play" so it isn't one of the bars -- see the small corner
+# button built in _ready() instead. skin/hat pick which real in-game
+# character (see CharacterPreview) fronts each bar -- built-in skin colors
+# line up 1:1 with the bar accents.
 const MODES := [
 	{"key": "online", "label": "ONLINE", "icon": "globe", "color": UIStyle.COLOR_ONLINE, "skin": "green", "hat": "", "scene": "res://main/online_menu.tscn"},
 	{"key": "local", "label": "LOCAL", "icon": "controller", "color": UIStyle.COLOR_LOCAL, "skin": "blue", "hat": "", "scene": "res://main/local_menu.tscn"},
-	{"key": "sandbox", "label": "SANDBOX", "icon": "box", "color": UIStyle.COLOR_SANDBOX, "skin": "teal", "hat": "", "scene": "res://main/movement_test.tscn"},
 ]
 
 const BAR_SIZE := Vector2(190, 360)
@@ -122,7 +120,7 @@ func _build_bar(mode: Dictionary) -> Button:
 	# before the hover animation kicks in.
 	var glow := TextureRect.new()
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	glow.texture = _glow_texture(color)
+	glow.texture = UIStyle.glow_texture(color)
 	glow.stretch_mode = TextureRect.STRETCH_SCALE
 	glow.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	glow.position = Vector2(-85, -10)
@@ -157,18 +155,6 @@ func _build_bar(mode: Dictionary) -> Button:
 	layout.add_child(label)
 
 	return btn
-
-func _glow_texture(color: Color) -> GradientTexture2D:
-	var grad := Gradient.new()
-	grad.colors = PackedColorArray([Color(color.r, color.g, color.b, 0.35), Color(color.r, color.g, color.b, 0.0)])
-	var tex := GradientTexture2D.new()
-	tex.gradient = grad
-	tex.fill = GradientTexture2D.FILL_RADIAL
-	tex.fill_from = Vector2(0.5, 0.5)
-	tex.fill_to = Vector2(1.0, 0.5)
-	tex.width = 170
-	tex.height = 170
-	return tex
 
 ## A small persistent button, not one of the three mode bars -- customizing
 ## your character isn't itself "a mode to play," it's available no matter
