@@ -106,6 +106,24 @@ A mode with no file here just keeps using the procedural fallback -- you
 don't need to paint both at once.
 """
 
+const ACTION_BAR_INSTRUCTIONS_TEXT := """Each file here is one shared utility button's ENTIRE art -- icon, label,
+background, everything -- painted at 380x44. The same file is reused on
+every screen that has that button (e.g. back.png shows up as Back,
+Cancel, and Leave everywhere), so painting one image touches many screens
+at once.
+
+To make one of these the game's real button art:
+
+  1. Copy the file to game/assets/icons/action_bars/<key>.png, matching
+     the file's own name here (back.png, connect.png, etc).
+  2. Commit the file -- no rebuild step needed, every screen using that
+     key checks for it at runtime and uses it in place of the plain
+     flat-colored button automatically.
+
+A button with no file here just keeps using the plain flat-colored
+fallback -- you don't need to paint all nine at once.
+"""
+
 const BACKGROUND_INSTRUCTIONS_TEXT := """Each file here is one menu screen's ENTIRE background, painted at
 1152x648, the game's real viewport size.
 
@@ -271,6 +289,22 @@ const BACKGROUND_ZOOM := 1 # already full game-viewport size, no per-pixel zoom 
 var _background_images: Array[Image] = [] # index-matched to BACKGROUND_KEYS
 var _current_background_index := -1
 var _background_select_buttons: Array[Button] = []
+
+# Every plain full-width utility bar shared across many screens at once
+# (Back/Cancel/Leave everywhere, server browser's Connect/Watch, host
+# setup's Host Server, lobby room's Start Match, login screen's Log In/
+# Create Account/Log Out) -- see tools/generate_menu_art.gd's ACTION_BARS
+# for the same key set/order this must stay in sync with, one whole-bar
+# image each (not a shared atlas), same shape as mode button art above.
+const ACTION_BAR_KEYS := ["back", "connect", "watch", "host_server", "ready", "start_match", "login", "create_account", "logout"]
+const ACTION_BAR_NAMES := ["Back", "Connect", "Watch", "Host Server", "Ready", "Start Match", "Log In", "Create Account", "Log Out"]
+const ACTION_BAR_SIZE := Vector2i(380, 44) # matches generate_menu_art.gd's ACTION_BAR_FINAL_SIZE
+const ACTION_BAR_ART_DIR := "res://assets/icons/action_bars"
+const ACTION_BAR_ZOOM := 2
+var _action_bar_images: Array[Image] = [] # index-matched to ACTION_BAR_KEYS
+var _current_action_bar_index := -1
+var _action_bar_select_buttons: Array[Button] = []
+
 var _import_file_dialog: FileDialog
 
 func _ready() -> void:
@@ -1411,6 +1445,25 @@ func _build_icons_page() -> void:
 		select_box.add_child(btn)
 		_background_select_buttons.append(btn)
 
+	var action_bar_spacer := Control.new()
+	action_bar_spacer.custom_minimum_size = Vector2(0, 8)
+	select_box.add_child(action_bar_spacer)
+
+	# Same shared ButtonGroup again -- picking an action button here
+	# deselects whichever icon/mode button/background was active.
+	select_box.add_child(_section_label("ACTION BUTTON ART"))
+	_action_bar_select_buttons.clear()
+	for i in ACTION_BAR_NAMES.size():
+		var btn := Button.new()
+		btn.text = ACTION_BAR_NAMES[i]
+		btn.toggle_mode = true
+		btn.button_group = icon_group
+		btn.custom_minimum_size = Vector2(0, 32)
+		UIStyle.style_button(btn, UIStyle.COLOR_ONLINE, 10, false)
+		btn.pressed.connect(_show_action_bar.bind(i))
+		select_box.add_child(btn)
+		_action_bar_select_buttons.append(btn)
+
 	var canvas_panel := PanelContainer.new()
 	canvas_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	canvas_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1487,6 +1540,7 @@ func _build_icons_page() -> void:
 	_load_icon_images()
 	_load_button_art_images()
 	_load_background_images()
+	_load_action_bar_images()
 	_show_icon(0)
 	_icon_select_buttons[0].button_pressed = true
 
@@ -1516,12 +1570,15 @@ func _show_icon(index: int) -> void:
 	_current_icon_index = index
 	_current_button_art_index = -1
 	_current_background_index = -1
+	_current_action_bar_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = (i == index)
 	for i in _button_art_select_buttons.size():
 		_button_art_select_buttons[i].button_pressed = false
 	for i in _background_select_buttons.size():
 		_background_select_buttons[i].button_pressed = false
+	for i in _action_bar_select_buttons.size():
+		_action_bar_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1561,12 +1618,15 @@ func _show_button_art(index: int) -> void:
 	_current_button_art_index = index
 	_current_icon_index = -1
 	_current_background_index = -1
+	_current_action_bar_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
 	for i in _button_art_select_buttons.size():
 		_button_art_select_buttons[i].button_pressed = (i == index)
 	for i in _background_select_buttons.size():
 		_background_select_buttons[i].button_pressed = false
+	for i in _action_bar_select_buttons.size():
+		_action_bar_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1602,12 +1662,15 @@ func _show_background(index: int) -> void:
 	_current_background_index = index
 	_current_icon_index = -1
 	_current_button_art_index = -1
+	_current_action_bar_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
 	for i in _button_art_select_buttons.size():
 		_button_art_select_buttons[i].button_pressed = false
 	for i in _background_select_buttons.size():
 		_background_select_buttons[i].button_pressed = (i == index)
+	for i in _action_bar_select_buttons.size():
+		_action_bar_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1615,6 +1678,49 @@ func _show_background(index: int) -> void:
 	icons_canvas_holder.add_child(canvas)
 	canvas.painted.connect(_on_painted)
 	canvas.painted.connect(func(): _background_images[index] = canvas.image)
+	canvas.color_picked.connect(_on_eyedropper_picked)
+	_current_canvas = canvas
+	_apply_tool_state()
+
+## Loads each shared utility bar's whole-button art (see ACTION_BAR_KEYS)
+## if it's already been painted and committed, else a blank transparent
+## ACTION_BAR_SIZE canvas -- same "always something real or an honest
+## blank canvas" rule every other section on this page follows.
+func _load_action_bar_images() -> void:
+	_action_bar_images.clear()
+	for key in ACTION_BAR_KEYS:
+		var path := "%s/%s.png" % [ACTION_BAR_ART_DIR, key]
+		var img: Image
+		if ResourceLoader.exists(path):
+			var tex: Texture2D = load(path)
+			img = tex.get_image() if tex else null
+			if img:
+				img.convert(Image.FORMAT_RGBA8)
+		if not img:
+			img = Image.create(ACTION_BAR_SIZE.x, ACTION_BAR_SIZE.y, false, Image.FORMAT_RGBA8)
+			img.fill(Color(0, 0, 0, 0))
+		_action_bar_images.append(img)
+
+func _show_action_bar(index: int) -> void:
+	_current_action_bar_index = index
+	_current_icon_index = -1
+	_current_button_art_index = -1
+	_current_background_index = -1
+	for i in _icon_select_buttons.size():
+		_icon_select_buttons[i].button_pressed = false
+	for i in _button_art_select_buttons.size():
+		_button_art_select_buttons[i].button_pressed = false
+	for i in _background_select_buttons.size():
+		_background_select_buttons[i].button_pressed = false
+	for i in _action_bar_select_buttons.size():
+		_action_bar_select_buttons[i].button_pressed = (i == index)
+	for child in icons_canvas_holder.get_children():
+		icons_canvas_holder.remove_child(child)
+		child.queue_free()
+	var canvas = PixelCanvasScene.new(_action_bar_images[index], ACTION_BAR_ZOOM)
+	icons_canvas_holder.add_child(canvas)
+	canvas.painted.connect(_on_painted)
+	canvas.painted.connect(func(): _action_bar_images[index] = canvas.image)
 	canvas.color_picked.connect(_on_eyedropper_picked)
 	_current_canvas = canvas
 	_apply_tool_state()
@@ -1887,6 +1993,28 @@ func _on_export_pressed() -> void:
 			status_label.text = "Publishing menu backgrounds..."
 			var backgrounds_result := await _publish_game_asset("backgrounds", {"images": bg_images_payload})
 			publish_parts.append("backgrounds (v%d)" % backgrounds_result.get("version", 0) if backgrounds_result.get("ok", false) else "backgrounds failed: %s" % backgrounds_result.get("error", ""))
+
+	if not _action_bar_images.is_empty():
+		# Same one-file-per-key shape as mode button art -- see ACTION_BAR_KEYS.
+		var action_bars_out_dir := base_dir.path_join("edited_icons/action_bars")
+		DirAccess.make_dir_recursive_absolute(action_bars_out_dir)
+		for i in _action_bar_images.size():
+			_action_bar_images[i].save_png(action_bars_out_dir.path_join("%s.png" % ACTION_BAR_KEYS[i]))
+		var f7 := FileAccess.open(action_bars_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
+		if f7:
+			f7.store_string(ACTION_BAR_INSTRUCTIONS_TEXT)
+		status_parts.append(action_bars_out_dir)
+
+		# Only send buttons actually painted (or already loaded from a prior
+		# override), same reasoning as mode button art/backgrounds above.
+		var action_bar_images_payload := {}
+		for i in _action_bar_images.size():
+			if _image_has_content(_action_bar_images[i]):
+				action_bar_images_payload[ACTION_BAR_KEYS[i]] = Marshalls.raw_to_base64(_action_bar_images[i].save_png_to_buffer())
+		if not action_bar_images_payload.is_empty():
+			status_label.text = "Publishing action button art..."
+			var action_bars_result := await _publish_game_asset("action_bars", {"images": action_bar_images_payload})
+			publish_parts.append("action buttons (v%d)" % action_bars_result.get("version", 0) if action_bars_result.get("ok", false) else "action buttons failed: %s" % action_bars_result.get("error", ""))
 
 	if status_parts.is_empty():
 		status_label.text = "Nothing to export yet -- create a skin, hat, or trail first."

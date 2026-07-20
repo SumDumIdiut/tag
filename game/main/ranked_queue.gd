@@ -36,6 +36,7 @@ func _ready() -> void:
 	UIStyle.add_background(self, "ranked_queue")
 	$VBox/StatusPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_RANKED))
 	UIStyle.style_back_button(back_button)
+	UIStyle.apply_bar_art(back_button, "action_bars", "back")
 	_setup_pulsing_icon()
 	if PlaylistCatalog.is_team_mode(_playlist_id):
 		_build_team_view()
@@ -83,6 +84,7 @@ func _build_team_view() -> void:
 	cancel_btn.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	cancel_btn.position = Vector2(-100, -50)
 	UIStyle.style_back_button(cancel_btn)
+	UIStyle.apply_bar_art(cancel_btn, "action_bars", "back")
 	cancel_btn.pressed.connect(_on_back_pressed)
 	add_child(cancel_btn)
 

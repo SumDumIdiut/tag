@@ -108,7 +108,7 @@ const MAX_LEVEL_UPLOAD_BYTES = 150 * 1024;
 const GAME_ASSETS_DIR = path.join(DATA_DIR, 'game_assets');
 const GAME_ASSETS_MANIFEST_PATH = path.join(DATA_DIR, 'game_assets_manifest.json');
 const ASSET_PUBLISH_KEY = process.env.ASSET_PUBLISH_KEY || '';
-const GAME_ASSET_CATEGORIES = ['icons', 'mode_buttons', 'backgrounds', 'online_bars'];
+const GAME_ASSET_CATEGORIES = ['icons', 'mode_buttons', 'backgrounds', 'online_bars', 'local_bars', 'ranked_bars', 'action_bars'];
 const MODE_BUTTON_KEYS = ['online', 'local']; // mirrors art_tool.gd's MODE_BUTTON_KEYS
 // Mirrors art_tool.gd's BACKGROUND_KEYS -- every menu screen with a
 // paintable background (see game/ui/ui_style.gd's add_background).
@@ -119,6 +119,15 @@ const BACKGROUND_KEYS = [
 ];
 // Mirrors game/main/online_menu.gd's 5 bars.
 const ONLINE_BAR_KEYS = ['quick_play', 'ranked', 'browse_servers', 'host_server', 'friends'];
+// Mirrors tools/generate_menu_art.gd's local_menu Play Tag button (Back
+// moved to action_bars below, shared with every other screen's Back).
+const LOCAL_BAR_KEYS = ['play'];
+// Mirrors match_intro.gd's ranked VS reveal "Ready!" button.
+const RANKED_BAR_KEYS = ['ready'];
+// Mirrors art_tool.gd's ACTION_BAR_KEYS -- one shared image per key reused
+// across every screen that has that button (see ui/ui_style.gd's
+// apply_bar_art).
+const ACTION_BAR_KEYS = ['back', 'connect', 'watch', 'host_server', 'ready', 'start_match', 'login', 'create_account', 'logout'];
 // Categories that publish as one file per key (like a per-key subfolder)
 // rather than a single shared atlas image (like icons/tiles) -- maps each
 // to its key list so the publish/download routes below don't need one
@@ -127,6 +136,9 @@ const MULTI_KEY_CATEGORIES = {
   mode_buttons: MODE_BUTTON_KEYS,
   backgrounds: BACKGROUND_KEYS,
   online_bars: ONLINE_BAR_KEYS,
+  local_bars: LOCAL_BAR_KEYS,
+  ranked_bars: RANKED_BAR_KEYS,
+  action_bars: ACTION_BAR_KEYS,
 };
 // A full-screen background (1152x648, far bigger than any icon/mode-button
 // canvas) needs more headroom than those -- bumped along with the

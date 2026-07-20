@@ -22,6 +22,11 @@ func _ready() -> void:
 	UIStyle.style_button(ready_button, UIStyle.COLOR_ONLINE)
 	UIStyle.style_button(start_button, UIStyle.COLOR_ONLINE)
 	UIStyle.style_back_button(leave_button)
+	# ready_button intentionally has no painted art -- its label toggles
+	# between "Ready"/"Unready" (see _on_ready_pressed), which baked art
+	# can't represent for both states.
+	UIStyle.apply_bar_art(start_button, "action_bars", "start_match")
+	UIStyle.apply_bar_art(leave_button, "action_bars", "back")
 
 	ready_button.pressed.connect(_on_ready_pressed)
 	start_button.pressed.connect(_on_start_pressed)
@@ -60,10 +65,11 @@ func _build_chat_panel() -> void:
 	_chat_input.text_submitted.connect(func(_t): _send_chat())
 	row.add_child(_chat_input)
 	var send_btn := Button.new()
-	send_btn.text = "Send"
+	send_btn.text = "  Send"
 	UIStyle.style_button(send_btn, UIStyle.COLOR_ONLINE, 8)
 	send_btn.pressed.connect(_send_chat)
 	row.add_child(send_btn)
+	UIStyle.prefix_icon(send_btn, "send", UIStyle.COLOR_ONLINE)
 
 	var vbox: VBoxContainer = roster_list.get_parent()
 	vbox.add_child(panel)

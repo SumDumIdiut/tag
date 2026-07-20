@@ -35,6 +35,9 @@ func _ready() -> void:
 	UIStyle.style_button(connect_button, UIStyle.COLOR_ONLINE)
 	UIStyle.style_button(watch_button, UIStyle.COLOR_NEUTRAL)
 	UIStyle.style_back_button(back_button)
+	UIStyle.apply_bar_art(connect_button, "action_bars", "connect")
+	UIStyle.apply_bar_art(watch_button, "action_bars", "watch")
+	UIStyle.apply_bar_art(back_button, "action_bars", "back")
 
 	username_edit.text = GameSettings.saved_username
 	connect_button.pressed.connect(_on_connect_pressed)

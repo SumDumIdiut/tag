@@ -22,6 +22,8 @@ const COLOR_NEUTRAL := Color(0.6, 0.63, 0.72)
 const BG_TOP := Color(0.106, 0.11, 0.157)
 const BG_BOTTOM := Color(0.043, 0.047, 0.075)
 
+const ModeIconScene := preload("res://ui/mode_icon.gd")
+
 ## Matches relay-server/server.js's RANK_TIERS names exactly (case-sensitive
 ## keys straight off /api/ranked/:clientId's "tier" field) -- used anywhere
 ## a tier needs a color, e.g. match_intro.gd's ranked VS screen badges.
@@ -245,6 +247,64 @@ static func panel_box(color: Color = COLOR_NEUTRAL, bg_alpha: float = 0.05, bord
 ## competes with the screen's real primary action for attention.
 static func style_back_button(btn: Button) -> void:
 	style_button(btn, COLOR_NEUTRAL, 8)
+
+## A small colored icon glyph anchored to a button's left edge, over its
+## existing text (which should start with a couple spaces of padding to
+## make room) -- for buttons too narrow for full painted whole-button art
+## to read cleanly (inline actions like a chat Send button or a friend-code
+## Copy button), same "give it a sprite" treatment as everywhere else in
+## the app, at a scale that actually fits. Matches main_menu.gd's corner-
+## button icon_wrap pattern, factored out here now that more than one
+## screen needs it.
+static func prefix_icon(btn: Button, icon_type: String, color: Color) -> void:
+	var icon_wrap := Control.new()
+	icon_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon_wrap.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	icon_wrap.position = Vector2(12, -9)
+	icon_wrap.custom_minimum_size = Vector2(18, 18)
+	var icon := ModeIconScene.new()
+	icon.icon_type = icon_type
+	icon.icon_color = color
+	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	icon_wrap.add_child(icon)
+	btn.add_child(icon_wrap)
+
+## Painted whole-button art if available (a downloaded live-published
+## override first, then whatever got baked into this build at CI time),
+## replacing the button's text with a full-bleed TextureRect -- same
+## fallback chain every painted button in the app already uses (mode bars,
+## online submenu bars, local menu's Play Tag/Back, the ranked VS screen's
+## Ready button). No-op if neither exists, leaving the plain UIStyle-colored
+## button already applied by style_button() as the fallback -- always safe
+## to call speculatively, same "never hard-fail on missing custom content"
+## rule the rest of the project follows.
+static func apply_bar_art(btn: Button, category: String, key: String) -> void:
+	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.bar_override_path(category, key))
+	if not tex:
+		var path := "res://assets/icons/%s/%s.png" % [category, key]
+		if ResourceLoader.exists(path):
+			tex = load(path)
+	if not tex:
+		return
+	btn.text = ""
+	btn.clip_contents = true
+	var art := TextureRect.new()
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art.texture = tex
+	# KEEP_ASPECT_CENTERED, not SCALE -- these buttons range from a narrow
+	# half-width login button to a nearly-full-screen-wide friends-menu Back
+	# button, all sharing the same handful of baked art pieces (deliberately,
+	# to avoid painting a near-duplicate per screen). Force-stretching a
+	# fixed-aspect image across that range visibly warped the icon/text at
+	# the extremes (confirmed by screenshot on friends_menu's Back button --
+	# the arrow and lettering both smeared sideways). Centered-and-preserved
+	# just floats the art as a "pill" on the button's own flat-colored base
+	# (already applied by style_button() before this runs) when the aspect
+	# ratios don't match, which reads fine and never distorts.
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	btn.add_child(art)
 
 static func title_label(text: String, size: int = 40) -> Label:
 	var l := Label.new()

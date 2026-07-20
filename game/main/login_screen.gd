@@ -56,6 +56,7 @@ func _ready() -> void:
 	back_btn.text = "Back"
 	back_btn.custom_minimum_size = Vector2(0, 40)
 	UIStyle.style_back_button(back_btn)
+	UIStyle.apply_bar_art(back_btn, "action_bars", "back")
 	back_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://main/main_menu.tscn"))
 	vbox.add_child(back_btn)
 
@@ -89,6 +90,7 @@ func _build_form_box(parent: VBoxContainer) -> void:
 	login_btn.custom_minimum_size = Vector2(0, 44)
 	login_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UIStyle.style_button(login_btn, ACCENT)
+	UIStyle.apply_bar_art(login_btn, "action_bars", "login")
 	login_btn.pressed.connect(_on_login_pressed)
 	row.add_child(login_btn)
 
@@ -97,6 +99,7 @@ func _build_form_box(parent: VBoxContainer) -> void:
 	register_btn.custom_minimum_size = Vector2(0, 44)
 	register_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UIStyle.style_button(register_btn, UIStyle.COLOR_ONLINE)
+	UIStyle.apply_bar_art(register_btn, "action_bars", "create_account")
 	register_btn.pressed.connect(_on_register_pressed)
 	row.add_child(register_btn)
 
@@ -115,6 +118,7 @@ func _build_logged_in_box(parent: VBoxContainer) -> void:
 	logout_btn.text = "Log Out"
 	logout_btn.custom_minimum_size = Vector2(0, 44)
 	UIStyle.style_button(logout_btn, UIStyle.COLOR_RANKED)
+	UIStyle.apply_bar_art(logout_btn, "action_bars", "logout")
 	logout_btn.pressed.connect(_on_logout_pressed)
 	_logged_in_box.add_child(logout_btn)
 

@@ -28,6 +28,15 @@ static func local_bar_override_path(key: String) -> String:
 static func ranked_bar_override_path(key: String) -> String:
 	return "user://game_assets/ranked_bars/%s.png" % key
 
+static func action_bar_override_path(key: String) -> String:
+	return "user://game_assets/action_bars/%s.png" % key
+
+## Generic form of the category-specific helpers above -- new categories
+## (see UIStyle.apply_bar_art, tools/art_tool.gd's Action Buttons section)
+## use this directly instead of a new one-off wrapper function each time.
+static func bar_override_path(category: String, key: String) -> String:
+	return "user://game_assets/%s/%s.png" % [category, key]
+
 ## Loads a downloaded override PNG straight off disk (not through
 ## ResourceLoader -- these are raw files GameAssetUpdater wrote directly,
 ## never imported into the project) as a ready-to-use Texture2D, or null if

@@ -34,6 +34,7 @@ func _ready() -> void:
 	UIStyle.add_background(self, "quick_play")
 	$VBox/StatusPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_QUICKPLAY))
 	UIStyle.style_back_button(back_button)
+	UIStyle.apply_bar_art(back_button, "action_bars", "back")
 	_setup_pulsing_icon()
 
 	back_button.pressed.connect(_on_back_pressed)

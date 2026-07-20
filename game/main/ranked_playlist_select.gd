@@ -1,6 +1,7 @@
 extends Control
 
 const UIStyle := preload("res://ui/ui_style.gd")
+const ModeIconScene := preload("res://ui/mode_icon.gd")
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 
 @onready var playlist_grid: GridContainer = $VBox/PlaylistGrid
@@ -9,6 +10,7 @@ const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 func _ready() -> void:
 	UIStyle.add_background(self, "ranked_queue")
 	UIStyle.style_back_button(back_button)
+	UIStyle.apply_bar_art(back_button, "action_bars", "back")
 	back_button.pressed.connect(_on_back_pressed)
 
 	for id in PlaylistCatalog.PLAYLIST_ORDER:
@@ -28,6 +30,16 @@ func _build_card(playlist_id: String) -> Button:
 	layout.alignment = BoxContainer.ALIGNMENT_CENTER
 	layout.add_theme_constant_override("separation", 8)
 	btn.add_child(layout)
+
+	var icon_wrap := CenterContainer.new()
+	icon_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon_wrap.custom_minimum_size = Vector2(0, 34)
+	layout.add_child(icon_wrap)
+	var icon := ModeIconScene.new()
+	icon.icon_type = "team" if PlaylistCatalog.is_team_mode(playlist_id) else "tag"
+	icon.icon_color = UIStyle.COLOR_RANKED
+	icon.custom_minimum_size = Vector2(30, 30)
+	icon_wrap.add_child(icon)
 
 	var name_label := Label.new()
 	name_label.text = PlaylistCatalog.display_name(playlist_id)
