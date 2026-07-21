@@ -143,8 +143,6 @@ func _build_vs_layout() -> void:
 	ready_btn.custom_minimum_size = Vector2(320, 64)
 	var accent: Color = UIStyle.COLOR_RANKED if _ranked else UIStyle.COLOR_ONLINE
 	UIStyle.style_button(ready_btn, accent, 18)
-	if _ranked:
-		UIStyle.apply_bar_art(ready_btn, "ranked_bars", "ready")
 	ready_btn.pressed.connect(_proceed)
 	bottom_box.add_child(ready_btn)
 	skip_button = ready_btn

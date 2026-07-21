@@ -27,9 +27,6 @@ func _ready() -> void:
 	UIStyle.style_button(connect_button, UIStyle.COLOR_ONLINE)
 	UIStyle.style_button(spectate_button, UIStyle.COLOR_NEUTRAL)
 	UIStyle.style_back_button(back_button)
-	UIStyle.apply_bar_art(connect_button, "action_bars", "connect")
-	UIStyle.apply_bar_art(spectate_button, "action_bars", "watch")
-	UIStyle.apply_bar_art(back_button, "action_bars", "back")
 	UIStyle.style_line_edit(username_edit)
 	UIStyle.style_line_edit(address_edit)
 

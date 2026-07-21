@@ -90,7 +90,6 @@ func _ready() -> void:
 	back_btn.text = "Back"
 	back_btn.custom_minimum_size = Vector2(0, 40)
 	UIStyle.style_back_button(back_btn)
-	UIStyle.apply_bar_art(back_btn, "action_bars", "back")
 	back_btn.pressed.connect(_on_back_pressed)
 	vbox.add_child(back_btn)
 

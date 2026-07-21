@@ -1,13 +1,10 @@
 extends Node
 
-# Bakes the last remaining runtime-generated UI visuals -- every button's
-# and panel's rounded-border box, and the slider groove/fill -- into real
-# 9-patch PNG source images, so UIStyle.button_box()/panel_box()/
-# style_slider() can render them via StyleBoxTexture (fixed-width border
-# pixels, stretchy middle -- the exact technique this session already
-# proved for LineEdit fields in apply_field_art()) instead of generating a
-# StyleBoxFlat at runtime. "Nothing made at runtime" per the project's own
-# established rule -- these are the pixel-art foundation ui_style.gd's
+# Bakes every button's and panel's rounded-border box, and the slider
+# groove/fill, into real 9-patch PNG source images, so UIStyle.button_box()/
+# panel_box()/style_slider() can render them via StyleBoxTexture
+# (fixed-width border pixels, stretchy middle) instead of generating a
+# StyleBoxFlat at runtime. These are the pixel-art foundation ui_style.gd's
 # art-first rewrite loads from disk.
 #
 # Painted flat white on transparent (button/panel) so ONE shared image

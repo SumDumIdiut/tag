@@ -30,8 +30,6 @@ func _ready() -> void:
 	UIStyle.style_button(start_button, UIStyle.COLOR_LOCAL, 18)
 	start_button.add_theme_font_size_override("font_size", 18)
 	UIStyle.style_back_button(back_button)
-	UIStyle.apply_bar_art(start_button, "local_bars", "play")
-	UIStyle.apply_bar_art(back_button, "action_bars", "back")
 	UIStyle.style_slider(npc_count_slider, UIStyle.COLOR_LOCAL)
 	UIStyle.style_slider(skill_slider, UIStyle.COLOR_LOCAL)
 	UIStyle.style_slider(round_duration_slider, UIStyle.COLOR_LOCAL)

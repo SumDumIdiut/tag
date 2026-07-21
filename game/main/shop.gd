@@ -33,7 +33,6 @@ func _ready() -> void:
 	UIStyle.style_button(hats_tab_button, UIStyle.COLOR_SHOP, 8)
 	UIStyle.style_button(trails_tab_button, UIStyle.COLOR_SHOP, 8)
 	UIStyle.style_back_button(back_button)
-	UIStyle.apply_bar_art(back_button, "action_bars", "back")
 
 	back_button.pressed.connect(_on_back_pressed)
 	skins_tab_button.pressed.connect(func(): _set_mode("skin"))

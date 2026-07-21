@@ -11,12 +11,6 @@ const ModeIconScene := preload("res://ui/mode_icon.gd")
 @onready var direct_connect_button: Button = $VBox/DirectConnectButton
 @onready var back_button: Button = $VBox/BackButton
 
-# Whole-bar custom art (background scene, icon, character, label all
-# painted as one image) for these 4 bars -- same "%s" whole-button-art
-# pattern main_menu.gd's mode buttons already use, just here instead of
-# being 2 top-level modes. "%s" is the bar's own key (see BAR_KEYS below).
-const ONLINE_BAR_ART_PATH := "res://assets/icons/online_bars/%s.png"
-
 var _matchmaker: CasualMatchmaker
 var _overlay: Control
 var _overlay_panel: PanelContainer
@@ -24,9 +18,9 @@ var _overlay_status_label: Label
 
 func _ready() -> void:
 	UIStyle.add_background(self, "online_menu")
-	_style_bar(casual_button, UIStyle.COLOR_QUICKPLAY, "casual", "Casual")
-	_style_bar(ranked_button, UIStyle.COLOR_RANKED, "ranked", "Ranked")
-	_style_bar(private_button, UIStyle.COLOR_ONLINE, "private", "Private")
+	_style_bar(casual_button, UIStyle.COLOR_QUICKPLAY, "Casual")
+	_style_bar(ranked_button, UIStyle.COLOR_RANKED, "Ranked")
+	_style_bar(private_button, UIStyle.COLOR_ONLINE, "Private")
 	UIStyle.style_back_button(back_button)
 	UIStyle.style_button(direct_connect_button, UIStyle.COLOR_NEUTRAL, 12)
 
@@ -37,33 +31,10 @@ func _ready() -> void:
 	back_button.pressed.connect(_on_back_pressed)
 	_build_friends_bar()
 
-## A downloaded override (see game_asset_updater.gd) takes priority over
-## whatever got baked into this build at CI time, same fallback chain
-## main_menu.gd's mode-button art already uses. Falls back to the plain
-## styled button (just text, no art) if neither exists -- never a hard
-## failure for a bar nobody's painted yet.
-func _style_bar(btn: Button, color: Color, key: String, label_text: String) -> void:
+func _style_bar(btn: Button, color: Color, label_text: String) -> void:
 	btn.text = label_text
 	UIStyle.style_button(btn, color, 18)
 	btn.add_theme_font_size_override("font_size", 18)
-
-	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.online_bar_override_path(key))
-	if not tex:
-		var path := ONLINE_BAR_ART_PATH % key
-		if ResourceLoader.exists(path):
-			tex = load(path)
-	if not tex:
-		return
-
-	btn.text = ""
-	btn.clip_contents = true
-	var art := TextureRect.new()
-	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	art.texture = tex
-	art.stretch_mode = TextureRect.STRETCH_SCALE
-	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	btn.add_child(art)
 
 ## Built in code rather than added to the .tscn -- appended as a 4th bar
 ## in BarRow, same "extend an existing hand-authored screen without
@@ -75,7 +46,7 @@ func _build_friends_bar() -> void:
 	friends_button.clip_contents = true
 	friends_button.pressed.connect(func(): get_tree().change_scene_to_file("res://main/friends_menu.tscn"))
 	bar_row.add_child(friends_button)
-	_style_bar(friends_button, UIStyle.COLOR_SHOP, "friends", "Friends")
+	_style_bar(friends_button, UIStyle.COLOR_SHOP, "Friends")
 
 func _on_ranked_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/ranked_playlist_select.tscn")

@@ -1,38 +1,33 @@
 extends Control
 
 # Standalone paint tool, exported as its own executable (TagArtTool.exe, see
-# export_presets.cfg's "Art Tool" preset). Four pages, switched at the top
-# like a dedicated app rather than one cramped screen: PAINT (create/edit
+# export_presets.cfg's "Art Tool" preset). Three pages, switched at the top
+# like a dedicated app rather than one cramped screen: ITEMS (create/edit
 # any number of independent custom skins, hats, and trails -- no pre-made
-# defaults, every one starts as a blank canvas), PREVIEW (a single large render of
-# any skin/hat combination, picked from real dropdowns), LEVEL (paint a
-# tile-based map and publish it live -- see game/levels/level_data.gd; tiles
-# themselves are a single fixed regular tile now, nothing to paint there),
-# and ICONS, which covers three independent things sharing one canvas/
-# toolbar: small mode-bar badge icons (originally 100% procedural CanvasItem
-# drawing with no image asset at all; see ui/mode_icon.gd's atlas-with-
-# procedural-fallback loading), whole mode-button art (an entire main-menu
-# button -- background, character, label, everything -- painted as one
-# 190x360 image per mode, replacing the procedural box outright when
-# present; see main_menu.gd's MODE_BUTTON_ART_PATH), and whole menu-screen
-# backgrounds (a full GAME_VIEWPORT_WIDTH x GAME_VIEWPORT_HEIGHT image per
-# screen, replacing UIStyle.add_background()'s procedural gradient when
-# present). All three support Import Image (loads a PNG from disk into the
-# clipboard) plus the existing Selection > Stamp/Move tools for composing
-# from other elements without a dedicated drag-and-drop layer system.
+# defaults, every one starts as a blank canvas -- plus a persistent live
+# preview panel), LEVELS (paint a tile-based map and publish it live -- see
+# game/levels/level_data.gd; tiles themselves are a single fixed regular
+# tile now, nothing to paint there), and SPRITES, which covers small
+# mode-bar badge icons (originally 100% procedural CanvasItem drawing with
+# no image asset at all; see ui/mode_icon.gd's atlas-with-procedural-
+# fallback loading) plus the app's shared button/panel/slider chrome (see
+# tools/build_chrome_art.gd). Both support Import Image (loads a PNG from
+# disk into the clipboard) plus the existing Selection > Stamp/Move tools
+# for composing from other elements without a dedicated drag-and-drop layer
+# system.
 #
 # Custom skins/hats are unrelated to the game's built-in 8 colors -- they're
 # painted in real color directly, the same way the game's own in-shop
-# drawing tool works, not tinted from a shared template. Icons are the one
-# exception: they're baked/painted in white/grayscale and re-tinted per
-# usage at runtime (each mode bar has its own accent color), so painting
-# them in a specific hue would look wrong once multiplied by that tint.
+# drawing tool works, not tinted from a shared template. Icons and chrome
+# are the exception: they're baked/painted in white/grayscale and re-tinted
+# per usage at runtime (each mode bar/accent color applies its own tint), so
+# painting them in a specific hue would look wrong once multiplied through.
 #
-# PAINT, TILES, and ICONS all drive their canvas through the same shared
+# Items, Levels, and Sprites all drive their canvas through the same shared
 # toolbar builder (_build_shared_toolbar) and the same _current_canvas/
-# _apply_tool_state() mechanism the rest of this file already used for the
-# Paint page, so every tool (shapes, selection, mirror, transforms,
-# palette, ...) works identically in all three without duplicated logic.
+# _apply_tool_state() mechanism, so every tool (shapes, selection, mirror,
+# transforms, palette, ...) works identically across all three without
+# duplicated logic.
 
 const UIStyle := preload("res://ui/ui_style.gd")
 const CharacterPreviewScene := preload("res://ui/character_preview.gd")
@@ -92,71 +87,6 @@ To make this the game's real menu icon set:
      mode_icon.gd loads it directly at runtime.
 """
 
-const MODE_BUTTON_INSTRUCTIONS_TEXT := """Each file here is one main-menu mode button's ENTIRE art -- background,
-character, label, everything -- painted at 190x360, the exact size
-main_menu.gd renders that button at.
-
-To make one of these the game's real button art:
-
-  1. Copy the file to game/assets/icons/mode_buttons/<key>.png, where
-     <key> is online.png or local.png (matching the file's own name here).
-  2. Commit the file -- no rebuild step needed, main_menu.gd checks for
-     it at runtime and uses it in place of the procedural glow/portrait/
-     label box automatically.
-
-A mode with no file here just keeps using the procedural fallback -- you
-don't need to paint both at once.
-"""
-
-const ACTION_BAR_INSTRUCTIONS_TEXT := """Each file here is one shared utility button's ENTIRE art -- icon, label,
-background, everything -- painted at 380x44. The same file is reused on
-every screen that has that button (e.g. back.png shows up as Back,
-Cancel, and Leave everywhere), so painting one image touches many screens
-at once.
-
-To make one of these the game's real button art:
-
-  1. Copy the file to game/assets/icons/action_bars/<key>.png, matching
-     the file's own name here (back.png, connect.png, etc).
-  2. Commit the file -- no rebuild step needed, every screen using that
-     key checks for it at runtime and uses it in place of the plain
-     flat-colored button automatically.
-
-A button with no file here just keeps using the plain flat-colored
-fallback -- you don't need to paint all nine at once.
-"""
-
-const PLAYLIST_CARD_INSTRUCTIONS_TEXT := """Each file here is one ranked playlist picker card's ENTIRE art -- icon
-figures, label, background, everything -- painted at 170x150, the exact
-size ranked_playlist_select.gd renders that card at.
-
-To make one of these the game's real card art:
-
-  1. Copy the file to game/assets/icons/playlist_cards/<key>.png, where
-     <key> is 1v1.png, 2v2.png, 1v1v1.png, or 1v1v1v1.png (matching the
-     file's own name here).
-  2. Commit the file -- no rebuild step needed, ranked_playlist_select.gd
-     checks for it at runtime and uses it in place of the procedural
-     icon/name/sub-label box automatically.
-
-A playlist with no file here just keeps using the procedural fallback --
-you don't need to paint all four at once.
-"""
-
-const FIELD_ART_INSTRUCTIONS_TEXT := """This one file is EVERY text input field's background across the whole app --
-painted at 380x44, stretched with fixed-width edges (a 9-patch) so it
-covers any field's actual width without warping.
-
-To make this the game's real input-field background:
-
-  1. Copy the file to game/assets/icons/field_art/field.png.
-  2. Commit the file -- no rebuild step needed, UIStyle.apply_field_art()
-     checks for it at runtime and uses it in place of the plain
-     flat-colored box automatically, on every field in the app at once.
-
-No file here just keeps every field on the plain flat-colored fallback.
-"""
-
 const CHROME_INSTRUCTIONS_TEXT := """Each file here is one piece of the app's shared button/panel/slider chrome --
 a small 9-patch box (fixed-width border pixels, stretchy middle) painted
 white on transparent so it re-tints to any screen's own accent color at
@@ -174,21 +104,6 @@ To make one of these the game's real chrome:
 
 A piece with no file here just keeps every button/panel/slider on the
 plain flat-colored fallback -- you don't need to paint all four at once.
-"""
-
-const BACKGROUND_INSTRUCTIONS_TEXT := """Each file here is one menu screen's ENTIRE background, painted at
-1152x648, the game's real viewport size.
-
-To make one of these the game's real screen background:
-
-  1. Copy the file to game/assets/backgrounds/<key>.png -- see the
-     filename here for <key> (main_menu.png, online_menu.png, etc).
-  2. Commit the file -- no rebuild step needed, UIStyle.add_background()
-     checks for it at runtime and uses it in place of the procedural
-     gradient automatically.
-
-A screen with no file here just keeps using the procedural gradient -- you
-don't need to paint all of them at once.
 """
 
 @onready var paint_tab_button: Button = $VBox/PageTabRow/PaintTabButton
@@ -302,82 +217,6 @@ var icons_color_picker: ColorPicker
 var _icon_images: Array[Image] = [] # index-matched to ICON_TYPE_NAMES
 var _current_icon_index := -1
 var _icon_select_buttons: Array[Button] = []
-
-# Whole-button custom art for the main menu's 2 mode bars (Online/Local)
-# -- an alternative to the small badge-icon-on-a-procedural-box system
-# above: paint the entire button (background, character, label, all of
-# it) as one image, same canvas size the real button renders at, so what's
-# painted here is exactly what shows up in-game. Matches main_menu.gd's
-# MODES key order exactly -- "online"/"local" (Sandbox removed).
-const MODE_BUTTON_KEYS := Categories.MODE_BUTTON_KEYS
-const MODE_BUTTON_NAMES := ["Online", "Local"]
-const MODE_BUTTON_SIZE := Vector2i(190, 360) # matches main_menu.gd's BAR_SIZE exactly
-const MODE_BUTTON_ART_DIR := "res://assets/icons/mode_buttons"
-const MODE_BUTTON_ZOOM := 2 # 190x360 is already large -- a much smaller per-pixel zoom than a 64x64 icon needs
-var _button_art_images: Array[Image] = [] # index-matched to MODE_BUTTON_KEYS
-var _current_button_art_index := -1
-var _button_art_select_buttons: Array[Button] = []
-
-# Whole-screen custom background art for every menu screen -- an
-# alternative to UIStyle.add_background()'s procedural radial gradient:
-# paint the entire screen background as one image, the real game viewport
-# size (see UIStyle.BACKGROUND_SIZE), so what's painted here is exactly
-# what shows up in-game. Keys/order must match every UIStyle.add_background
-# call site across game/main/*.gd (also mirrored in
-# game_asset_updater.gd's BACKGROUND_KEYS and relay-server/server.js's,
-# same "kept in sync by convention" relationship MODE_BUTTON_KEYS already
-# has across those same 3 files).
-const BACKGROUND_KEYS := Categories.BACKGROUND_KEYS
-const BACKGROUND_NAMES := [
-	"Main Menu", "Online Menu", "Local Menu", "Shop", "Friends",
-	"Lobby Room", "Host Setup", "Login Screen", "Match Intro", "Match Results",
-	"Direct Connect", "Quick Play", "Ranked Queue", "Server Browser",
-]
-const BACKGROUND_ZOOM := 1 # already full game-viewport size, no per-pixel zoom needed
-var _background_images: Array[Image] = [] # index-matched to BACKGROUND_KEYS
-var _current_background_index := -1
-var _background_select_buttons: Array[Button] = []
-
-# Every plain full-width utility bar shared across many screens at once
-# (Back/Cancel/Leave everywhere, server browser's Connect/Watch, host
-# setup's Host Server, lobby room's Start Match, login screen's Log In/
-# Create Account/Log Out) -- see tools/generate_menu_art.gd's ACTION_BARS
-# for the same key set/order this must stay in sync with, one whole-bar
-# image each (not a shared atlas), same shape as mode button art above.
-const ACTION_BAR_KEYS := Categories.ACTION_BAR_KEYS
-const ACTION_BAR_NAMES := ["Back", "Connect", "Watch", "Host Server", "Ready", "Start Match", "Log In", "Create Account", "Log Out"]
-const ACTION_BAR_SIZE := Vector2i(380, 44) # matches generate_menu_art.gd's ACTION_BAR_FINAL_SIZE
-const ACTION_BAR_ART_DIR := "res://assets/icons/action_bars"
-const ACTION_BAR_ZOOM := 2
-var _action_bar_images: Array[Image] = [] # index-matched to ACTION_BAR_KEYS
-var _current_action_bar_index := -1
-var _action_bar_select_buttons: Array[Button] = []
-
-# Ranked playlist picker's 4 cards (ranked_playlist_select.gd) -- same
-# whole-card painted-art shape as mode buttons/action bars above. Keys/
-# order must match PlaylistCatalog.PLAYLIST_ORDER, same "kept in sync by
-# convention" relationship every other *_KEYS list on this page already
-# has with its own real source of truth.
-const PLAYLIST_CARD_KEYS := Categories.PLAYLIST_CARD_KEYS
-const PLAYLIST_CARD_NAMES := ["1v1", "2v2", "1v1v1", "1v1v1v1"]
-const PLAYLIST_CARD_SIZE := Vector2i(380, 44) # matches ACTION_BAR_SIZE -- picker buttons are now wide horizontal bars, not square cards
-const PLAYLIST_CARD_ART_DIR := "res://assets/icons/playlist_cards"
-const PLAYLIST_CARD_ZOOM := 4
-var _playlist_card_images: Array[Image] = [] # index-matched to PLAYLIST_CARD_KEYS
-var _current_playlist_card_index := -1
-var _playlist_card_select_buttons: Array[Button] = []
-
-# Every LineEdit's shared background (UIStyle.apply_field_art()) -- a
-# single-key category (like LOCAL_BAR_KEYS' one "play") since every field
-# in the app reuses the same one painted image.
-const FIELD_ART_KEYS := Categories.FIELD_ART_KEYS
-const FIELD_ART_NAMES := ["Field Background"]
-const FIELD_ART_SIZE := Vector2i(380, 44) # matches generate_menu_art.gd's ACTION_BAR_FINAL_SIZE
-const FIELD_ART_ART_DIR := "res://assets/icons/field_art"
-const FIELD_ART_ZOOM := 2
-var _field_art_images: Array[Image] = [] # index-matched to FIELD_ART_KEYS
-var _current_field_art_index := -1
-var _field_art_select_buttons: Array[Button] = []
 
 # Every button/panel/slider's own 9-patch box art (see UIStyle.button_box()/
 # panel_box()/style_slider() and tools/build_chrome_art.gd) -- the last
@@ -1492,10 +1331,6 @@ func _build_icons_page() -> void:
 	select_panel.custom_minimum_size = Vector2(180, 0)
 	select_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
 	icons_page.add_child(select_panel)
-	# 6 icons + 2 mode buttons + 14 backgrounds is too many entries for a
-	# fixed-height sidebar -- see the ScrollContainer on the right-hand color
-	# column above for the same overflow-into-the-whole-page bug this
-	# prevents.
 	var select_scroll := ScrollContainer.new()
 	select_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	select_panel.add_child(select_scroll)
@@ -1517,104 +1352,6 @@ func _build_icons_page() -> void:
 		btn.pressed.connect(_show_icon.bind(i))
 		select_box.add_child(btn)
 		_icon_select_buttons.append(btn)
-
-	var button_art_spacer := Control.new()
-	button_art_spacer.custom_minimum_size = Vector2(0, 8)
-	select_box.add_child(button_art_spacer)
-
-	# Same ButtonGroup as the icon buttons above -- one shared canvas, so
-	# picking a mode button here correctly deselects whichever icon was
-	# active (and vice versa).
-	select_box.add_child(_section_label("MODE BUTTON ART"))
-	_button_art_select_buttons.clear()
-	for i in MODE_BUTTON_NAMES.size():
-		var btn := Button.new()
-		btn.text = MODE_BUTTON_NAMES[i]
-		btn.toggle_mode = true
-		btn.button_group = icon_group
-		btn.custom_minimum_size = Vector2(0, 40)
-		UIStyle.style_button(btn, UIStyle.COLOR_SANDBOX, 10, false)
-		btn.pressed.connect(_show_button_art.bind(i))
-		select_box.add_child(btn)
-		_button_art_select_buttons.append(btn)
-
-	var background_spacer := Control.new()
-	background_spacer.custom_minimum_size = Vector2(0, 8)
-	select_box.add_child(background_spacer)
-
-	# Same shared ButtonGroup again -- picking a screen background here
-	# deselects whichever icon/mode button was active, and vice versa.
-	select_box.add_child(_section_label("MENU BACKGROUNDS"))
-	_background_select_buttons.clear()
-	for i in BACKGROUND_NAMES.size():
-		var btn := Button.new()
-		btn.text = BACKGROUND_NAMES[i]
-		btn.toggle_mode = true
-		btn.button_group = icon_group
-		btn.custom_minimum_size = Vector2(0, 32)
-		UIStyle.style_button(btn, UIStyle.COLOR_RANKED, 10, false)
-		btn.pressed.connect(_show_background.bind(i))
-		select_box.add_child(btn)
-		_background_select_buttons.append(btn)
-
-	var action_bar_spacer := Control.new()
-	action_bar_spacer.custom_minimum_size = Vector2(0, 8)
-	select_box.add_child(action_bar_spacer)
-
-	# Same shared ButtonGroup again -- picking an action button here
-	# deselects whichever icon/mode button/background was active.
-	select_box.add_child(_section_label("ACTION BUTTON ART"))
-	_action_bar_select_buttons.clear()
-	for i in ACTION_BAR_NAMES.size():
-		var btn := Button.new()
-		btn.text = ACTION_BAR_NAMES[i]
-		btn.toggle_mode = true
-		btn.button_group = icon_group
-		btn.custom_minimum_size = Vector2(0, 32)
-		UIStyle.style_button(btn, UIStyle.COLOR_ONLINE, 10, false)
-		btn.pressed.connect(_show_action_bar.bind(i))
-		select_box.add_child(btn)
-		_action_bar_select_buttons.append(btn)
-
-	var playlist_card_spacer := Control.new()
-	playlist_card_spacer.custom_minimum_size = Vector2(0, 8)
-	select_box.add_child(playlist_card_spacer)
-
-	# Same shared ButtonGroup again -- picking a playlist card here
-	# deselects whichever icon/mode button/background/action button was
-	# active.
-	select_box.add_child(_section_label("PLAYLIST CARD ART"))
-	_playlist_card_select_buttons.clear()
-	for i in PLAYLIST_CARD_NAMES.size():
-		var btn := Button.new()
-		btn.text = PLAYLIST_CARD_NAMES[i]
-		btn.toggle_mode = true
-		btn.button_group = icon_group
-		btn.custom_minimum_size = Vector2(0, 32)
-		UIStyle.style_button(btn, UIStyle.COLOR_RANKED, 10, false)
-		btn.pressed.connect(_show_playlist_card.bind(i))
-		select_box.add_child(btn)
-		_playlist_card_select_buttons.append(btn)
-
-	var field_art_spacer := Control.new()
-	field_art_spacer.custom_minimum_size = Vector2(0, 8)
-	select_box.add_child(field_art_spacer)
-
-	# Same shared ButtonGroup again -- picking the field background here
-	# deselects whichever icon/mode button/background/action button/
-	# playlist card was active.
-	select_box.add_child(_section_label("INPUT FIELD ART"))
-	_field_art_select_buttons.clear()
-	for i in FIELD_ART_NAMES.size():
-		var btn := Button.new()
-		btn.text = FIELD_ART_NAMES[i]
-		btn.toggle_mode = true
-		btn.button_group = icon_group
-		btn.custom_minimum_size = Vector2(0, 32)
-		UIStyle.style_button(btn, UIStyle.COLOR_NEUTRAL, 10, false)
-		btn.pressed.connect(_show_field_art.bind(i))
-		select_box.add_child(btn)
-		_field_art_select_buttons.append(btn)
 
 	var chrome_spacer := Control.new()
 	chrome_spacer.custom_minimum_size = Vector2(0, 8)
@@ -1700,7 +1437,7 @@ func _build_icons_page() -> void:
 	import_btn.pressed.connect(_on_import_image_pressed)
 	right_box.add_child(import_btn)
 	var import_help := Label.new()
-	import_help.text = "Loads a PNG from disk into the clipboard -- use Selection > Stamp to place it anywhere on the current canvas, then Select + Move to drag it into position. Works on any page's canvas, including whole mode-button art below."
+	import_help.text = "Loads a PNG from disk into the clipboard -- use Selection > Stamp to place it anywhere on the current canvas, then Select + Move to drag it into position. Works on any page's canvas."
 	import_help.autowrap_mode = TextServer.AUTOWRAP_WORD
 	# See tiles_help above -- same fix.
 	import_help.custom_minimum_size.x = 200
@@ -1709,11 +1446,6 @@ func _build_icons_page() -> void:
 	right_box.add_child(import_help)
 
 	_load_icon_images()
-	_load_button_art_images()
-	_load_background_images()
-	_load_action_bar_images()
-	_load_playlist_card_images()
-	_load_field_art_images()
 	_load_chrome_images()
 	_show_icon(0)
 	_icon_select_buttons[0].button_pressed = true
@@ -1742,24 +1474,9 @@ func _load_icon_images() -> void:
 
 func _show_icon(index: int) -> void:
 	_current_icon_index = index
-	_current_button_art_index = -1
-	_current_background_index = -1
-	_current_action_bar_index = -1
-	_current_playlist_card_index = -1
-	_current_field_art_index = -1
 	_current_chrome_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = (i == index)
-	for i in _button_art_select_buttons.size():
-		_button_art_select_buttons[i].button_pressed = false
-	for i in _background_select_buttons.size():
-		_background_select_buttons[i].button_pressed = false
-	for i in _action_bar_select_buttons.size():
-		_action_bar_select_buttons[i].button_pressed = false
-	for i in _playlist_card_select_buttons.size():
-		_playlist_card_select_buttons[i].button_pressed = false
-	for i in _field_art_select_buttons.size():
-		_field_art_select_buttons[i].button_pressed = false
 	for i in _chrome_select_buttons.size():
 		_chrome_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
@@ -1774,269 +1491,6 @@ func _show_icon(index: int) -> void:
 	# actually on screen the next time this icon is re-selected. Keeping the
 	# backing array's reference live on every paint avoids that.
 	canvas.painted.connect(func(): _icon_images[index] = canvas.image)
-	canvas.color_picked.connect(_on_eyedropper_picked)
-	_current_canvas = canvas
-	_apply_tool_state()
-
-## Loads each mode's whole-button art (see MODE_BUTTON_KEYS/main_menu.gd's
-## MODE_BUTTON_ART_PATH) if it's already been painted and committed, else a
-## blank transparent MODE_BUTTON_SIZE canvas -- same "always something real
-## or an honest blank canvas" rule _load_icon_images() follows.
-func _load_button_art_images() -> void:
-	_button_art_images.clear()
-	for key in MODE_BUTTON_KEYS:
-		var path := "%s/%s.png" % [MODE_BUTTON_ART_DIR, key]
-		var img: Image
-		if ResourceLoader.exists(path):
-			var tex: Texture2D = load(path)
-			img = tex.get_image() if tex else null
-			if img:
-				img.convert(Image.FORMAT_RGBA8)
-		if not img:
-			img = Image.create(MODE_BUTTON_SIZE.x, MODE_BUTTON_SIZE.y, false, Image.FORMAT_RGBA8)
-			img.fill(Color(0, 0, 0, 0))
-		_button_art_images.append(img)
-
-func _show_button_art(index: int) -> void:
-	_current_button_art_index = index
-	_current_icon_index = -1
-	_current_background_index = -1
-	_current_action_bar_index = -1
-	_current_playlist_card_index = -1
-	_current_field_art_index = -1
-	_current_chrome_index = -1
-	for i in _icon_select_buttons.size():
-		_icon_select_buttons[i].button_pressed = false
-	for i in _button_art_select_buttons.size():
-		_button_art_select_buttons[i].button_pressed = (i == index)
-	for i in _background_select_buttons.size():
-		_background_select_buttons[i].button_pressed = false
-	for i in _action_bar_select_buttons.size():
-		_action_bar_select_buttons[i].button_pressed = false
-	for i in _playlist_card_select_buttons.size():
-		_playlist_card_select_buttons[i].button_pressed = false
-	for i in _field_art_select_buttons.size():
-		_field_art_select_buttons[i].button_pressed = false
-	for i in _chrome_select_buttons.size():
-		_chrome_select_buttons[i].button_pressed = false
-	for child in icons_canvas_holder.get_children():
-		icons_canvas_holder.remove_child(child)
-		child.queue_free()
-	var canvas = PixelCanvasScene.new(_button_art_images[index], MODE_BUTTON_ZOOM)
-	icons_canvas_holder.add_child(canvas)
-	canvas.painted.connect(_on_painted)
-	canvas.painted.connect(func(): _button_art_images[index] = canvas.image)
-	canvas.color_picked.connect(_on_eyedropper_picked)
-	_current_canvas = canvas
-	_apply_tool_state()
-
-## Loads each screen's whole-background art (see BACKGROUND_KEYS/
-## UIStyle.add_background) if it's already been painted and committed, else
-## a blank transparent UIStyle.BACKGROUND_SIZE canvas -- same "always
-## something real or an honest blank canvas" rule _load_icon_images()/
-## _load_button_art_images() follow.
-func _load_background_images() -> void:
-	_background_images.clear()
-	for key in BACKGROUND_KEYS:
-		var path := "%s/%s.png" % [UIStyle.BACKGROUND_ART_DIR, key]
-		var img: Image
-		if ResourceLoader.exists(path):
-			var tex: Texture2D = load(path)
-			img = tex.get_image() if tex else null
-			if img:
-				img.convert(Image.FORMAT_RGBA8)
-		if not img:
-			img = Image.create(UIStyle.BACKGROUND_SIZE.x, UIStyle.BACKGROUND_SIZE.y, false, Image.FORMAT_RGBA8)
-			img.fill(Color(0, 0, 0, 0))
-		_background_images.append(img)
-
-func _show_background(index: int) -> void:
-	_current_background_index = index
-	_current_icon_index = -1
-	_current_button_art_index = -1
-	_current_action_bar_index = -1
-	_current_playlist_card_index = -1
-	_current_field_art_index = -1
-	_current_chrome_index = -1
-	for i in _icon_select_buttons.size():
-		_icon_select_buttons[i].button_pressed = false
-	for i in _button_art_select_buttons.size():
-		_button_art_select_buttons[i].button_pressed = false
-	for i in _background_select_buttons.size():
-		_background_select_buttons[i].button_pressed = (i == index)
-	for i in _action_bar_select_buttons.size():
-		_action_bar_select_buttons[i].button_pressed = false
-	for i in _playlist_card_select_buttons.size():
-		_playlist_card_select_buttons[i].button_pressed = false
-	for i in _field_art_select_buttons.size():
-		_field_art_select_buttons[i].button_pressed = false
-	for i in _chrome_select_buttons.size():
-		_chrome_select_buttons[i].button_pressed = false
-	for child in icons_canvas_holder.get_children():
-		icons_canvas_holder.remove_child(child)
-		child.queue_free()
-	var canvas = PixelCanvasScene.new(_background_images[index], BACKGROUND_ZOOM)
-	icons_canvas_holder.add_child(canvas)
-	canvas.painted.connect(_on_painted)
-	canvas.painted.connect(func(): _background_images[index] = canvas.image)
-	canvas.color_picked.connect(_on_eyedropper_picked)
-	_current_canvas = canvas
-	_apply_tool_state()
-
-## Loads each shared utility bar's whole-button art (see ACTION_BAR_KEYS)
-## if it's already been painted and committed, else a blank transparent
-## ACTION_BAR_SIZE canvas -- same "always something real or an honest
-## blank canvas" rule every other section on this page follows.
-func _load_action_bar_images() -> void:
-	_action_bar_images.clear()
-	for key in ACTION_BAR_KEYS:
-		var path := "%s/%s.png" % [ACTION_BAR_ART_DIR, key]
-		var img: Image
-		if ResourceLoader.exists(path):
-			var tex: Texture2D = load(path)
-			img = tex.get_image() if tex else null
-			if img:
-				img.convert(Image.FORMAT_RGBA8)
-		if not img:
-			img = Image.create(ACTION_BAR_SIZE.x, ACTION_BAR_SIZE.y, false, Image.FORMAT_RGBA8)
-			img.fill(Color(0, 0, 0, 0))
-		_action_bar_images.append(img)
-
-func _show_action_bar(index: int) -> void:
-	_current_action_bar_index = index
-	_current_icon_index = -1
-	_current_button_art_index = -1
-	_current_background_index = -1
-	_current_playlist_card_index = -1
-	_current_field_art_index = -1
-	_current_chrome_index = -1
-	for i in _icon_select_buttons.size():
-		_icon_select_buttons[i].button_pressed = false
-	for i in _button_art_select_buttons.size():
-		_button_art_select_buttons[i].button_pressed = false
-	for i in _background_select_buttons.size():
-		_background_select_buttons[i].button_pressed = false
-	for i in _action_bar_select_buttons.size():
-		_action_bar_select_buttons[i].button_pressed = (i == index)
-	for i in _playlist_card_select_buttons.size():
-		_playlist_card_select_buttons[i].button_pressed = false
-	for i in _field_art_select_buttons.size():
-		_field_art_select_buttons[i].button_pressed = false
-	for i in _chrome_select_buttons.size():
-		_chrome_select_buttons[i].button_pressed = false
-	for child in icons_canvas_holder.get_children():
-		icons_canvas_holder.remove_child(child)
-		child.queue_free()
-	var canvas = PixelCanvasScene.new(_action_bar_images[index], ACTION_BAR_ZOOM)
-	icons_canvas_holder.add_child(canvas)
-	canvas.painted.connect(_on_painted)
-	canvas.painted.connect(func(): _action_bar_images[index] = canvas.image)
-	canvas.color_picked.connect(_on_eyedropper_picked)
-	_current_canvas = canvas
-	_apply_tool_state()
-
-## Loads each playlist's whole-card art (see PLAYLIST_CARD_KEYS/
-## ranked_playlist_select.gd) if it's already been painted and committed,
-## else a blank transparent PLAYLIST_CARD_SIZE canvas -- same "always
-## something real or an honest blank canvas" rule every other section on
-## this page follows.
-func _load_playlist_card_images() -> void:
-	_playlist_card_images.clear()
-	for key in PLAYLIST_CARD_KEYS:
-		var path := "%s/%s.png" % [PLAYLIST_CARD_ART_DIR, key]
-		var img: Image
-		if ResourceLoader.exists(path):
-			var tex: Texture2D = load(path)
-			img = tex.get_image() if tex else null
-			if img:
-				img.convert(Image.FORMAT_RGBA8)
-		if not img:
-			img = Image.create(PLAYLIST_CARD_SIZE.x, PLAYLIST_CARD_SIZE.y, false, Image.FORMAT_RGBA8)
-			img.fill(Color(0, 0, 0, 0))
-		_playlist_card_images.append(img)
-
-func _show_playlist_card(index: int) -> void:
-	_current_playlist_card_index = index
-	_current_icon_index = -1
-	_current_button_art_index = -1
-	_current_background_index = -1
-	_current_action_bar_index = -1
-	_current_field_art_index = -1
-	_current_chrome_index = -1
-	for i in _icon_select_buttons.size():
-		_icon_select_buttons[i].button_pressed = false
-	for i in _button_art_select_buttons.size():
-		_button_art_select_buttons[i].button_pressed = false
-	for i in _background_select_buttons.size():
-		_background_select_buttons[i].button_pressed = false
-	for i in _action_bar_select_buttons.size():
-		_action_bar_select_buttons[i].button_pressed = false
-	for i in _playlist_card_select_buttons.size():
-		_playlist_card_select_buttons[i].button_pressed = (i == index)
-	for i in _field_art_select_buttons.size():
-		_field_art_select_buttons[i].button_pressed = false
-	for i in _chrome_select_buttons.size():
-		_chrome_select_buttons[i].button_pressed = false
-	for child in icons_canvas_holder.get_children():
-		icons_canvas_holder.remove_child(child)
-		child.queue_free()
-	var canvas = PixelCanvasScene.new(_playlist_card_images[index], PLAYLIST_CARD_ZOOM)
-	icons_canvas_holder.add_child(canvas)
-	canvas.painted.connect(_on_painted)
-	canvas.painted.connect(func(): _playlist_card_images[index] = canvas.image)
-	canvas.color_picked.connect(_on_eyedropper_picked)
-	_current_canvas = canvas
-	_apply_tool_state()
-
-## Loads the shared field-background image (see FIELD_ART_KEYS/
-## UIStyle.apply_field_art()) if it's already been painted and committed,
-## else a blank transparent FIELD_ART_SIZE canvas -- same "always something
-## real or an honest blank canvas" rule every other section on this page
-## follows.
-func _load_field_art_images() -> void:
-	_field_art_images.clear()
-	for key in FIELD_ART_KEYS:
-		var path := "%s/%s.png" % [FIELD_ART_ART_DIR, key]
-		var img: Image
-		if ResourceLoader.exists(path):
-			var tex: Texture2D = load(path)
-			img = tex.get_image() if tex else null
-			if img:
-				img.convert(Image.FORMAT_RGBA8)
-		if not img:
-			img = Image.create(FIELD_ART_SIZE.x, FIELD_ART_SIZE.y, false, Image.FORMAT_RGBA8)
-			img.fill(Color(0, 0, 0, 0))
-		_field_art_images.append(img)
-
-func _show_field_art(index: int) -> void:
-	_current_field_art_index = index
-	_current_icon_index = -1
-	_current_button_art_index = -1
-	_current_background_index = -1
-	_current_action_bar_index = -1
-	_current_playlist_card_index = -1
-	_current_chrome_index = -1
-	for i in _icon_select_buttons.size():
-		_icon_select_buttons[i].button_pressed = false
-	for i in _button_art_select_buttons.size():
-		_button_art_select_buttons[i].button_pressed = false
-	for i in _background_select_buttons.size():
-		_background_select_buttons[i].button_pressed = false
-	for i in _action_bar_select_buttons.size():
-		_action_bar_select_buttons[i].button_pressed = false
-	for i in _playlist_card_select_buttons.size():
-		_playlist_card_select_buttons[i].button_pressed = false
-	for i in _field_art_select_buttons.size():
-		_field_art_select_buttons[i].button_pressed = (i == index)
-	for i in _chrome_select_buttons.size():
-		_chrome_select_buttons[i].button_pressed = false
-	for child in icons_canvas_holder.get_children():
-		icons_canvas_holder.remove_child(child)
-		child.queue_free()
-	var canvas = PixelCanvasScene.new(_field_art_images[index], FIELD_ART_ZOOM)
-	icons_canvas_holder.add_child(canvas)
-	canvas.painted.connect(_on_painted)
-	canvas.painted.connect(func(): _field_art_images[index] = canvas.image)
 	canvas.color_picked.connect(_on_eyedropper_picked)
 	_current_canvas = canvas
 	_apply_tool_state()
@@ -2067,23 +1521,8 @@ func _load_chrome_images() -> void:
 func _show_chrome(index: int) -> void:
 	_current_chrome_index = index
 	_current_icon_index = -1
-	_current_button_art_index = -1
-	_current_background_index = -1
-	_current_action_bar_index = -1
-	_current_playlist_card_index = -1
-	_current_field_art_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
-	for i in _button_art_select_buttons.size():
-		_button_art_select_buttons[i].button_pressed = false
-	for i in _background_select_buttons.size():
-		_background_select_buttons[i].button_pressed = false
-	for i in _action_bar_select_buttons.size():
-		_action_bar_select_buttons[i].button_pressed = false
-	for i in _playlist_card_select_buttons.size():
-		_playlist_card_select_buttons[i].button_pressed = false
-	for i in _field_art_select_buttons.size():
-		_field_art_select_buttons[i].button_pressed = false
 	for i in _chrome_select_buttons.size():
 		_chrome_select_buttons[i].button_pressed = (i == index)
 	for child in icons_canvas_holder.get_children():
@@ -2328,122 +1767,6 @@ func _on_export_pressed() -> void:
 		var icons_result := await _publish_game_asset("icons", {"imageBase64": Marshalls.raw_to_base64(atlas.save_png_to_buffer())})
 		publish_parts.append("icons (v%d)" % icons_result.get("version", 0) if icons_result.get("ok", false) else "icons failed: %s" % icons_result.get("error", ""))
 
-	if not _button_art_images.is_empty():
-		# One file per mode (not one shared atlas the way icons/tiles are) --
-		# each mode button is its own independent whole-button image, so
-		# there's no fixed-slot strip layout to keep in sync here.
-		var buttons_out_dir := base_dir.path_join("edited_icons/mode_buttons")
-		DirAccess.make_dir_recursive_absolute(buttons_out_dir)
-		for i in _button_art_images.size():
-			_button_art_images[i].save_png(buttons_out_dir.path_join("%s.png" % MODE_BUTTON_KEYS[i]))
-		var f5 := FileAccess.open(buttons_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
-		if f5:
-			f5.store_string(MODE_BUTTON_INSTRUCTIONS_TEXT)
-		status_parts.append(buttons_out_dir)
-
-		# Unlike the tiles/icons atlas (a fixed-layout strip that must always
-		# publish whole), mode button art is 3 fully independent images -- only
-		# send the ones actually painted (or already loaded from a prior
-		# override), so exporting after touching up just one mode doesn't
-		# publish the other two's still-blank canvases over whatever's live.
-		var images_payload := {}
-		for i in _button_art_images.size():
-			if _image_has_content(_button_art_images[i]):
-				images_payload[MODE_BUTTON_KEYS[i]] = Marshalls.raw_to_base64(_button_art_images[i].save_png_to_buffer())
-		if not images_payload.is_empty():
-			status_label.text = "Publishing mode button art..."
-			var buttons_result := await _publish_game_asset("mode_buttons", {"images": images_payload})
-			publish_parts.append("mode buttons (v%d)" % buttons_result.get("version", 0) if buttons_result.get("ok", false) else "mode buttons failed: %s" % buttons_result.get("error", ""))
-
-	if not _background_images.is_empty():
-		# Same one-file-per-key shape as mode button art, just a different
-		# key set/canvas size -- see BACKGROUND_KEYS.
-		var backgrounds_out_dir := base_dir.path_join("edited_icons/backgrounds")
-		DirAccess.make_dir_recursive_absolute(backgrounds_out_dir)
-		for i in _background_images.size():
-			_background_images[i].save_png(backgrounds_out_dir.path_join("%s.png" % BACKGROUND_KEYS[i]))
-		var f6 := FileAccess.open(backgrounds_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
-		if f6:
-			f6.store_string(BACKGROUND_INSTRUCTIONS_TEXT)
-		status_parts.append(backgrounds_out_dir)
-
-		# Only send screens actually painted (or already loaded from a prior
-		# override), same reasoning as mode button art above -- exporting
-		# after touching up one screen shouldn't republish the other 13
-		# still-blank canvases over whatever's live.
-		var bg_images_payload := {}
-		for i in _background_images.size():
-			if _image_has_content(_background_images[i]):
-				bg_images_payload[BACKGROUND_KEYS[i]] = Marshalls.raw_to_base64(_background_images[i].save_png_to_buffer())
-		if not bg_images_payload.is_empty():
-			status_label.text = "Publishing menu backgrounds..."
-			var backgrounds_result := await _publish_game_asset("backgrounds", {"images": bg_images_payload})
-			publish_parts.append("backgrounds (v%d)" % backgrounds_result.get("version", 0) if backgrounds_result.get("ok", false) else "backgrounds failed: %s" % backgrounds_result.get("error", ""))
-
-	if not _action_bar_images.is_empty():
-		# Same one-file-per-key shape as mode button art -- see ACTION_BAR_KEYS.
-		var action_bars_out_dir := base_dir.path_join("edited_icons/action_bars")
-		DirAccess.make_dir_recursive_absolute(action_bars_out_dir)
-		for i in _action_bar_images.size():
-			_action_bar_images[i].save_png(action_bars_out_dir.path_join("%s.png" % ACTION_BAR_KEYS[i]))
-		var f7 := FileAccess.open(action_bars_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
-		if f7:
-			f7.store_string(ACTION_BAR_INSTRUCTIONS_TEXT)
-		status_parts.append(action_bars_out_dir)
-
-		# Only send buttons actually painted (or already loaded from a prior
-		# override), same reasoning as mode button art/backgrounds above.
-		var action_bar_images_payload := {}
-		for i in _action_bar_images.size():
-			if _image_has_content(_action_bar_images[i]):
-				action_bar_images_payload[ACTION_BAR_KEYS[i]] = Marshalls.raw_to_base64(_action_bar_images[i].save_png_to_buffer())
-		if not action_bar_images_payload.is_empty():
-			status_label.text = "Publishing action button art..."
-			var action_bars_result := await _publish_game_asset("action_bars", {"images": action_bar_images_payload})
-			publish_parts.append("action buttons (v%d)" % action_bars_result.get("version", 0) if action_bars_result.get("ok", false) else "action buttons failed: %s" % action_bars_result.get("error", ""))
-
-	if not _playlist_card_images.is_empty():
-		# Same one-file-per-key shape as mode button/action bar art.
-		var playlist_cards_out_dir := base_dir.path_join("edited_icons/playlist_cards")
-		DirAccess.make_dir_recursive_absolute(playlist_cards_out_dir)
-		for i in _playlist_card_images.size():
-			_playlist_card_images[i].save_png(playlist_cards_out_dir.path_join("%s.png" % PLAYLIST_CARD_KEYS[i]))
-		var f8 := FileAccess.open(playlist_cards_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
-		if f8:
-			f8.store_string(PLAYLIST_CARD_INSTRUCTIONS_TEXT)
-		status_parts.append(playlist_cards_out_dir)
-
-		# Only send cards actually painted (or already loaded from a prior
-		# override), same reasoning as every other category above.
-		var playlist_card_images_payload := {}
-		for i in _playlist_card_images.size():
-			if _image_has_content(_playlist_card_images[i]):
-				playlist_card_images_payload[PLAYLIST_CARD_KEYS[i]] = Marshalls.raw_to_base64(_playlist_card_images[i].save_png_to_buffer())
-		if not playlist_card_images_payload.is_empty():
-			status_label.text = "Publishing playlist card art..."
-			var playlist_cards_result := await _publish_game_asset("playlist_cards", {"images": playlist_card_images_payload})
-			publish_parts.append("playlist cards (v%d)" % playlist_cards_result.get("version", 0) if playlist_cards_result.get("ok", false) else "playlist cards failed: %s" % playlist_cards_result.get("error", ""))
-
-	if not _field_art_images.is_empty():
-		# Same one-file-per-key shape as every other category (just one key).
-		var field_art_out_dir := base_dir.path_join("edited_icons/field_art")
-		DirAccess.make_dir_recursive_absolute(field_art_out_dir)
-		for i in _field_art_images.size():
-			_field_art_images[i].save_png(field_art_out_dir.path_join("%s.png" % FIELD_ART_KEYS[i]))
-		var f9 := FileAccess.open(field_art_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
-		if f9:
-			f9.store_string(FIELD_ART_INSTRUCTIONS_TEXT)
-		status_parts.append(field_art_out_dir)
-
-		var field_art_images_payload := {}
-		for i in _field_art_images.size():
-			if _image_has_content(_field_art_images[i]):
-				field_art_images_payload[FIELD_ART_KEYS[i]] = Marshalls.raw_to_base64(_field_art_images[i].save_png_to_buffer())
-		if not field_art_images_payload.is_empty():
-			status_label.text = "Publishing input field art..."
-			var field_art_result := await _publish_game_asset("field_art", {"images": field_art_images_payload})
-			publish_parts.append("field art (v%d)" % field_art_result.get("version", 0) if field_art_result.get("ok", false) else "field art failed: %s" % field_art_result.get("error", ""))
-
 	if not _chrome_images.is_empty():
 		# Same one-file-per-key shape as every other category.
 		var chrome_out_dir := base_dir.path_join("edited_icons/chrome")
@@ -2472,7 +1795,7 @@ func _on_export_pressed() -> void:
 		status_label.text = "Exported to: %s. Published live: %s." % [", ".join(status_parts), ", ".join(publish_parts)]
 
 ## Any non-fully-transparent pixel counts as "actually painted" -- a freshly
-## created blank canvas (see _load_button_art_images) is 100% alpha=0.
+## created blank canvas (see _load_chrome_images) is 100% alpha=0.
 func _image_has_content(img: Image) -> bool:
 	var used_rect := img.get_used_rect()
 	return used_rect.size.x > 0 and used_rect.size.y > 0

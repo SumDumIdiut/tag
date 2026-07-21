@@ -10,7 +10,6 @@ const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 func _ready() -> void:
 	UIStyle.add_background(self, "ranked_queue")
 	UIStyle.style_back_button(back_button)
-	UIStyle.apply_bar_art(back_button, "action_bars", "back")
 	back_button.pressed.connect(_on_back_pressed)
 
 	for id in PlaylistCatalog.PLAYLIST_ORDER:
@@ -25,14 +24,6 @@ func _build_card(playlist_id: String) -> Button:
 	btn.clip_contents = true
 	UIStyle.style_button(btn, UIStyle.COLOR_RANKED, 10, false)
 	btn.pressed.connect(_on_playlist_pressed.bind(playlist_id))
-
-	# A whole-bar painting (see the Art Tool's Icons page "Playlist Card
-	# Art" section) replaces the procedural icon/name/sub-label layout below
-	# entirely -- same "never hard-fail on missing custom content" rule as
-	# every other painted button, falls back to the plain layout when no art
-	# exists for this playlist yet.
-	if UIStyle.apply_bar_art(btn, "playlist_cards", playlist_id):
-		return btn
 
 	var layout := HBoxContainer.new()
 	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
