@@ -63,12 +63,6 @@ custom_minimum_size = Vector2(170, 290)
 clip_contents = true
 text = "Browse Servers"
 
-[node name="HostButton" type="Button" parent="VBox/BarRow"]
-layout_mode = 2
-custom_minimum_size = Vector2(170, 290)
-clip_contents = true
-text = "Host Server"
-
 [node name="BackButton" type="Button" parent="VBox"]
 layout_mode = 2
 size_flags_horizontal = 4

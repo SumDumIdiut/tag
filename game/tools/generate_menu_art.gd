@@ -38,12 +38,19 @@ const COLOR_SHOP := Color(0.65, 0.48, 0.98)
 const COLOR_NEUTRAL := Color(0.6, 0.63, 0.72)
 
 const BG_FINAL_SIZE := Vector2i(1152, 648)
-const BG_DESIGN_SIZE := Vector2i(144, 81) # 8x upscale
+# Was 144x81 (8x upscale) -- doubled for noticeably finer detail (icons,
+# star scatter, gradients) at the same final on-screen size and the same
+# deliberately-blocky pixel-art look, just with more pixels to work with.
+# Every icon-drawing function already positions itself as a fraction of
+# design_size (cx=design_size.x/2, r=design_size.x*0.3, etc), not hardcoded
+# absolute coordinates, so this scales through cleanly with no per-icon
+# changes needed.
+const BG_DESIGN_SIZE := Vector2i(288, 162) # 4x upscale
 const BTN_FINAL_SIZE := Vector2i(190, 360)
-const BTN_DESIGN_SIZE := Vector2i(38, 72) # 5x upscale
+const BTN_DESIGN_SIZE := Vector2i(76, 144) # was 38x72 (5x) -- 2.5x upscale
 # Matches online_menu.tscn's bar custom_minimum_size exactly.
 const BAR_FINAL_SIZE := Vector2i(170, 290)
-const BAR_DESIGN_SIZE := Vector2i(34, 58) # 5x upscale
+const BAR_DESIGN_SIZE := Vector2i(68, 116) # was 34x58 (5x) -- 2.5x upscale
 # Matches local_menu.tscn's StartButton/BackButton rendered size (they fill
 # the 380px-wide VBox at fixed heights) -- landscape, not portrait, unlike
 # every other painted button/bar so far, so these use their own
@@ -56,10 +63,10 @@ const BAR_DESIGN_SIZE := Vector2i(34, 58) # 5x upscale
 const PLAY_FINAL_SIZE := Vector2i(380, 64)
 const PLAY_DESIGN_SIZE := Vector2i(142, 24)
 # The ranked VS reveal screen (match_intro.gd) gets a busier background than
-# every other screen -- 192x108 instead of the standard 144x81 gives the
-# light-ray/corner-flourish detail enough room to actually read once
-# upscaled, rather than smearing into noise.
-const RANKED_VS_BG_DESIGN_SIZE := Vector2i(192, 108)
+# every other screen -- proportionally larger than BG_DESIGN_SIZE (same 4x
+# upscale ratio) so the light-ray/corner-flourish detail has room to read
+# once upscaled, rather than smearing into noise.
+const RANKED_VS_BG_DESIGN_SIZE := Vector2i(384, 216)
 const READY_FINAL_SIZE := Vector2i(320, 64)
 const READY_DESIGN_SIZE := Vector2i(120, 24)
 
@@ -187,7 +194,11 @@ func _make_background(key: String, color: Color, icon: String, color2: Color = C
 	if icon != "none":
 		var icon_img := Image.create(BG_DESIGN_SIZE.x, BG_DESIGN_SIZE.y, false, Image.FORMAT_RGBA8)
 		icon_img.fill(Color(0, 0, 0, 0))
-		var r := int(28 * BG_ICON_RADIUS_SCALE.get(icon, 1.0))
+		# Radius as a fraction of BG_DESIGN_SIZE.x (was a flat 28px against
+		# the old 144px-wide canvas, ~19.4% -- kept as the same fraction here
+		# so the watermark's visual proportion doesn't silently shrink
+		# whenever BG_DESIGN_SIZE itself changes).
+		var r := int(BG_DESIGN_SIZE.x * 0.194 * BG_ICON_RADIUS_SCALE.get(icon, 1.0))
 		_draw_icon(icon_img, icon, BG_DESIGN_SIZE.x / 2, int(BG_DESIGN_SIZE.y * 0.48), r, color, color2)
 		_blend_onto(img, icon_img, 0.32)
 	_px_rect(img, 0, BG_DESIGN_SIZE.y - 6, BG_DESIGN_SIZE.x, 6, BG_BOTTOM.darkened(0.2))
@@ -259,8 +270,15 @@ func _make_bar_art(out_dir: String, key: String, color: Color, icon: String, lab
 	_paint_banded_sky(img, color)
 	_scatter_stars(img, key)
 	_draw_icon(img, icon, design_size.x / 2, int(design_size.y * 0.28), int(design_size.x * 0.3), color)
-	_px_character(img, design_size.x / 2 - 4, int(design_size.y * 0.53), 8, color)
-	_px_rect(img, 0, design_size.y - 16, design_size.x, 16, BG_BOTTOM.darkened(0.3))
+	# Character size/offset and the bottom strip height were tuned as flat
+	# pixel counts against the old (smaller) BTN/BAR_DESIGN_SIZE -- scaled
+	# here as fractions of design_size so they keep the same proportions
+	# now that the design canvas is bigger (finer detail), instead of
+	# shrinking relative to everything else drawn as a fraction already.
+	var char_size := maxi(2, int(design_size.x * 0.21))
+	_px_character(img, design_size.x / 2 - int(design_size.x * 0.105), int(design_size.y * 0.53), char_size, color)
+	var strip_h := maxi(2, int(design_size.y * 0.22))
+	_px_rect(img, 0, design_size.y - strip_h, design_size.x, strip_h, BG_BOTTOM.darkened(0.3))
 	_px_border(img, color)
 	img.resize(final_size.x, final_size.y, Image.INTERPOLATE_NEAREST)
 	# Real font rendering (crisp, not pixelated) for the label -- composited
