@@ -18,6 +18,7 @@ const OUT_DIR := "res://assets/character"
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR + "/hats"))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR + "/trails"))
 
 	var baked_count := 0
 	for part_name in SkinCatalog.PART_NAMES:
@@ -40,6 +41,19 @@ func _ready() -> void:
 		baked.save_png("%s/hats/%s.png" % [OUT_DIR, h.id])
 		baked_count += 1
 		print("baked hat ", h.id)
+
+	# Trails have no editable template (see SkinCatalog.TRAIL_WIDTH/HEIGHT's
+	# own doc comment: "just a flat square canvas") -- they're painted
+	# directly at their real color by SkinCatalog._paint_trail_image(),
+	# unlike skins/hats' template+tint pipeline, so this just calls that
+	# once per builtin trail and saves the result, the same "bake once,
+	# load the file at runtime" outcome get_trail_texture() already checks
+	# for first (see _load_or_paint_trail).
+	for t in SkinCatalog.BUILTIN_TRAILS:
+		var baked_trail := SkinCatalog._paint_trail_image(t.shape, t.color)
+		baked_trail.save_png("%s/trails/%s.png" % [OUT_DIR, t.id])
+		baked_count += 1
+		print("baked trail ", t.id)
 
 	print("BAKE_DONE count=", baked_count)
 	get_tree().quit()

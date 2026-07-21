@@ -39,13 +39,11 @@ const ATLAS_PATH := "res://assets/icons/tag_icons.png"
 const ATLAS_ICON_SIZE := 64
 # Same order build_icon_atlas.gd bakes in -- index here is the atlas-x slot
 # for that icon_type, mirroring the tile/tileset index-order contract
-# build_tileset.gd/tile_canvas.gd already use.
-const ATLAS_ICON_ORDER := ["globe", "controller", "box", "bolt", "star", "tag"]
-# "clock" isn't baked into the atlas (added after build_icon_atlas.gd's last
-# bake) -- ATLAS_ICON_ORDER.find() returns -1 for it, so it always falls
-# through to the procedural _draw() case below. Safe either way: baking it
-# in later just needs appending it to this array and re-running the atlas
-# builder, same as any other icon_type.
+# build_tileset.gd/tile_canvas.gd already use. Every icon_type actually
+# used anywhere in the app has a slot now -- the _draw() cases below stay
+# only as the "atlas file missing/corrupt" fallback, never actually hit in
+# a normal build.
+const ATLAS_ICON_ORDER := ["globe", "controller", "box", "bolt", "star", "tag", "team", "clock", "copy", "heart", "send"]
 
 var _atlas_rect: TextureRect = null
 

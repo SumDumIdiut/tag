@@ -189,17 +189,26 @@ static func style_slider(slider: HSlider, color: Color) -> void:
 	slider.add_theme_stylebox_override("grabber_area", fill)
 	slider.add_theme_stylebox_override("grabber_area_highlight", fill)
 
-	var dot := Image.create(14, 14, false, Image.FORMAT_RGBA8)
-	dot.fill(Color(0, 0, 0, 0))
-	var ring := Color(0.08, 0.08, 0.11)
-	for y in 14:
-		for x in 14:
-			var dist := Vector2(x - 6.5, y - 6.5).length()
-			if dist <= 6.5:
-				dot.set_pixel(x, y, ring)
-			if dist <= 5.0:
-				dot.set_pixel(x, y, color)
-	var dot_tex := ImageTexture.create_from_image(dot)
+	# Baked once (see tools/build_procedural_sprites.gd) for the one color
+	# every real call site actually uses (COLOR_LOCAL) -- "nothing made at
+	# runtime" per the project's own convention. Any other color still
+	# generates live below, so this never hard-fails on an uncommon accent.
+	var dot_tex: Texture2D = null
+	const BAKED_GRABBER_PATH := "res://assets/icons/slider_grabber_local.png"
+	if color.is_equal_approx(COLOR_LOCAL) and ResourceLoader.exists(BAKED_GRABBER_PATH):
+		dot_tex = load(BAKED_GRABBER_PATH)
+	if not dot_tex:
+		var dot := Image.create(14, 14, false, Image.FORMAT_RGBA8)
+		dot.fill(Color(0, 0, 0, 0))
+		var ring := Color(0.08, 0.08, 0.11)
+		for y in 14:
+			for x in 14:
+				var dist := Vector2(x - 6.5, y - 6.5).length()
+				if dist <= 6.5:
+					dot.set_pixel(x, y, ring)
+				if dist <= 5.0:
+					dot.set_pixel(x, y, color)
+		dot_tex = ImageTexture.create_from_image(dot)
 	slider.add_theme_icon_override("grabber", dot_tex)
 	slider.add_theme_icon_override("grabber_highlight", dot_tex)
 	slider.add_theme_icon_override("grabber_disabled", dot_tex)
