@@ -98,7 +98,44 @@ static func _load_background_texture(screen_key: String) -> Texture2D:
 		return load(art_path)
 	return null
 
-static func button_box(color: Color, bg_alpha: float, border_alpha: float, radius: int = 10) -> StyleBoxFlat:
+const CHROME_DIR := "res://assets/icons/chrome"
+
+## Loads a baked 9-patch chrome sprite (see tools/build_chrome_art.gd) as a
+## StyleBoxTexture, or null if it's missing -- same "art first, procedural
+## StyleBoxFlat fallback" rule apply_bar_art()/apply_field_art() already
+## follow. `texture_margin` keeps the border/corner pixels a fixed
+## on-screen size while the middle stretches to whatever size the caller's
+## real button/panel/slider ends up at (the same technique
+## apply_field_art() already proved for LineEdit fields). `modulate`
+## carries both the accent color AND the target alpha -- see
+## build_chrome_art.gd's header comment for why a single alpha scalar on
+## the whole baked image reproduces button_box()'s real per-state
+## border/fill alpha pairs almost exactly.
+static func _chrome_stylebox(kind: String, modulate: Color, texture_margin: float) -> StyleBoxTexture:
+	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.bar_override_path("chrome", kind))
+	if not tex:
+		var path := "%s/%s.png" % [CHROME_DIR, kind]
+		if ResourceLoader.exists(path):
+			tex = load(path)
+	if not tex:
+		return null
+	var box := StyleBoxTexture.new()
+	box.texture = tex
+	box.texture_margin_left = texture_margin
+	box.texture_margin_top = texture_margin
+	box.texture_margin_right = texture_margin
+	box.texture_margin_bottom = texture_margin
+	box.modulate_color = modulate
+	return box
+
+static func button_box(color: Color, bg_alpha: float, border_alpha: float, radius: int = 10) -> StyleBox:
+	var chrome := _chrome_stylebox("button", Color(color.r, color.g, color.b, border_alpha), 12.0)
+	if chrome:
+		chrome.content_margin_left = 16.0
+		chrome.content_margin_top = 10.0
+		chrome.content_margin_right = 16.0
+		chrome.content_margin_bottom = 10.0
+		return chrome
 	var box := StyleBoxFlat.new()
 	box.bg_color = Color(color.r, color.g, color.b, bg_alpha)
 	box.border_width_left = 2
@@ -168,24 +205,35 @@ static func _on_hover(btn: Button, entered: bool) -> void:
 ## and the grabber keeps its full accent color with a dark ring around it
 ## (not lightened) so it stays visually distinct at a glance.
 static func style_slider(slider: HSlider, color: Color) -> void:
-	var groove := StyleBoxFlat.new()
-	groove.bg_color = Color(0, 0, 0, 0.35)
-	groove.corner_radius_top_left = 4
-	groove.corner_radius_top_right = 4
-	groove.corner_radius_bottom_right = 4
-	groove.corner_radius_bottom_left = 4
-	groove.content_margin_top = 4.0
-	groove.content_margin_bottom = 4.0
+	# Baked at exactly the groove's real flat black/0.35 alpha (see
+	# tools/build_chrome_art.gd) -- no accent color involved, so modulate
+	# is a pure white no-op, just carrying the texture through untouched.
+	var groove: StyleBox = _chrome_stylebox("slider_groove", Color(1, 1, 1, 1), 5.0)
+	if not groove:
+		var groove_flat := StyleBoxFlat.new()
+		groove_flat.bg_color = Color(0, 0, 0, 0.35)
+		groove_flat.corner_radius_top_left = 4
+		groove_flat.corner_radius_top_right = 4
+		groove_flat.corner_radius_bottom_right = 4
+		groove_flat.corner_radius_bottom_left = 4
+		groove_flat.content_margin_top = 4.0
+		groove_flat.content_margin_bottom = 4.0
+		groove = groove_flat
 	slider.add_theme_stylebox_override("slider", groove)
 
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = Color(color.r, color.g, color.b, 0.9)
-	fill.corner_radius_top_left = 4
-	fill.corner_radius_top_right = 4
-	fill.corner_radius_bottom_right = 4
-	fill.corner_radius_bottom_left = 4
-	fill.content_margin_top = 4.0
-	fill.content_margin_bottom = 4.0
+	# Baked white at the real 0.9 alpha -- modulate's RGB tints it to the
+	# accent color, its alpha of 1.0 leaves the baked 0.9 untouched.
+	var fill: StyleBox = _chrome_stylebox("slider_fill", Color(color.r, color.g, color.b, 1.0), 5.0)
+	if not fill:
+		var fill_flat := StyleBoxFlat.new()
+		fill_flat.bg_color = Color(color.r, color.g, color.b, 0.9)
+		fill_flat.corner_radius_top_left = 4
+		fill_flat.corner_radius_top_right = 4
+		fill_flat.corner_radius_bottom_right = 4
+		fill_flat.corner_radius_bottom_left = 4
+		fill_flat.content_margin_top = 4.0
+		fill_flat.content_margin_bottom = 4.0
+		fill = fill_flat
 	slider.add_theme_stylebox_override("grabber_area", fill)
 	slider.add_theme_stylebox_override("grabber_area_highlight", fill)
 
@@ -233,7 +281,14 @@ static func glow_texture(color: Color, size: int = 170) -> GradientTexture2D:
 ## A translucent bordered panel background -- used for roster lists, server
 ## lists, cards, and other content wells that need to visually separate
 ## from the backdrop without competing with buttons for attention.
-static func panel_box(color: Color = COLOR_NEUTRAL, bg_alpha: float = 0.05, border_alpha: float = 0.12, radius: int = 14) -> StyleBoxFlat:
+static func panel_box(color: Color = COLOR_NEUTRAL, bg_alpha: float = 0.05, border_alpha: float = 0.12, radius: int = 14) -> StyleBox:
+	var chrome := _chrome_stylebox("panel", Color(color.r, color.g, color.b, border_alpha), 16.0)
+	if chrome:
+		chrome.content_margin_left = 14.0
+		chrome.content_margin_top = 14.0
+		chrome.content_margin_right = 14.0
+		chrome.content_margin_bottom = 14.0
+		return chrome
 	var box := StyleBoxFlat.new()
 	box.bg_color = Color(color.r, color.g, color.b, bg_alpha)
 	box.border_width_left = 2
