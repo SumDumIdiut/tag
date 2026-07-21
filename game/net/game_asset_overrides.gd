@@ -37,6 +37,9 @@ static func playlist_card_override_path(key: String) -> String:
 static func field_art_override_path(key: String) -> String:
 	return "user://game_assets/field_art/%s.png" % key
 
+static func chrome_override_path(key: String) -> String:
+	return "user://game_assets/chrome/%s.png" % key
+
 ## Generic form of the category-specific helpers above -- new categories
 ## (see UIStyle.apply_bar_art, tools/art_tool.gd's Action Buttons section)
 ## use this directly instead of a new one-off wrapper function each time.

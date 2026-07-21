@@ -157,6 +157,25 @@ To make this the game's real input-field background:
 No file here just keeps every field on the plain flat-colored fallback.
 """
 
+const CHROME_INSTRUCTIONS_TEXT := """Each file here is one piece of the app's shared button/panel/slider chrome --
+a small 9-patch box (fixed-width border pixels, stretchy middle) painted
+white on transparent so it re-tints to any screen's own accent color at
+runtime. Button is 32x32, Panel is 40x40, Slider Groove/Fill are 20x14.
+
+To make one of these the game's real chrome:
+
+  1. Copy the file to game/assets/icons/chrome/<key>.png, matching the
+     file's own name here (button.png, panel.png, slider_groove.png,
+     slider_fill.png).
+  2. Commit the file -- no rebuild step needed, UIStyle.button_box()/
+     panel_box()/style_slider() check for it at runtime and use it in
+     place of the plain flat-colored box automatically, everywhere in the
+     app at once.
+
+A piece with no file here just keeps every button/panel/slider on the
+plain flat-colored fallback -- you don't need to paint all four at once.
+"""
+
 const BACKGROUND_INSTRUCTIONS_TEXT := """Each file here is one menu screen's ENTIRE background, painted at
 1152x648, the game's real viewport size.
 
@@ -360,6 +379,22 @@ var _field_art_images: Array[Image] = [] # index-matched to FIELD_ART_KEYS
 var _current_field_art_index := -1
 var _field_art_select_buttons: Array[Button] = []
 
+# Every button/panel/slider's own 9-patch box art (see UIStyle.button_box()/
+# panel_box()/style_slider() and tools/build_chrome_art.gd) -- the last
+# runtime-generated UI visual in the app, now paintable like everything
+# else. Unlike every other category on this page, each key here is its
+## own real shape/size (a button box isn't the same size as a slider
+## groove), so this uses a per-key CHROME_SIZES array instead of one
+## shared *_SIZE constant.
+const CHROME_KEYS := Categories.CHROME_KEYS
+const CHROME_NAMES := ["Button", "Panel", "Slider Groove", "Slider Fill"]
+const CHROME_SIZES := [Vector2i(32, 32), Vector2i(40, 40), Vector2i(20, 14), Vector2i(20, 14)]
+const CHROME_ART_DIR := "res://assets/icons/chrome"
+const CHROME_ZOOM := 10
+var _chrome_images: Array[Image] = [] # index-matched to CHROME_KEYS
+var _current_chrome_index := -1
+var _chrome_select_buttons: Array[Button] = []
+
 var _import_file_dialog: FileDialog
 
 func _ready() -> void:
@@ -386,6 +421,13 @@ func _ready() -> void:
 	_load_publish_key()
 	publish_key_edit.text_changed.connect(_save_publish_key)
 	_build_big_preview()
+	# Items opens by default (paint_page/preview_page start visible per the
+	# .tscn), so unlike every other tab this one never gets a fresh
+	# .pressed signal to trigger its own refresh -- without this the panel
+	# sits on _big_preview's construction-time defaults (no part textures
+	# set at all) instead of the actual default-red character.
+	_refresh_preview_selectors()
+	_refresh_big_preview()
 	canvas_holder.visible = false
 	empty_state_label.visible = true
 	_check_for_update()
@@ -403,42 +445,52 @@ func _on_update_check_completed(result: Dictionary) -> void:
 	add_child(prompt)
 	prompt.setup(result.version, result.download_url)
 
+## 3 tabs, not the original 4 -- Items / Levels / Sprites. "Items" merges
+## the old Paint tab (custom skin/hat/trail editor) and Preview tab
+## (read-only combo viewer) into one: Preview's big-portrait panel
+## reparents into paint_page itself (already an HBoxContainer) as a
+## permanent 4th column, always visible alongside Items instead of behind
+## its own separate toggle -- you see what you're editing without
+## switching pages. preview_tab_button/PreviewTabButton stays in the
+## scene (unused, hidden) rather than being freed, so nothing here
+## depends on tearing down a .tscn-owned node at runtime.
 func _setup_page_tabs() -> void:
 	# IconsTabButton/IconsPage isn't in the .tscn -- built and inserted
-	# alongside the other three entirely in code, right next to the tab row/
+	# alongside the other tabs entirely in code, right next to the tab row/
 	# page container that already own the other tabs, so there's nothing
 	# scene-file-specific about how this one is wired in.
 	var tab_row: HBoxContainer = paint_tab_button.get_parent()
 	icons_tab_button = Button.new()
 	icons_tab_button.custom_minimum_size = Vector2(140, 38)
 	icons_tab_button.toggle_mode = true
-	icons_tab_button.text = "Icons"
+	icons_tab_button.text = "Sprites"
 	tab_row.add_child(icons_tab_button)
+
+	preview_tab_button.visible = false
+	preview_page.reparent(paint_page)
+	# Matches whatever paint_page's own default visibility already is (the
+	# .tscn opens on the Items/Paint tab) -- previously independent tabs,
+	# now permanent page-mates that should never disagree.
+	preview_page.visible = paint_page.visible
+
+	paint_tab_button.text = "Items"
+	level_tab_button.text = "Levels"
 
 	var tab_group := ButtonGroup.new()
 	paint_tab_button.button_group = tab_group
-	preview_tab_button.button_group = tab_group
 	level_tab_button.button_group = tab_group
 	icons_tab_button.button_group = tab_group
 	UIStyle.style_button(paint_tab_button, UIStyle.COLOR_SHOP, 10)
-	UIStyle.style_button(preview_tab_button, UIStyle.COLOR_ONLINE, 10)
 	UIStyle.style_button(level_tab_button, UIStyle.COLOR_SANDBOX, 10)
 	UIStyle.style_button(icons_tab_button, UIStyle.COLOR_LOCAL, 10)
 	paint_tab_button.pressed.connect(func():
 		paint_page.visible = true
-		preview_page.visible = false
+		preview_page.visible = true
 		level_page.visible = false
 		icons_page.visible = false
 		export_button.visible = true
 		_active_color_picker = color_picker
 		_apply_tool_state()
-	)
-	preview_tab_button.pressed.connect(func():
-		paint_page.visible = false
-		preview_page.visible = true
-		level_page.visible = false
-		icons_page.visible = false
-		export_button.visible = true
 		_refresh_preview_selectors()
 		_refresh_big_preview()
 	)
@@ -1564,6 +1616,25 @@ func _build_icons_page() -> void:
 		select_box.add_child(btn)
 		_field_art_select_buttons.append(btn)
 
+	var chrome_spacer := Control.new()
+	chrome_spacer.custom_minimum_size = Vector2(0, 8)
+	select_box.add_child(chrome_spacer)
+
+	# Same shared ButtonGroup again -- picking a chrome piece here
+	# deselects whichever other section was active.
+	select_box.add_child(_section_label("CHROME (BUTTON/PANEL/SLIDER)"))
+	_chrome_select_buttons.clear()
+	for i in CHROME_NAMES.size():
+		var btn := Button.new()
+		btn.text = CHROME_NAMES[i]
+		btn.toggle_mode = true
+		btn.button_group = icon_group
+		btn.custom_minimum_size = Vector2(0, 32)
+		UIStyle.style_button(btn, UIStyle.COLOR_SHOP, 10, false)
+		btn.pressed.connect(_show_chrome.bind(i))
+		select_box.add_child(btn)
+		_chrome_select_buttons.append(btn)
+
 	var canvas_panel := PanelContainer.new()
 	canvas_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	canvas_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1643,6 +1714,7 @@ func _build_icons_page() -> void:
 	_load_action_bar_images()
 	_load_playlist_card_images()
 	_load_field_art_images()
+	_load_chrome_images()
 	_show_icon(0)
 	_icon_select_buttons[0].button_pressed = true
 
@@ -1675,6 +1747,7 @@ func _show_icon(index: int) -> void:
 	_current_action_bar_index = -1
 	_current_playlist_card_index = -1
 	_current_field_art_index = -1
+	_current_chrome_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = (i == index)
 	for i in _button_art_select_buttons.size():
@@ -1687,6 +1760,8 @@ func _show_icon(index: int) -> void:
 		_playlist_card_select_buttons[i].button_pressed = false
 	for i in _field_art_select_buttons.size():
 		_field_art_select_buttons[i].button_pressed = false
+	for i in _chrome_select_buttons.size():
+		_chrome_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1729,6 +1804,7 @@ func _show_button_art(index: int) -> void:
 	_current_action_bar_index = -1
 	_current_playlist_card_index = -1
 	_current_field_art_index = -1
+	_current_chrome_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
 	for i in _button_art_select_buttons.size():
@@ -1741,6 +1817,8 @@ func _show_button_art(index: int) -> void:
 		_playlist_card_select_buttons[i].button_pressed = false
 	for i in _field_art_select_buttons.size():
 		_field_art_select_buttons[i].button_pressed = false
+	for i in _chrome_select_buttons.size():
+		_chrome_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1779,6 +1857,7 @@ func _show_background(index: int) -> void:
 	_current_action_bar_index = -1
 	_current_playlist_card_index = -1
 	_current_field_art_index = -1
+	_current_chrome_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
 	for i in _button_art_select_buttons.size():
@@ -1791,6 +1870,8 @@ func _show_background(index: int) -> void:
 		_playlist_card_select_buttons[i].button_pressed = false
 	for i in _field_art_select_buttons.size():
 		_field_art_select_buttons[i].button_pressed = false
+	for i in _chrome_select_buttons.size():
+		_chrome_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1828,6 +1909,7 @@ func _show_action_bar(index: int) -> void:
 	_current_background_index = -1
 	_current_playlist_card_index = -1
 	_current_field_art_index = -1
+	_current_chrome_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
 	for i in _button_art_select_buttons.size():
@@ -1840,6 +1922,8 @@ func _show_action_bar(index: int) -> void:
 		_playlist_card_select_buttons[i].button_pressed = false
 	for i in _field_art_select_buttons.size():
 		_field_art_select_buttons[i].button_pressed = false
+	for i in _chrome_select_buttons.size():
+		_chrome_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1878,6 +1962,7 @@ func _show_playlist_card(index: int) -> void:
 	_current_background_index = -1
 	_current_action_bar_index = -1
 	_current_field_art_index = -1
+	_current_chrome_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
 	for i in _button_art_select_buttons.size():
@@ -1890,6 +1975,8 @@ func _show_playlist_card(index: int) -> void:
 		_playlist_card_select_buttons[i].button_pressed = (i == index)
 	for i in _field_art_select_buttons.size():
 		_field_art_select_buttons[i].button_pressed = false
+	for i in _chrome_select_buttons.size():
+		_chrome_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1928,6 +2015,7 @@ func _show_field_art(index: int) -> void:
 	_current_background_index = -1
 	_current_action_bar_index = -1
 	_current_playlist_card_index = -1
+	_current_chrome_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
 	for i in _button_art_select_buttons.size():
@@ -1940,6 +2028,8 @@ func _show_field_art(index: int) -> void:
 		_playlist_card_select_buttons[i].button_pressed = false
 	for i in _field_art_select_buttons.size():
 		_field_art_select_buttons[i].button_pressed = (i == index)
+	for i in _chrome_select_buttons.size():
+		_chrome_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1947,6 +2037,62 @@ func _show_field_art(index: int) -> void:
 	icons_canvas_holder.add_child(canvas)
 	canvas.painted.connect(_on_painted)
 	canvas.painted.connect(func(): _field_art_images[index] = canvas.image)
+	canvas.color_picked.connect(_on_eyedropper_picked)
+	_current_canvas = canvas
+	_apply_tool_state()
+
+## Loads each chrome piece's baked 9-patch art (see CHROME_KEYS/
+## tools/build_chrome_art.gd) if it's already been painted and committed,
+## else a blank transparent canvas at that key's own real size (each key
+## has a different shape/size, unlike every other category on this page)
+## -- same "always something real or an honest blank canvas" rule every
+## other section here follows.
+func _load_chrome_images() -> void:
+	_chrome_images.clear()
+	for i in CHROME_KEYS.size():
+		var key: String = CHROME_KEYS[i]
+		var size: Vector2i = CHROME_SIZES[i]
+		var path := "%s/%s.png" % [CHROME_ART_DIR, key]
+		var img: Image
+		if ResourceLoader.exists(path):
+			var tex: Texture2D = load(path)
+			img = tex.get_image() if tex else null
+			if img:
+				img.convert(Image.FORMAT_RGBA8)
+		if not img:
+			img = Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)
+			img.fill(Color(0, 0, 0, 0))
+		_chrome_images.append(img)
+
+func _show_chrome(index: int) -> void:
+	_current_chrome_index = index
+	_current_icon_index = -1
+	_current_button_art_index = -1
+	_current_background_index = -1
+	_current_action_bar_index = -1
+	_current_playlist_card_index = -1
+	_current_field_art_index = -1
+	for i in _icon_select_buttons.size():
+		_icon_select_buttons[i].button_pressed = false
+	for i in _button_art_select_buttons.size():
+		_button_art_select_buttons[i].button_pressed = false
+	for i in _background_select_buttons.size():
+		_background_select_buttons[i].button_pressed = false
+	for i in _action_bar_select_buttons.size():
+		_action_bar_select_buttons[i].button_pressed = false
+	for i in _playlist_card_select_buttons.size():
+		_playlist_card_select_buttons[i].button_pressed = false
+	for i in _field_art_select_buttons.size():
+		_field_art_select_buttons[i].button_pressed = false
+	for i in _chrome_select_buttons.size():
+		_chrome_select_buttons[i].button_pressed = (i == index)
+	for child in icons_canvas_holder.get_children():
+		icons_canvas_holder.remove_child(child)
+		child.queue_free()
+	var canvas = PixelCanvasScene.new(_chrome_images[index], CHROME_ZOOM)
+	icons_canvas_holder.add_child(canvas)
+	canvas.painted.connect(_on_painted)
+	canvas.painted.connect(func(): _chrome_images[index] = canvas.image)
 	canvas.color_picked.connect(_on_eyedropper_picked)
 	_current_canvas = canvas
 	_apply_tool_state()
@@ -1996,7 +2142,13 @@ func _build_big_preview() -> void:
 	_big_preview = CharacterPreviewScene.new()
 	_big_preview.skin_id = "red"
 	_big_preview.hat_id = ""
-	_big_preview.zoom = 5.0
+	# 5.0 (originally tuned for the old 6-part humanoid rig) crops the
+	# current single-40x40-square model down to a sliver near its top edge
+	# at this camera's off-center look-at point (AVATAR_OFFSET + (0,-20),
+	# biased toward the sprite's top) -- the whole square plus hat headroom
+	# only fits at zoom <=~1.0. 0.85 leaves a bit of breathing room on all
+	# sides, same intent as the render_scale comment below.
+	_big_preview.zoom = 0.85
 	# 4x render resolution -- at the default VIEWPORT_SIZE (56x72), stretching
 	# up to this preview's 260x340 display size is a ~4.6x non-integer
 	# scale, which reads as visibly uneven/jagged even with nearest
@@ -2006,6 +2158,14 @@ func _build_big_preview() -> void:
 	_big_preview.render_scale = 4.0
 	_big_preview.custom_minimum_size = Vector2(260, 340)
 	big_preview_center.add_child(_big_preview)
+	# BigPreviewPanel never got a card background of its own -- harmless
+	# back when Preview was a standalone tab (the window-wide background
+	# from add_background() was enough), but now that it's a permanent 4th
+	# column next to 3 panel_box()-styled columns (part list/canvas/color),
+	# leaving it bare reads as visibly orphaned.
+	var big_preview_panel := big_preview_center.get_parent() as PanelContainer
+	if big_preview_panel:
+		big_preview_panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
 
 func _refresh_preview_selectors() -> void:
 	skin_select.clear()
@@ -2283,6 +2443,26 @@ func _on_export_pressed() -> void:
 			status_label.text = "Publishing input field art..."
 			var field_art_result := await _publish_game_asset("field_art", {"images": field_art_images_payload})
 			publish_parts.append("field art (v%d)" % field_art_result.get("version", 0) if field_art_result.get("ok", false) else "field art failed: %s" % field_art_result.get("error", ""))
+
+	if not _chrome_images.is_empty():
+		# Same one-file-per-key shape as every other category.
+		var chrome_out_dir := base_dir.path_join("edited_icons/chrome")
+		DirAccess.make_dir_recursive_absolute(chrome_out_dir)
+		for i in _chrome_images.size():
+			_chrome_images[i].save_png(chrome_out_dir.path_join("%s.png" % CHROME_KEYS[i]))
+		var f10 := FileAccess.open(chrome_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
+		if f10:
+			f10.store_string(CHROME_INSTRUCTIONS_TEXT)
+		status_parts.append(chrome_out_dir)
+
+		var chrome_images_payload := {}
+		for i in _chrome_images.size():
+			if _image_has_content(_chrome_images[i]):
+				chrome_images_payload[CHROME_KEYS[i]] = Marshalls.raw_to_base64(_chrome_images[i].save_png_to_buffer())
+		if not chrome_images_payload.is_empty():
+			status_label.text = "Publishing chrome art..."
+			var chrome_result := await _publish_game_asset("chrome", {"images": chrome_images_payload})
+			publish_parts.append("chrome (v%d)" % chrome_result.get("version", 0) if chrome_result.get("ok", false) else "chrome failed: %s" % chrome_result.get("error", ""))
 
 	if status_parts.is_empty():
 		status_label.text = "Nothing to export yet -- create a skin, hat, or trail first."
