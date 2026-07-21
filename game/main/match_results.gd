@@ -76,7 +76,7 @@ func _build_row(entry: Dictionary) -> Control:
 	return row
 
 func _fetch_my_rank() -> void:
-	if SkinCatalog.client_id.is_empty():
+	if PlayerIdentity.client_id.is_empty():
 		rank_label.text = ""
 		return
 	var req := HTTPRequest.new()
@@ -94,10 +94,10 @@ func _fetch_my_rank() -> void:
 		var tier: String = str(parsed.get("tier", "Bronze"))
 		rank_label.text = "%s -- %d ELO" % [tier, elo]
 	)
-	req.request("%s/%s" % [RANKED_API_BASE, SkinCatalog.client_id])
+	req.request("%s/%s" % [RANKED_API_BASE, PlayerIdentity.client_id])
 
 func _fetch_my_progression() -> void:
-	if SkinCatalog.client_id.is_empty():
+	if PlayerIdentity.client_id.is_empty():
 		_progression_label.text = ""
 		return
 	var req := HTTPRequest.new()
@@ -118,7 +118,7 @@ func _fetch_my_progression() -> void:
 			level, xp, achievements.size(), "" if achievements.size() == 1 else "s",
 		]
 	)
-	req.request("%s/%s" % [PROGRESSION_API_BASE, SkinCatalog.client_id])
+	req.request("%s/%s" % [PROGRESSION_API_BASE, PlayerIdentity.client_id])
 
 func _on_continue_pressed() -> void:
 	NetworkManager.disconnect_from_server()

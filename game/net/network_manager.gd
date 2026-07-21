@@ -217,7 +217,7 @@ func _on_connected_to_server() -> void:
 		_pending_as_spectator = false
 		rpc_id(1, "_server_register_spectator")
 	else:
-		rpc_id(1, "_server_register_player", username, SkinCatalog.selected_skin_id, SkinCatalog.selected_hat_id, SkinCatalog.selected_trail_id, SkinCatalog.client_id)
+		rpc_id(1, "_server_register_player", username, SkinCatalog.selected_skin_id, SkinCatalog.selected_hat_id, SkinCatalog.selected_trail_id, PlayerIdentity.client_id)
 	connected_to_server.emit()
 
 func _on_connection_failed() -> void:

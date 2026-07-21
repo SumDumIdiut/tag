@@ -43,7 +43,7 @@ func _ready() -> void:
 	code_row.add_theme_constant_override("separation", 10)
 	code_box.add_child(code_row)
 	var code_edit := LineEdit.new()
-	code_edit.text = SkinCatalog.client_id
+	code_edit.text = PlayerIdentity.client_id
 	code_edit.editable = false
 	code_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UIStyle.style_line_edit(code_edit)
@@ -53,7 +53,7 @@ func _ready() -> void:
 	UIStyle.style_button(copy_btn, ACCENT, 8)
 	UIStyle.prefix_icon(copy_btn, "copy", ACCENT)
 	copy_btn.pressed.connect(func():
-		DisplayServer.clipboard_set(SkinCatalog.client_id)
+		DisplayServer.clipboard_set(PlayerIdentity.client_id)
 		_status_label.text = "Copied to clipboard."
 	)
 	code_row.add_child(copy_btn)
@@ -112,7 +112,7 @@ func _on_add_pressed() -> void:
 	var code := _add_edit.text.strip_edges()
 	if code.is_empty():
 		return
-	if SkinCatalog.client_id.is_empty():
+	if PlayerIdentity.client_id.is_empty():
 		_status_label.text = "No local identity yet -- try again in a moment."
 		return
 	var req := HTTPRequest.new()
@@ -130,12 +130,12 @@ func _on_add_pressed() -> void:
 		_status_label.text = "Friend added."
 		_fetch_friends()
 	)
-	var url := "%s/%s/add" % [FRIENDS_API_BASE, SkinCatalog.client_id]
+	var url := "%s/%s/add" % [FRIENDS_API_BASE, PlayerIdentity.client_id]
 	var body := JSON.stringify({"friendCode": code})
 	req.request(url, ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
 
 func _fetch_friends() -> void:
-	if SkinCatalog.client_id.is_empty():
+	if PlayerIdentity.client_id.is_empty():
 		return
 	var req := HTTPRequest.new()
 	add_child(req)
@@ -148,7 +148,7 @@ func _fetch_friends() -> void:
 			return
 		_render_friends(parsed)
 	)
-	req.request("%s/%s" % [FRIENDS_API_BASE, SkinCatalog.client_id])
+	req.request("%s/%s" % [FRIENDS_API_BASE, PlayerIdentity.client_id])
 
 func _render_friends(friends: Array) -> void:
 	for child in _list_box.get_children():
