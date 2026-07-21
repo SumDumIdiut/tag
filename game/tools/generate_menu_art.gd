@@ -71,11 +71,11 @@ const READY_FINAL_SIZE := Vector2i(320, 64)
 const READY_DESIGN_SIZE := Vector2i(120, 24)
 
 # One shared category for every plain full-width utility bar across the app
-# that isn't already covered by a more specific category above (server
-# browser's Connect/Watch, host setup's Host Server, lobby room's Ready/
-# Start Match, login screen's Log In/Create Account/Log Out, and "back" --
-# reused as-is for every Back/Cancel/Leave button in the app, since they're
-# all the same "exit this screen" action regardless of screen). Data-driven
+# that isn't already covered by a more specific category above (direct
+# connect's Connect/Watch, lobby room's Ready/Start Match, login screen's
+# Log In/Create Account/Log Out, and "back" -- reused as-is for every Back/
+# Cancel/Leave button in the app, since they're all the same "exit this
+# screen" action regardless of screen). Data-driven
 # (one entry per button) rather than one hand-written call per button, since
 ## there are a dozen of these and they're otherwise identical in shape.
 const ACTION_BAR_FINAL_SIZE := Vector2i(380, 44)
@@ -84,7 +84,6 @@ const ACTION_BARS := {
 	"back": {"color": COLOR_NEUTRAL, "icon": "back_arrow", "label": "Back"},
 	"connect": {"color": COLOR_ONLINE, "icon": "link", "label": "Connect"},
 	"watch": {"color": COLOR_ONLINE, "icon": "eye", "label": "Watch"},
-	"host_server": {"color": COLOR_ONLINE, "icon": "gear", "label": "Host Server"},
 	"ready": {"color": COLOR_ONLINE, "icon": "check", "label": "Ready"},
 	"start_match": {"color": COLOR_ONLINE, "icon": "play", "label": "Start Match"},
 	"login": {"color": COLOR_SHOP, "icon": "door", "label": "Log In"},
@@ -126,23 +125,20 @@ func _ready() -> void:
 	_make_background("match_intro", COLOR_QUICKPLAY, "faceoff", COLOR_RANKED)
 	_make_background("match_results", COLOR_QUICKPLAY, "trophy")
 	_make_background("multiplayer_connect", COLOR_NEUTRAL, "link")
-	_make_background("quick_play", COLOR_QUICKPLAY, "bolt")
 	_make_background("ranked_queue", COLOR_RANKED, "crown")
-	_make_background("server_browser", COLOR_ONLINE, "signal")
 
 	await _make_bar_art(MODE_BUTTON_OUT_DIR, "online", COLOR_ONLINE, "globe", "ONLINE", BTN_FINAL_SIZE, BTN_DESIGN_SIZE, 28)
 	await _make_bar_art(MODE_BUTTON_OUT_DIR, "local", COLOR_LOCAL, "house", "LOCAL", BTN_FINAL_SIZE, BTN_DESIGN_SIZE, 28)
 
-	# Full whole-bar art for the Online submenu's 5 plain bars (Quick Play/
-	# Ranked/Browse Servers/Host Server/Friends) -- see online_menu.gd.
-	# Same composition as the mode buttons above (background scene + icon +
-	# character + label), not just a small icon glyph -- a first pass that
-	# only added an icon on top of the existing styled button looked
-	# inconsistent sitting next to the fully-painted mode buttons.
-	await _make_bar_art(ONLINE_BAR_OUT_DIR, "quick_play", COLOR_QUICKPLAY, "bolt", "Quick Play", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 18)
+	# Full whole-bar art for the Online submenu's 4 plain bars (Casual/
+	# Ranked/Private/Friends) -- see online_menu.gd. Same composition as the
+	# mode buttons above (background scene + icon + character + label), not
+	# just a small icon glyph -- a first pass that only added an icon on top
+	# of the existing styled button looked inconsistent sitting next to the
+	# fully-painted mode buttons.
+	await _make_bar_art(ONLINE_BAR_OUT_DIR, "casual", COLOR_QUICKPLAY, "bolt", "Casual", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 18)
 	await _make_bar_art(ONLINE_BAR_OUT_DIR, "ranked", COLOR_RANKED, "crown", "Ranked", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 18)
-	await _make_bar_art(ONLINE_BAR_OUT_DIR, "browse_servers", COLOR_ONLINE, "signal", "Browse Servers", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 16)
-	await _make_bar_art(ONLINE_BAR_OUT_DIR, "host_server", COLOR_ONLINE, "gear", "Host Server", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 16)
+	await _make_bar_art(ONLINE_BAR_OUT_DIR, "private", COLOR_ONLINE, "gear", "Private", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 18)
 	await _make_bar_art(ONLINE_BAR_OUT_DIR, "friends", COLOR_SHOP, "heart", "Friends", BAR_FINAL_SIZE, BAR_DESIGN_SIZE, 18)
 
 	# Local menu's Play Tag -- same painted treatment as every other real

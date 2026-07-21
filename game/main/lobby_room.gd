@@ -41,8 +41,48 @@ func _ready() -> void:
 	NetworkManager.map_vote_phase_ended.connect(_on_map_vote_phase_ended)
 	_map_vote_popup = MapVotePopupScene.new()
 	add_child(_map_vote_popup)
+	_build_share_address_panel()
 	_build_chat_panel()
 	_on_lobby_state_updated(NetworkManager.current_lobby)
+
+## Only built when NetworkManager.hosted_private_address is set -- i.e. this
+## client just hosted a fresh Private match (see online_menu.gd/
+## casual_matchmaker.gd) -- normal public lobbies (Casual/Ranked/joining a
+## friend) have nothing to show here since there's no separate address to
+## share, the relay directory already handles discovery for those.
+func _build_share_address_panel() -> void:
+	if NetworkManager.hosted_private_address.is_empty():
+		return
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_ONLINE))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	panel.add_child(box)
+	var label := Label.new()
+	label.text = "PRIVATE MATCH -- SHARE THIS ADDRESS"
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
+	box.add_child(label)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	box.add_child(row)
+	var address_edit := LineEdit.new()
+	address_edit.name = "PrivateAddressEdit"
+	address_edit.text = NetworkManager.hosted_private_address
+	address_edit.editable = false
+	address_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UIStyle.style_line_edit(address_edit)
+	row.add_child(address_edit)
+	var copy_btn := Button.new()
+	copy_btn.text = "  Copy"
+	UIStyle.style_button(copy_btn, UIStyle.COLOR_ONLINE, 8)
+	UIStyle.prefix_icon(copy_btn, "copy", UIStyle.COLOR_ONLINE)
+	copy_btn.pressed.connect(func(): DisplayServer.clipboard_set(NetworkManager.hosted_private_address))
+	row.add_child(copy_btn)
+
+	var vbox: VBoxContainer = lobby_name_label.get_parent()
+	vbox.add_child(panel)
+	vbox.move_child(panel, lobby_name_label.get_index() + 1)
 
 ## Map selection is a timed pop-up right before the match actually starts
 ## (see network_manager.gd's _begin_match_sequence), not a passive panel

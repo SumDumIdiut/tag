@@ -24,7 +24,7 @@ const RANK_BADGE_OUT_DIR := "res://assets/icons/rank_badges"
 # "" (empty tier) is the unranked/default case -- see UIStyle.RANK_TIER_DEFAULT_COLOR.
 const RANK_TIERS := ["Bronze", "Silver", "Gold", "Platinum", "Diamond", ""]
 
-const MAP_ICON_SIZE := Vector2i(208, 110) # matches local_map_picker.gd's PREVIEW_SIZE exactly
+const MAP_ICON_SIZE := Vector2i(208, 110) # source resolution; LocalMapIcon stretches the baked PNG to whatever size a caller actually displays it at
 const MAP_ICON_OUT_DIR := "res://assets/icons/local_map_icons"
 const MAP_IDS := ["classic_arena", "wide_open", "twin_towers", "staircase", "scattered_islands", "pillars_and_ledges"]
 

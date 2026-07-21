@@ -12,10 +12,10 @@ class_name LocalMapIcon
 # map under res://assets/icons/local_map_icons/) and only falls back to the
 # original procedural _draw() below if that map's file is missing -- same
 # "never hard-fail on missing custom content" rule mode_icon.gd's atlas
-# check already follows. Every real call site (local_map_picker.gd) always
-# uses UIStyle.COLOR_LOCAL, which is what got baked -- a caller passing a
-# different accent_color still falls through to the live _draw() path
-# below and renders correctly, just not from the baked file.
+# check already follows. Every real call site (local_menu.gd's inline map
+# row) always uses UIStyle.COLOR_LOCAL, which is what got baked -- a caller
+# passing a different accent_color still falls through to the live _draw()
+# path below and renders correctly, just not from the baked file.
 
 const Catalog := preload("res://levels/local_maps/catalog.gd")
 

@@ -2,9 +2,9 @@ extends RefCounted
 class_name LocalMapCatalog
 
 ## Single source of truth for every built-in Local (bot) map. Both the
-## procedural generator (tools/generate_local_maps.gd) and the map-picker
-## screen (main/local_map_picker.gd) read the same `platforms` data here --
-## the generator to build the actual .tscn geometry, the picker to draw a
+## procedural generator (tools/generate_local_maps.gd) and local_menu.gd's
+## inline map-picker row read the same `platforms` data here -- the
+## generator to build the actual .tscn geometry, the picker to draw a
 ## matching preview icon (see ui/local_map_icon.gd) -- so a map's picker
 ## thumbnail can never drift out of sync with what it actually looks like
 ## in-game.

@@ -18,12 +18,12 @@ const MODE_BUTTON_KEYS := ["online", "local"]
 const BACKGROUND_KEYS := [
 	"main_menu", "online_menu", "local_menu", "shop", "friends_menu",
 	"lobby_room", "host_setup", "login_screen", "match_intro", "match_results",
-	"multiplayer_connect", "quick_play", "ranked_queue", "server_browser",
+	"multiplayer_connect", "ranked_queue",
 ]
-# Mirrors online_menu.gd's 5 bars -- see tools/generate_menu_art.gd. No Art
+# Mirrors online_menu.gd's 4 bars -- see tools/generate_menu_art.gd. No Art
 # Tool section paints these yet (only the generator does); listed here so
 # one exists when that gap gets closed.
-const ONLINE_BAR_KEYS := ["quick_play", "ranked", "browse_servers", "host_server", "friends"]
+const ONLINE_BAR_KEYS := ["casual", "ranked", "private", "friends"]
 # Mirrors local_menu.gd's Play Tag button (Back moved to ACTION_BAR_KEYS,
 # shared with every other screen's Back). Same "no Art Tool section yet" gap.
 const LOCAL_BAR_KEYS := ["play"]
@@ -31,7 +31,7 @@ const LOCAL_BAR_KEYS := ["play"]
 const RANKED_BAR_KEYS := ["ready"]
 # One shared image per key reused across every screen that has that
 # button (see ui/ui_style.gd's apply_bar_art).
-const ACTION_BAR_KEYS := ["back", "connect", "watch", "host_server", "ready", "start_match", "login", "create_account", "logout"]
+const ACTION_BAR_KEYS := ["back", "connect", "watch", "ready", "start_match", "login", "create_account", "logout"]
 # ranked_playlist_select.gd's whole-bar art check.
 const PLAYLIST_CARD_KEYS := ["1v1", "2v2", "1v1v1", "1v1v1v1"]
 # One shared background image reused by every LineEdit in the app.

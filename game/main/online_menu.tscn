@@ -45,11 +45,11 @@ size_flags_vertical = 3
 alignment = 1
 theme_override_constants/separation = 12
 
-[node name="QuickPlayButton" type="Button" parent="VBox/BarRow"]
+[node name="CasualButton" type="Button" parent="VBox/BarRow"]
 layout_mode = 2
 custom_minimum_size = Vector2(170, 290)
 clip_contents = true
-text = "Quick Play"
+text = "Casual"
 
 [node name="RankedButton" type="Button" parent="VBox/BarRow"]
 layout_mode = 2
@@ -57,11 +57,17 @@ custom_minimum_size = Vector2(170, 290)
 clip_contents = true
 text = "Ranked"
 
-[node name="BrowseButton" type="Button" parent="VBox/BarRow"]
+[node name="PrivateButton" type="Button" parent="VBox/BarRow"]
 layout_mode = 2
 custom_minimum_size = Vector2(170, 290)
 clip_contents = true
-text = "Browse Servers"
+text = "Private"
+
+[node name="DirectConnectButton" type="Button" parent="VBox"]
+layout_mode = 2
+size_flags_horizontal = 4
+custom_minimum_size = Vector2(220, 32)
+text = "Have an address? Connect directly"
 
 [node name="BackButton" type="Button" parent="VBox"]
 layout_mode = 2

@@ -2,8 +2,8 @@ extends Control
 
 # "Find Ranked Match": joins an existing open ranked server if one's already
 # listed, or silently hosts one and waits in it if not -- mirrors
-# quick_play.gd's shape, but a ranked server auto-adds/auto-starts on its
-# own (see NetworkManager.is_ranked_server), so this screen never has to
+# casual_matchmaker.gd's shape, but a ranked server auto-adds/auto-starts on
+# its own (see NetworkManager.is_ranked_server), so this screen never has to
 # call create/join/quick-join lobby RPCs itself, just connect and wait.
 
 const MATCH_INTRO_SCENE := preload("res://main/match_intro.tscn")
@@ -29,8 +29,8 @@ var _map_vote_popup: MapVotePopup
 # NetworkManager is an autoload -- its signals outlive this screen, so a
 # match_started (or a late directory/connect response) can still fire after
 # Cancel is pressed and yank the player into a match anyway. Every async
-# callback below checks this first. See quick_play.gd's _cancelled for the
-# full explanation (same bug class, found and fixed there first).
+# callback below checks this first. See casual_matchmaker.gd's _cancelled
+# for the full explanation (same bug class, found and fixed there first).
 var _cancelled := false
 
 func _ready() -> void:
@@ -175,7 +175,7 @@ func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary, level_id:
 
 func _on_back_pressed() -> void:
 	_cancelled = true
-	# See quick_play.gd's _on_back_pressed for why both of these matter:
+	# See casual_matchmaker.gd's cancel() for why both of these matter:
 	# an in-flight HTTPRequest blocks the engine on its background I/O
 	# thread when freed mid-request, and disconnecting our own connection
 	# before (not after) killing any server we spawned avoids a graceful

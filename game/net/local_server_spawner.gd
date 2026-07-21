@@ -87,6 +87,24 @@ func kill_child() -> void:
 		OS.kill(_child_pid)
 		_child_pid = -1
 
+## Only meaningful after `connected` has fired -- the port a caller needs to
+## build a shareable "host:port" address (see Private hosting in
+## casual_matchmaker.gd), since find_free_port() picks it internally and
+## nothing outside this class otherwise sees it.
+func get_port() -> int:
+	return _pending_port
+
+## Best-effort LAN-reachable IPv4 for sharing a privately-hosted server's
+## address with a friend on the same network -- filters out loopback
+## (127.x) and link-local (169.254.x, assigned when DHCP fails) addresses.
+## Falls back to loopback if nothing else is found, which is still correct
+## for same-machine testing, just not shareable across the network.
+static func get_lan_ip() -> String:
+	for ip in IP.get_local_addresses():
+		if ip.count(".") == 3 and not ip.begins_with("127.") and not ip.begins_with("169.254."):
+			return ip
+	return "127.0.0.1"
+
 ## Bind to port 0 so the OS assigns a free one, read it back, then release --
 ## there's a small window before the spawned server binds it where another
 ## process could grab it, but that's the standard tradeoff for this idiom.
