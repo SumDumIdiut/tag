@@ -1288,7 +1288,7 @@ func _on_publish_level_pressed() -> void:
 	add_child(req)
 	var body := JSON.stringify({"name": level_name, "tiles": data.tiles, "spawn_points": data.spawn_points, "platforms": data.platforms})
 	var err := req.request(
-		"%s/%s/upload" % [LEVEL_API_BASE, SkinCatalog.client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body
+		"%s/%s/upload" % [LEVEL_API_BASE, PlayerIdentity.client_id], ["Content-Type: application/json"], HTTPClient.METHOD_POST, body
 	)
 	if err != OK:
 		req.queue_free()

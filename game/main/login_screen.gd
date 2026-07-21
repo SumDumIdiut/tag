@@ -9,10 +9,10 @@ extends Control
 #
 # Session persistence: a bearer token in user://session_token.txt. On launch
 # (_ready), if a token exists, it's validated against /api/auth/me; on
-# success SkinCatalog.override_client_id() adopts the account's real
-# clientId (see skin_catalog.gd) so progress follows the account across
-# devices. Any failure (expired token, relay unreachable) just falls back to
-# showing the login form -- never blocks getting back to the main menu.
+# success PlayerIdentity.override_client_id() adopts the account's real
+# clientId (see net/player_identity.gd) so progress follows the account
+# across devices. Any failure (expired token, relay unreachable) just falls
+# back to showing the login form -- never blocks getting back to the main menu.
 
 const UIStyle := preload("res://ui/ui_style.gd")
 const AUTH_BASE := "https://codecade.co.za/tag/api/auth"
@@ -161,7 +161,7 @@ func _check_session() -> void:
 			_clear_token()
 			_show_form()
 			return
-		SkinCatalog.override_client_id(str(parsed.get("primaryClientId", "")))
+		PlayerIdentity.override_client_id(str(parsed.get("primaryClientId", "")))
 		_show_logged_in(str(parsed.get("username", "")))
 	)
 	var err := req.request("%s/me" % AUTH_BASE, ["Authorization: Bearer %s" % _token])
@@ -185,7 +185,7 @@ func _on_register_pressed() -> void:
 	if username.is_empty() or password.is_empty():
 		_status_label.text = "Enter a username and password."
 		return
-	var body := JSON.stringify({"username": username, "password": password, "clientId": SkinCatalog.client_id})
+	var body := JSON.stringify({"username": username, "password": password, "clientId": PlayerIdentity.client_id})
 	_send_auth_request("%s/register" % AUTH_BASE, body)
 
 func _send_auth_request(url: String, body: String) -> void:
@@ -209,7 +209,7 @@ func _send_auth_request(url: String, body: String) -> void:
 			return
 		_token = token
 		_save_token(token)
-		SkinCatalog.override_client_id(str(parsed.get("primaryClientId", "")))
+		PlayerIdentity.override_client_id(str(parsed.get("primaryClientId", "")))
 		_password_edit.text = ""
 		_show_logged_in(_username_edit.text.strip_edges())
 	)
@@ -219,7 +219,7 @@ func _send_auth_request(url: String, body: String) -> void:
 
 func _on_logout_pressed() -> void:
 	_clear_token()
-	SkinCatalog.override_client_id(SkinCatalog.get_local_device_client_id())
+	PlayerIdentity.override_client_id(PlayerIdentity.get_local_device_client_id())
 	_username_edit.text = ""
 	_password_edit.text = ""
 	_status_label.text = ""

@@ -7,9 +7,9 @@ extends Node
 # all), or any player painting one with the in-shop drawing tool, which
 # uploads it and makes it visible to everyone immediately (see
 # add_drawn_skin/add_drawn_hat) -- deliberately scoped to fixed-size canvas
-# strokes per rig part, not arbitrary file upload. The only thing that ever
-# lives locally is an anonymous client id (there's no account/login system
-# here) used to remember your selections across sessions/machines.
+# strokes per rig part, not arbitrary file upload. Selections are keyed by
+# the anonymous client id PlayerIdentity owns (see net/player_identity.gd);
+# this just mirrors it locally, see client_id below.
 
 # The player model is a single square (see PART_NAMES/PART_DEFS below) --
 # gameplay never depended on the old 6-part humanoid rig at all (movement,
@@ -19,7 +19,6 @@ extends Node
 # side length.
 const VISUAL_WIDTH := 40
 const VISUAL_HEIGHT := 40
-const CLIENT_ID_PATH := "user://client_id.txt"
 const API_BASE := "https://codecade.co.za/tag/api/skins"
 
 const PART_NAMES := ["body"]
@@ -109,6 +108,9 @@ signal trail_received(id: String)
 ## it fires.
 signal catalog_loaded
 
+## Mirrors PlayerIdentity.client_id -- kept as a local copy since every
+## fetch/select/upload call site below already reads this bare name, rather
+## than rewriting each one to PlayerIdentity.client_id.
 var client_id := ""
 var selected_skin_id := "red"
 var selected_hat_id := "" # "" means no hat equipped
@@ -120,26 +122,17 @@ var _texture_cache := {} # id -> Texture2D
 var _fetch_in_flight := {} # id -> true, de-dupes concurrent image fetches
 
 func _ready() -> void:
-	client_id = _load_or_create_client_id()
+	client_id = PlayerIdentity.client_id
+	# PlayerIdentity.override_client_id() (see login_screen.gd) resolves to a
+	# different clientId than this device's own local one when logging into
+	# an account whose progress lives under another device's id -- re-fetch
+	# everything under the new id so selections/custom content reflect the
+	# account's real history.
+	PlayerIdentity.client_id_changed.connect(func(new_id: String):
+		client_id = new_id
+		refresh_catalog()
+	)
 	_fetch_catalog()
-
-## Called by the login flow (see login_screen.gd) once an existing session is
-## confirmed valid server-side and resolves to a different clientId than this
-## device's own local one -- i.e. logging into an account whose progress
-## actually lives under another device's id. Re-fetches everything under the
-## new id so selections/custom content reflect the account's real history.
-## A no-op if the account's clientId happens to already match this device's
-## (e.g. this was the device that created the account in the first place).
-func override_client_id(new_id: String) -> void:
-	if new_id.is_empty() or new_id == client_id:
-		return
-	client_id = new_id
-	refresh_catalog()
-
-## This device's own local id, independent of whatever account may currently
-## be overriding client_id -- used by the login flow to revert on logout.
-func get_local_device_client_id() -> String:
-	return _load_or_create_client_id()
 
 ## Built-in skins plus every custom skin in the server's shared catalog, in a
 ## shape the shop UI can list directly. Custom entries may be present here
@@ -861,18 +854,4 @@ func add_drawn_trail(trail_image: Image, trail_name: String) -> String:
 	var id: String = parsed.id
 	_texture_cache["trail:" + id] = ImageTexture.create_from_image(trail_image)
 	_catalog_trails.append({"id": id, "name": trail_name})
-	return id
-
-func _load_or_create_client_id() -> String:
-	if FileAccess.file_exists(CLIENT_ID_PATH):
-		var f := FileAccess.open(CLIENT_ID_PATH, FileAccess.READ)
-		var existing := f.get_as_text().strip_edges()
-		if existing.length() >= 8:
-			return existing
-	var chars := "0123456789abcdef"
-	var id := ""
-	for i in 32:
-		id += chars[randi() % chars.length()]
-	var f := FileAccess.open(CLIENT_ID_PATH, FileAccess.WRITE)
-	f.store_string(id)
 	return id
