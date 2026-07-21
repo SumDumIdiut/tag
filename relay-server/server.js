@@ -113,7 +113,7 @@ const ASSET_PUBLISH_KEY = process.env.ASSET_PUBLISH_KEY || '';
 // game_asset_updater.gd preload instead of hand-copying. This file can't
 // share that literal source across languages, so these are the one
 // remaining manual-sync copy -- keep both sides updated together.
-const GAME_ASSET_CATEGORIES = ['icons', 'mode_buttons', 'backgrounds', 'online_bars', 'local_bars', 'ranked_bars', 'action_bars', 'playlist_cards', 'field_art'];
+const GAME_ASSET_CATEGORIES = ['icons', 'mode_buttons', 'backgrounds', 'online_bars', 'local_bars', 'ranked_bars', 'action_bars', 'playlist_cards', 'field_art', 'chrome'];
 const MODE_BUTTON_KEYS = ['online', 'local'];
 // Every menu screen with a paintable background (see game/ui/ui_style.gd's
 // add_background).
@@ -136,6 +136,8 @@ const ACTION_BAR_KEYS = ['back', 'connect', 'watch', 'host_server', 'ready', 'st
 const PLAYLIST_CARD_KEYS = ['1v1', '2v2', '1v1v1', '1v1v1v1'];
 // One shared LineEdit background image reused everywhere.
 const FIELD_ART_KEYS = ['field'];
+// The app's shared button/panel/slider box art.
+const CHROME_KEYS = ['button', 'panel', 'slider_groove', 'slider_fill'];
 // Categories that publish as one file per key (like a per-key subfolder)
 // rather than a single shared atlas image (like icons/tiles) -- maps each
 // to its key list so the publish/download routes below don't need one
@@ -149,6 +151,7 @@ const MULTI_KEY_CATEGORIES = {
   action_bars: ACTION_BAR_KEYS,
   playlist_cards: PLAYLIST_CARD_KEYS,
   field_art: FIELD_ART_KEYS,
+  chrome: CHROME_KEYS,
 };
 // A full-screen background (1152x648, far bigger than any icon/mode-button
 // canvas) needs more headroom than those -- bumped along with the

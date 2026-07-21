@@ -46,6 +46,7 @@ static func _static_init() -> void:
 		"action_bars": [Categories.ACTION_BAR_KEYS, GameAssetOverrides.action_bar_override_path],
 		"playlist_cards": [Categories.PLAYLIST_CARD_KEYS, GameAssetOverrides.playlist_card_override_path],
 		"field_art": [Categories.FIELD_ART_KEYS, GameAssetOverrides.field_art_override_path],
+		"chrome": [Categories.CHROME_KEYS, GameAssetOverrides.chrome_override_path],
 	}
 
 func check() -> void:

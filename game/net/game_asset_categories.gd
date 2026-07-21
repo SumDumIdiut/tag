@@ -36,3 +36,7 @@ const ACTION_BAR_KEYS := ["back", "connect", "watch", "host_server", "ready", "s
 const PLAYLIST_CARD_KEYS := ["1v1", "2v2", "1v1v1", "1v1v1v1"]
 # One shared background image reused by every LineEdit in the app.
 const FIELD_ART_KEYS := ["field"]
+# Every button/panel/slider's own 9-patch box art (see UIStyle.button_box()/
+# panel_box()/style_slider() and tools/build_chrome_art.gd) -- the app's
+# shared visual chrome, reused everywhere at once.
+const CHROME_KEYS := ["button", "panel", "slider_groove", "slider_fill"]
