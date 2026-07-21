@@ -19,8 +19,12 @@ extends Node
 const ModeIconScene := preload("res://ui/mode_icon.gd")
 const ICON_SIZE := 64
 # Order matters -- this is the atlas-index contract mode_icon.gd reads by
-# position, mirroring build_tileset.gd's TILES-array-order contract.
-const ICON_TYPES := ["globe", "controller", "box", "bolt", "star", "tag"]
+# position, mirroring build_tileset.gd's TILES-array-order contract. Every
+# icon_type actually used anywhere in the app now has a slot here (team,
+# clock, copy, heart, send were still hitting mode_icon.gd's live _draw()
+# fallback until this list grew to include them) -- "nothing made at
+# runtime" per the user's own explicit ask.
+const ICON_TYPES := ["globe", "controller", "box", "bolt", "star", "tag", "team", "clock", "copy", "heart", "send"]
 const OUT_ATLAS := "res://assets/icons/tag_icons.png"
 
 func _ready() -> void:
