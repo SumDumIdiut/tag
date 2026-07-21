@@ -99,11 +99,15 @@ func _on_connect_pressed() -> void:
 	status_label.text = "Connecting..."
 	NetworkManager.start_client(RELAY_JOIN_BASE + str(server.id), username)
 
+## Hosting has no setup screen of its own anymore -- it's just Quick Play
+## (auto-join the fullest open server, or silently spawn a fresh one if
+## none exist), same "no server name/map/playlist to configure, just a
+## friendly match" flow Quick Play already was.
 func _on_host_pressed() -> void:
 	_cancelled = true
 	NetworkManager.disconnect_from_server()
 	_http.cancel_request()
-	get_tree().change_scene_to_file("res://main/host_setup.tscn")
+	get_tree().change_scene_to_file("res://main/quick_play.tscn")
 
 func _on_connected() -> void:
 	if _cancelled:

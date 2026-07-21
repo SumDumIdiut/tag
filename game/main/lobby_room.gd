@@ -4,7 +4,7 @@ const MATCH_INTRO_SCENE := preload("res://main/match_intro.tscn")
 const UIStyle := preload("res://ui/ui_style.gd")
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 const TeamLobbyViewScene := preload("res://ui/team_lobby_view.gd")
-const MapVoteViewScene := preload("res://ui/map_vote_view.gd")
+const MapVotePopupScene := preload("res://ui/map_vote_popup.gd")
 
 @onready var lobby_name_label: Label = $VBox/LobbyNameLabel
 @onready var roster_list: ItemList = $VBox/RosterList
@@ -17,7 +17,7 @@ var _chat_scrollback: RichTextLabel
 var _chat_input: LineEdit
 var _team_view: TeamLobbyView
 var _team_view_built_for_playlist := ""
-var _map_vote_view: MapVoteView
+var _map_vote_popup: MapVotePopup
 
 func _ready() -> void:
 	UIStyle.add_background(self, "lobby_room")
@@ -37,35 +37,23 @@ func _ready() -> void:
 	NetworkManager.match_started.connect(_on_match_started)
 	NetworkManager.disconnected_from_server.connect(_on_disconnected)
 	NetworkManager.chat_message_received.connect(_on_chat_message_received)
-	_build_map_vote_panel()
+	NetworkManager.map_vote_phase_started.connect(_on_map_vote_phase_started)
+	NetworkManager.map_vote_phase_ended.connect(_on_map_vote_phase_ended)
+	_map_vote_popup = MapVotePopupScene.new()
+	add_child(_map_vote_popup)
 	_build_chat_panel()
 	_on_lobby_state_updated(NetworkManager.current_lobby)
 
-## Built in code, inserted right after the roster/team view (before chat) --
-## same "extend an existing hand-authored screen without touching its node
-## tree" approach _build_chat_panel() below already uses. Which map
-## actually gets played is decided by this vote (see network_manager.gd's
-## _pick_voted_level), not by a host-side dropdown anymore -- see
-## host_setup.gd, which no longer has a map picker at all.
-func _build_map_vote_panel() -> void:
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_QUICKPLAY))
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
-	panel.add_child(box)
+## Map selection is a timed pop-up right before the match actually starts
+## (see network_manager.gd's _begin_match_sequence), not a passive panel
+## sitting in the lobby the whole time -- these two just show/update the
+## shared popup; match_started (already handled below) fires on its own a
+## few seconds later and moves on to match_intro.
+func _on_map_vote_phase_started(duration: float) -> void:
+	_map_vote_popup.start_voting(duration)
 
-	var label := Label.new()
-	label.text = "VOTE FOR A MAP"
-	label.add_theme_font_size_override("font_size", 12)
-	label.add_theme_color_override("font_color", UIStyle.COLOR_NEUTRAL)
-	box.add_child(label)
-
-	_map_vote_view = MapVoteViewScene.new()
-	box.add_child(_map_vote_view)
-
-	var vbox: VBoxContainer = roster_list.get_parent()
-	vbox.add_child(panel)
-	vbox.move_child(panel, roster_list.get_index() + 1)
+func _on_map_vote_phase_ended(chosen_level_id: String, countdown: float) -> void:
+	_map_vote_popup.show_result(chosen_level_id, countdown)
 
 ## Built in code, not the .tscn -- inserted right after the roster list,
 ## same "extend an existing hand-authored screen without touching its node
@@ -127,7 +115,7 @@ func _on_lobby_state_updated(lobby: Dictionary) -> void:
 	# hiding it too for playlist lobbies avoids a toggle that does nothing.
 	start_button.visible = lobby.host_peer == NetworkManager.my_peer_id and lobby_playlist.is_empty()
 	ready_button.visible = lobby_playlist.is_empty()
-	_map_vote_view.set_votes(lobby.get("map_votes", {}))
+	_map_vote_popup.set_votes(lobby.get("map_votes", {}))
 
 	if PlaylistCatalog.is_team_mode(lobby_playlist):
 		_ensure_team_view(lobby_playlist)

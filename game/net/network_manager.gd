@@ -24,6 +24,15 @@ signal chat_message_received(username: String, text: String)
 ## Fires on a peer that tried start_spectator() when no match is currently
 ## in progress on that server to watch.
 signal spectate_failed
+## Fires once a lobby is actually about to start (fill/host-start/ranked-
+## threshold reached) -- see _begin_match_sequence(). `duration` is how long
+## voting stays open; the real match doesn't start until the vote result
+## (see map_vote_phase_ended below) and a short countdown after that.
+signal map_vote_phase_started(duration: float)
+## Fires once voting closes -- `chosen_level_id` is the weighted-random
+## pick (see _pick_voted_level()), `countdown` is how long until the match
+## actually starts (match_started fires after that on its own).
+signal map_vote_phase_ended(chosen_level_id: String, countdown: float)
 
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 
@@ -32,6 +41,13 @@ const MAX_LOBBY_PLAYERS := 8
 const MIN_RANKED_PLAYERS := 2
 const RANKED_REPORT_URL := "https://codecade.co.za/tag/api/ranked/report-result"
 const MAX_CHAT_MESSAGE_LEN := 200
+## How long the map-vote popup stays open, and how long the "starting
+## in..." countdown after it runs, before the match actually begins (see
+## _begin_match_sequence()/_on_map_vote_timeout()) -- map selection is now
+## a timed pop-up-vote-then-countdown moment right before a match starts,
+## not a passive panel players could ignore indefinitely.
+const MAP_VOTE_DURATION_SEC := 8.0
+const MAP_VOTE_COUNTDOWN_SEC := 3.0
 
 var is_server := false
 var is_ranked_server := false # set by server_main.gd from --ranked; auto-lobbies/starts ranked rounds instead of waiting for manual create/join/Start
@@ -350,6 +366,7 @@ func _create_lobby_internal(sender: int, lobby_name: String, max_players: int, p
 		"in_match": false,
 		"playlist": p_playlist_id,
 		"map_votes": {},
+		"voting_open": false,
 	}
 	_peer_lobby[sender] = id
 	_broadcast_lobby_list()
@@ -368,12 +385,11 @@ func _join_lobby_internal(sender: int, lobby_id: int) -> void:
 	_send_lobby_state(lobby_id)
 	_maybe_autostart_playlist_lobby(lobby_id)
 
-## Casual playlist lobbies (1v1/2v2/1v1v1/1v1v1v1 chosen at host_setup.gd)
-## have no manual Start button at all -- they auto-start the instant they
-## reach the playlist's exact headcount, mirroring how _join_ranked_lobby
-## already auto-starts ranked. A "Free-for-all" casual lobby (empty
-## playlist, today's default) is untouched -- still manual Start, any
-## headcount, via _server_start_match.
+## Casual playlist lobbies (1v1/2v2/1v1v1/1v1v1v1) have no manual Start
+## button at all -- they auto-start the instant they reach the playlist's
+## exact headcount, mirroring how _join_ranked_lobby already auto-starts
+## ranked. A "Free-for-all" casual lobby (empty playlist, today's default)
+## is untouched -- still manual Start, any headcount, via _server_start_match.
 func _maybe_autostart_playlist_lobby(lobby_id: int) -> void:
 	if not _lobbies.has(lobby_id):
 		return
@@ -382,7 +398,7 @@ func _maybe_autostart_playlist_lobby(lobby_id: int) -> void:
 	if lobby_playlist.is_empty() or lobby.in_match:
 		return
 	if lobby.members.size() >= PlaylistCatalog.total_players(lobby_playlist):
-		_start_match_for_lobby(lobby_id, false)
+		_begin_match_sequence(lobby_id, false)
 
 @rpc("any_peer", "reliable")
 func _server_leave_lobby() -> void:
@@ -457,7 +473,7 @@ func _server_submit_map_vote(map_level_id: String) -> void:
 	if lobby_id == -1 or not _lobbies.has(lobby_id):
 		return
 	var lobby: Dictionary = _lobbies[lobby_id]
-	if lobby.in_match:
+	if not lobby.get("voting_open", false):
 		return
 	if not lobby.has("map_votes"):
 		lobby["map_votes"] = {}
@@ -501,7 +517,7 @@ func _server_start_match() -> void:
 	# server-side too rather than trusting the client didn't send it anyway.
 	if lobby.host_peer != sender or lobby.in_match or lobby.members.is_empty() or not lobby.get("playlist", "").is_empty():
 		return
-	_start_match_for_lobby(lobby_id, false)
+	_begin_match_sequence(lobby_id, false)
 
 ## A ranked server has no manual lobby-naming/browsing/Ready/Start step --
 ## everyone who connects is auto-added to the one reserved ranked lobby
@@ -520,7 +536,7 @@ func _join_ranked_lobby(sender: int) -> void:
 		_lobbies[_ranked_lobby_id] = {
 			"id": _ranked_lobby_id, "name": "Ranked Match", "host_peer": sender,
 			"max_players": target_size, "members": {}, "in_match": false, "ranked": true,
-			"playlist": playlist_id, "map_votes": {},
+			"playlist": playlist_id, "map_votes": {}, "voting_open": false,
 		}
 	var lobby: Dictionary = _lobbies[_ranked_lobby_id]
 	if lobby.members.size() >= lobby.max_players:
@@ -530,12 +546,45 @@ func _join_ranked_lobby(sender: int) -> void:
 	_broadcast_lobby_list()
 	_send_lobby_state(_ranked_lobby_id)
 	if lobby.members.size() >= start_threshold:
-		_start_match_for_lobby(_ranked_lobby_id, true)
+		_begin_match_sequence(_ranked_lobby_id, true)
 
-func _start_match_for_lobby(lobby_id: int, ranked: bool) -> void:
+## The moment a lobby is ready to start (fill/host-start/ranked-threshold
+## reached), map selection becomes a timed pop-up vote instead of the match
+## starting immediately -- locks the lobby (in_match=true, same timing as
+## before, which already keeps it out of the server list via
+## _lobby_summaries() and blocks new joins via _join_lobby_internal/
+## _join_ranked_lobby's existing in_match checks) and broadcasts a
+## vote-start to every member, then waits MAP_VOTE_DURATION_SEC before
+## resolving the winner and starting a short countdown.
+func _begin_match_sequence(lobby_id: int, ranked: bool) -> void:
+	if not _lobbies.has(lobby_id):
+		return
 	var lobby: Dictionary = _lobbies[lobby_id]
 	lobby.in_match = true
+	lobby["voting_open"] = true
 	_broadcast_lobby_list()
+	for peer_id in lobby.members.keys():
+		rpc_id(peer_id, "_client_map_vote_started", MAP_VOTE_DURATION_SEC)
+	get_tree().create_timer(MAP_VOTE_DURATION_SEC).timeout.connect(_on_map_vote_timeout.bind(lobby_id, ranked))
+
+## `_lobbies.has(lobby_id)` can fail here if every member left during the
+## voting window (see _remove_peer_from_lobby's empty-lobby teardown) --
+## nothing left to start, so just quietly do nothing rather than resurrect
+## an abandoned lobby.
+func _on_map_vote_timeout(lobby_id: int, ranked: bool) -> void:
+	if not _lobbies.has(lobby_id):
+		return
+	var lobby: Dictionary = _lobbies[lobby_id]
+	lobby["voting_open"] = false
+	var chosen_level_id := _pick_voted_level(lobby)
+	for peer_id in lobby.members.keys():
+		rpc_id(peer_id, "_client_map_vote_ended", chosen_level_id, MAP_VOTE_COUNTDOWN_SEC)
+	get_tree().create_timer(MAP_VOTE_COUNTDOWN_SEC).timeout.connect(_start_match_for_lobby.bind(lobby_id, ranked, chosen_level_id))
+
+func _start_match_for_lobby(lobby_id: int, ranked: bool, chosen_level_id: String) -> void:
+	if not _lobbies.has(lobby_id):
+		return
+	var lobby: Dictionary = _lobbies[lobby_id]
 	var lobby_playlist: String = lobby.get("playlist", "")
 	var members_with_extras: Dictionary = lobby.members.duplicate(true)
 	if PlaylistCatalog.is_team_mode(lobby_playlist):
@@ -547,8 +596,7 @@ func _start_match_for_lobby(lobby_id: int, ranked: bool) -> void:
 		members_with_extras[peer_id]["hat_id"] = _peer_hat_id.get(peer_id, "")
 		members_with_extras[peer_id]["trail_id"] = _peer_trail_id.get(peer_id, "")
 		members_with_extras[peer_id]["client_id"] = _peer_client_id.get(peer_id, "")
-	var voted_level_id := _pick_voted_level(lobby)
-	var match_instance := ServerMatch.new(self, lobby_id, members_with_extras, ranked, voted_level_id)
+	var match_instance := ServerMatch.new(self, lobby_id, members_with_extras, ranked, chosen_level_id)
 	match_instance.playlist_id = lobby_playlist
 	add_child(match_instance)
 	_matches[lobby_id] = match_instance
@@ -689,6 +737,14 @@ func _client_receive_chat_message(sender_username: String, text: String) -> void
 @rpc("authority", "reliable")
 func _client_spectate_failed() -> void:
 	spectate_failed.emit()
+
+@rpc("authority", "reliable")
+func _client_map_vote_started(duration: float) -> void:
+	map_vote_phase_started.emit(duration)
+
+@rpc("authority", "reliable")
+func _client_map_vote_ended(chosen_level_id: String, countdown: float) -> void:
+	map_vote_phase_ended.emit(chosen_level_id, countdown)
 
 # ==================== Client-facing API (called by UI) ====================
 

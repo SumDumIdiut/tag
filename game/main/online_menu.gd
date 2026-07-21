@@ -6,7 +6,6 @@ const UIStyle := preload("res://ui/ui_style.gd")
 @onready var quick_play_button: Button = $VBox/BarRow/QuickPlayButton
 @onready var ranked_button: Button = $VBox/BarRow/RankedButton
 @onready var browse_button: Button = $VBox/BarRow/BrowseButton
-@onready var host_button: Button = $VBox/BarRow/HostButton
 @onready var back_button: Button = $VBox/BackButton
 
 # Whole-bar custom art (background scene, icon, character, label all
@@ -20,13 +19,11 @@ func _ready() -> void:
 	_style_bar(quick_play_button, UIStyle.COLOR_QUICKPLAY, "quick_play", "Quick Play")
 	_style_bar(ranked_button, UIStyle.COLOR_RANKED, "ranked", "Ranked")
 	_style_bar(browse_button, UIStyle.COLOR_ONLINE, "browse_servers", "Browse Servers")
-	_style_bar(host_button, UIStyle.COLOR_ONLINE, "host_server", "Host Server")
 	UIStyle.style_back_button(back_button)
 
 	quick_play_button.pressed.connect(_on_quick_play_pressed)
 	ranked_button.pressed.connect(_on_ranked_pressed)
 	browse_button.pressed.connect(_on_browse_pressed)
-	host_button.pressed.connect(_on_host_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 	_build_friends_bar()
 
@@ -78,9 +75,6 @@ func _on_ranked_pressed() -> void:
 
 func _on_browse_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/server_browser.tscn")
-
-func _on_host_pressed() -> void:
-	get_tree().change_scene_to_file("res://main/host_setup.tscn")
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")
