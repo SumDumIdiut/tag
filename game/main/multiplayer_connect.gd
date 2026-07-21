@@ -13,13 +13,13 @@ const MATCH_INTRO_SCENE := preload("res://main/match_intro.tscn")
 # NetworkManager is an autoload -- its signals outlive this screen, so a late
 # lobby_state_updated (from the CONNECT_ONE_SHOT below) can still fire after
 # Back is pressed and pull the player into lobby_room anyway. See
-# quick_play.gd's _cancelled for the full explanation.
+# casual_matchmaker.gd's _cancelled for the full explanation.
 var _cancelled := false
 ## Set by _on_spectate_pressed(), read by _on_connected() to decide whether
 ## to quick_join_lobby (Connect) or just wait for a match already in
 ## progress to be pushed to us (Watch) -- start_spectator()/start_client()
-## both end in the same connected_to_server signal, same distinction
-## server_browser.gd's own _watching flag exists for.
+## both end in the same connected_to_server signal, so this is the only way
+## to tell the two apart once it fires.
 var _watching := false
 
 func _ready() -> void:
@@ -27,6 +27,9 @@ func _ready() -> void:
 	UIStyle.style_button(connect_button, UIStyle.COLOR_ONLINE)
 	UIStyle.style_button(spectate_button, UIStyle.COLOR_NEUTRAL)
 	UIStyle.style_back_button(back_button)
+	UIStyle.apply_bar_art(connect_button, "action_bars", "connect")
+	UIStyle.apply_bar_art(spectate_button, "action_bars", "watch")
+	UIStyle.apply_bar_art(back_button, "action_bars", "back")
 	UIStyle.style_line_edit(username_edit)
 	UIStyle.style_line_edit(address_edit)
 
@@ -86,8 +89,7 @@ func _on_in_lobby(_lobby: Dictionary) -> void:
 		return
 	get_tree().change_scene_to_file("res://main/lobby_room.tscn")
 
-## Mirrors server_browser.gd's _on_spectate_match_started -- only
-## start_spectator() (via _on_spectate_pressed above) ever leaves this
+## Only start_spectator() (via _on_spectate_pressed above) ever leaves this
 ## screen's connection sitting with no lobby to join, so this firing at all
 ## means we're spectating.
 func _on_spectate_match_started(_lobby_id: int, my_id: int, roster: Dictionary, level_id: String) -> void:

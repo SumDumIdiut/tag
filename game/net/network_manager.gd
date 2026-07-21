@@ -60,6 +60,12 @@ var playlist_id := ""
 var username := "Player"
 var my_peer_id := -1
 var current_lobby: Dictionary = {}
+## Set by casual_matchmaker.gd right after spawning a --private local server
+## and connecting to it, "host:port" for a friend to type into
+## multiplayer_connect.tscn -- "" whenever this client isn't currently
+## hosting a private match (the normal case). Purely client-local display
+## state, read by lobby_room.gd; never synced to any peer.
+var hosted_private_address := ""
 
 # ---- Server-side state only ----
 var _lobbies := {}       # lobby_id -> {id, name, host_peer, max_players, members: {peer_id: {username, ready}}, in_match, ranked}
@@ -203,6 +209,7 @@ func disconnect_from_server() -> void:
 	is_server = false
 	my_peer_id = -1
 	current_lobby = {}
+	hosted_private_address = ""
 
 func _on_connected_to_server() -> void:
 	my_peer_id = multiplayer.get_unique_id()

@@ -8,8 +8,8 @@ const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 var npc_count: int = 3
 var npc_skill: int = 3
 var round_duration: float = 180.0
-# Set by local_map_picker.gd right before change_scene_to_file to game.tscn
-# -- see LocalMapCatalog for what this id resolves to.
+# Set by local_menu.gd's inline map row, read right before change_scene_to_file
+# to game.tscn -- see LocalMapCatalog for what this id resolves to.
 var selected_local_map: String = LocalMapCatalog.CLASSIC_ID
 # Set by ranked_playlist_select.gd right before change_scene_to_file to
 # ranked_queue.tscn -- see PlaylistCatalog for what this id resolves to.
