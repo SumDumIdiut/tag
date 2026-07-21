@@ -2,11 +2,9 @@ extends Control
 
 const UIStyle := preload("res://ui/ui_style.gd")
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
-const LEVELS_CATALOG_URL := "https://codecade.co.za/tag/api/levels/catalog"
 
 @onready var username_edit: LineEdit = $VBox/UsernameEdit
 @onready var server_name_edit: LineEdit = $VBox/ServerNameEdit
-@onready var map_select: OptionButton = $VBox/MapSelect
 @onready var playlist_select: OptionButton = $VBox/PlaylistSelect
 @onready var host_button: Button = $VBox/HostButton
 @onready var back_button: Button = $VBox/BackButton
@@ -15,8 +13,6 @@ const LEVELS_CATALOG_URL := "https://codecade.co.za/tag/api/levels/catalog"
 var _spawner: LocalServerSpawner
 var _server_name := "Someone's Server"
 var _playlist_id := ""
-# item index -> level_id ("" for the built-in default, at index 0)
-var _map_level_ids: Array[String] = [""]
 # item index -> playlist id ("" = "Free-for-all", today's any-headcount
 # manual-Start behavior, at index 0)
 var _playlist_ids: Array[String] = [""]
@@ -39,9 +35,6 @@ func _ready() -> void:
 	host_button.pressed.connect(_on_host_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 
-	map_select.add_item("Classic Arena")
-	_fetch_map_catalog()
-
 	playlist_select.add_item("Free-for-all")
 	for id in PlaylistCatalog.PLAYLIST_ORDER:
 		playlist_select.add_item(PlaylistCatalog.display_name(id))
@@ -51,28 +44,6 @@ func _ready() -> void:
 	add_child(_spawner)
 	_spawner.connected.connect(_on_spawned_and_connected)
 	_spawner.failed.connect(_on_spawn_failed)
-
-## Custom levels are live-published (see the Art Tool's Level page) with no
-## review step -- if the fetch fails, the dropdown just quietly stays at
-## "Classic Arena" only, same fallback-to-default philosophy server_match.gd
-## and net_game.gd already use if a chosen level can't be loaded.
-func _fetch_map_catalog() -> void:
-	var req := HTTPRequest.new()
-	add_child(req)
-	req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
-		req.queue_free()
-		if response_code != 200:
-			return
-		var parsed = JSON.parse_string(body.get_string_from_utf8())
-		if typeof(parsed) != TYPE_ARRAY:
-			return
-		for entry in parsed:
-			if typeof(entry) != TYPE_DICTIONARY or not entry.has("id") or not entry.has("name"):
-				continue
-			map_select.add_item(String(entry.name))
-			_map_level_ids.append(String(entry.id))
-	)
-	req.request(LEVELS_CATALOG_URL)
 
 func _on_host_pressed() -> void:
 	_server_name = server_name_edit.text.strip_edges()
@@ -84,18 +55,14 @@ func _on_host_pressed() -> void:
 	host_button.disabled = true
 	status_label.text = "Starting server..."
 
-	var level_id := ""
-	var selected := map_select.selected
-	if selected >= 0 and selected < _map_level_ids.size():
-		level_id = _map_level_ids[selected]
-
 	var playlist_selected := playlist_select.selected
 	if playlist_selected >= 0 and playlist_selected < _playlist_ids.size():
 		_playlist_id = _playlist_ids[playlist_selected]
 
+	# No --level= anymore -- which map gets played is now decided by an
+	# in-lobby vote (see map_vote_view.gd/lobby_room.gd) right before the
+	# match actually starts, not fixed once at server-spawn time.
 	var extra_args := PackedStringArray()
-	if not level_id.is_empty():
-		extra_args.append("--level=%s" % level_id)
 	if not _playlist_id.is_empty():
 		extra_args.append("--playlist=%s" % _playlist_id)
 	_spawner.spawn(_server_name, username, extra_args)

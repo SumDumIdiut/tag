@@ -50,15 +50,6 @@ layout_mode = 2
 custom_minimum_size = Vector2(0, 38)
 placeholder_text = "Server name (visible to others)"
 
-[node name="MapSelectLabel" type="Label" parent="VBox"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 13
-text = "MAP"
-
-[node name="MapSelect" type="OptionButton" parent="VBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 38)
-
 [node name="PlaylistSelectLabel" type="Label" parent="VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13

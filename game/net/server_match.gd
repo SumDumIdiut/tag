@@ -26,6 +26,13 @@ const ROUND_DURATION_SEC := 180.0
 var lobby_id: int
 var ranked := false
 var playlist_id := "" # set by network_manager.gd right after construction, "" for the legacy FFA pool
+## Set by _init() from network_manager.gd's map-vote tally -- "" means "no
+## one voted (or this lobby doesn't surface voting), fall back to this
+## server process's own --level= default" (_network_manager.level_id),
+## exactly today's pre-voting behavior. A real id here always wins even if
+## the process itself was launched with a different --level=, since a vote
+## is a live per-match choice, not a per-process constant.
+var _level_id_override := ""
 var _network_manager: Node
 var _usernames := {} # peer_id -> String
 var _skin_ids := {}  # peer_id -> String
@@ -58,10 +65,11 @@ var _arena_bounds := {"size": Vector2.ZERO, "center": Vector2.ZERO}
 ## mid-match (matches roster.gd's read-only "who was originally in this").
 var roster := {}
 
-func _init(network_manager: Node, p_lobby_id: int, members: Dictionary, p_ranked: bool = false) -> void:
+func _init(network_manager: Node, p_lobby_id: int, members: Dictionary, p_ranked: bool = false, p_level_id_override: String = "") -> void:
 	_network_manager = network_manager
 	lobby_id = p_lobby_id
 	ranked = p_ranked
+	_level_id_override = p_level_id_override
 	for peer_id in members.keys():
 		_usernames[peer_id] = members[peer_id].username
 		_skin_ids[peer_id] = members[peer_id].get("skin_id", "red")
@@ -71,7 +79,7 @@ func _init(network_manager: Node, p_lobby_id: int, members: Dictionary, p_ranked
 		_teams[peer_id] = members[peer_id].get("team", -1)
 
 func _ready() -> void:
-	var level_id: String = _network_manager.level_id
+	var level_id: String = _level_id_override if not _level_id_override.is_empty() else _network_manager.level_id
 	if level_id.is_empty():
 		_arena = ARENA_SCENE.instantiate()
 		add_child(_arena)

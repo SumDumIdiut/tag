@@ -349,6 +349,7 @@ func _create_lobby_internal(sender: int, lobby_name: String, max_players: int, p
 		"members": {sender: _member_entry(sender, false)},
 		"in_match": false,
 		"playlist": p_playlist_id,
+		"map_votes": {},
 	}
 	_peer_lobby[sender] = id
 	_broadcast_lobby_list()
@@ -439,6 +440,53 @@ func _server_set_ready(ready: bool) -> void:
 	_lobbies[lobby_id].members[sender].ready = ready
 	_send_lobby_state(lobby_id)
 
+## Casual and ranked lobbies both use this -- any member (not just the host)
+## can vote, any number of times before the match starts (a later vote
+## simply overwrites that peer's earlier one, same "last choice wins" rule
+## _server_set_ready implicitly follows). No server-side catalog validation:
+## the actual map id just needs to be something ServerMatch can (attempt to)
+## fetch -- an unknown/bad id already falls back to the built-in arena on
+## its own (see server_match.gd's _fetch_custom_arena), the same safety net
+## a single bad host-picked map id relied on before voting existed.
+@rpc("any_peer", "reliable")
+func _server_submit_map_vote(map_level_id: String) -> void:
+	if not is_server:
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	var lobby_id: int = _peer_lobby.get(sender, -1)
+	if lobby_id == -1 or not _lobbies.has(lobby_id):
+		return
+	var lobby: Dictionary = _lobbies[lobby_id]
+	if lobby.in_match:
+		return
+	if not lobby.has("map_votes"):
+		lobby["map_votes"] = {}
+	lobby["map_votes"][sender] = map_level_id
+	_send_lobby_state(lobby_id)
+
+## Weighted-random, not winner-take-all -- a map with 3 of 4 votes is much
+## more likely to be picked than one with 1, but never guaranteed, matching
+## "randomly decide with % based on votes." No votes at all (nobody voted,
+## or voting isn't surfaced on this screen) keeps today's behavior: "" ends
+## up chosen, which ServerMatch already treats as the built-in default arena.
+func _pick_voted_level(lobby: Dictionary) -> String:
+	var votes: Dictionary = lobby.get("map_votes", {})
+	if votes.is_empty():
+		return ""
+	var tally := {}
+	for voted_id in votes.values():
+		tally[voted_id] = int(tally.get(voted_id, 0)) + 1
+	var total := 0
+	for count in tally.values():
+		total += int(count)
+	var roll := randi_range(1, total)
+	var cumulative := 0
+	for voted_id in tally.keys():
+		cumulative += int(tally[voted_id])
+		if roll <= cumulative:
+			return voted_id
+	return votes.values()[0] # unreachable in practice, keeps the return type honest
+
 @rpc("any_peer", "reliable")
 func _server_start_match() -> void:
 	if not is_server:
@@ -472,7 +520,7 @@ func _join_ranked_lobby(sender: int) -> void:
 		_lobbies[_ranked_lobby_id] = {
 			"id": _ranked_lobby_id, "name": "Ranked Match", "host_peer": sender,
 			"max_players": target_size, "members": {}, "in_match": false, "ranked": true,
-			"playlist": playlist_id,
+			"playlist": playlist_id, "map_votes": {},
 		}
 	var lobby: Dictionary = _lobbies[_ranked_lobby_id]
 	if lobby.members.size() >= lobby.max_players:
@@ -499,7 +547,8 @@ func _start_match_for_lobby(lobby_id: int, ranked: bool) -> void:
 		members_with_extras[peer_id]["hat_id"] = _peer_hat_id.get(peer_id, "")
 		members_with_extras[peer_id]["trail_id"] = _peer_trail_id.get(peer_id, "")
 		members_with_extras[peer_id]["client_id"] = _peer_client_id.get(peer_id, "")
-	var match_instance := ServerMatch.new(self, lobby_id, members_with_extras, ranked)
+	var voted_level_id := _pick_voted_level(lobby)
+	var match_instance := ServerMatch.new(self, lobby_id, members_with_extras, ranked, voted_level_id)
 	match_instance.playlist_id = lobby_playlist
 	add_child(match_instance)
 	_matches[lobby_id] = match_instance
@@ -661,6 +710,12 @@ func leave_lobby() -> void:
 
 func set_ready(ready: bool) -> void:
 	rpc_id(1, "_server_set_ready", ready)
+
+## `level_id` is "" for the built-in default arena, or a custom level's id
+## (see MapVoteView) -- see _pick_voted_level() for how the tally of every
+## member's vote turns into the one map that's actually played.
+func submit_map_vote(level_id: String) -> void:
+	rpc_id(1, "_server_submit_map_vote", level_id)
 
 func send_chat_message(text: String) -> void:
 	rpc_id(1, "_server_send_chat_message", text)

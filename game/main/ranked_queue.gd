@@ -14,6 +14,7 @@ const UIStyle := preload("res://ui/ui_style.gd")
 const ModeIconScene := preload("res://ui/mode_icon.gd")
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 const TeamLobbyViewScene := preload("res://ui/team_lobby_view.gd")
+const MapVoteViewScene := preload("res://ui/map_vote_view.gd")
 
 @onready var status_label: Label = $VBox/StatusPanel/StatusBox/StatusLabel
 @onready var back_button: Button = $VBox/BackButton
@@ -24,6 +25,7 @@ var _spawner: LocalServerSpawner
 var _username := ""
 var _playlist_id := ""
 var _team_view: TeamLobbyView
+var _map_vote_view: MapVoteView
 # NetworkManager is an autoload -- its signals outlive this screen, so a
 # match_started (or a late directory/connect response) can still fire after
 # Cancel is pressed and yank the player into a match anyway. Every async
@@ -40,6 +42,11 @@ func _ready() -> void:
 	_setup_pulsing_icon()
 	if PlaylistCatalog.is_team_mode(_playlist_id):
 		_build_team_view()
+	# Built AFTER _build_team_view() -- a later sibling draws on top, and
+	# _team_view is a full-rect background (see team_lobby_view.gd's split
+	# background), which otherwise completely covers this (confirmed by
+	# screenshot: the vote buttons were fully hidden behind it).
+	_build_map_vote_view()
 
 	back_button.pressed.connect(_on_back_pressed)
 	_username = GameSettings.saved_username
@@ -88,8 +95,22 @@ func _build_team_view() -> void:
 	cancel_btn.pressed.connect(_on_back_pressed)
 	add_child(cancel_btn)
 
+## Built directly on `self` (not inside $VBox) so it works the same for
+## both the plain-status-label FFA path and the team-view path, which hides
+## the whole $VBox (see _build_team_view()) -- positioned low enough to sit
+## above either path's Cancel/Back button regardless of which is showing.
+func _build_map_vote_view() -> void:
+	_map_vote_view = MapVoteViewScene.new()
+	_map_vote_view.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_map_vote_view.custom_minimum_size = Vector2(340, 40)
+	_map_vote_view.position = Vector2(-170, -140)
+	add_child(_map_vote_view)
+
 func _on_lobby_state_updated(lobby: Dictionary) -> void:
-	if _cancelled or not _team_view or lobby.is_empty():
+	if _cancelled or lobby.is_empty():
+		return
+	_map_vote_view.set_votes(lobby.get("map_votes", {}))
+	if not _team_view:
 		return
 	_team_view.my_id = NetworkManager.my_peer_id
 	_team_view.set_roster(lobby.get("members", {}))

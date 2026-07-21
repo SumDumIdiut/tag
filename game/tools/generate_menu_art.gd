@@ -24,6 +24,7 @@ const LOCAL_BAR_OUT_DIR := "res://assets/icons/local_bars"
 const RANKED_BAR_OUT_DIR := "res://assets/icons/ranked_bars"
 const ACTION_BAR_OUT_DIR := "res://assets/icons/action_bars"
 const PLAYLIST_CARD_OUT_DIR := "res://assets/icons/playlist_cards"
+const FIELD_ART_OUT_DIR := "res://assets/icons/field_art"
 
 const BG_TOP := Color(0.106, 0.11, 0.157)
 const BG_MID := Color(0.07, 0.075, 0.11)
@@ -84,14 +85,12 @@ const ACTION_BARS := {
 	"logout": {"color": COLOR_RANKED, "icon": "back_arrow", "label": "Log Out"},
 }
 
-# Ranked playlist picker's 4 cards (ranked_playlist_select.gd) -- same
-# whole-card painted treatment as everything else, sized to the card's own
-# custom_minimum_size (170x150) rather than reusing BTN/BAR's tall portrait
-# ratio. team_count/team_size come from PlaylistCatalog (not hand-copied
-# here) so a future 5th playlist automatically gets the right figure count
-# without this dict needing to know the numbers itself.
-const PLAYLIST_CARD_FINAL_SIZE := Vector2i(170, 150)
-const PLAYLIST_CARD_DESIGN_SIZE := Vector2i(34, 30) # 5x upscale, matches BAR_DESIGN_SIZE's ratio
+# Ranked playlist picker's 4 cards (ranked_playlist_select.gd) -- stacked
+# as a vertical list of wide horizontal buttons (like every ACTION_BARS
+# entry) rather than a row of square cards, so this reuses ACTION_BAR's
+# exact size for visual consistency with every other button in the app.
+const PLAYLIST_CARD_FINAL_SIZE := ACTION_BAR_FINAL_SIZE
+const PLAYLIST_CARD_DESIGN_SIZE := ACTION_BAR_DESIGN_SIZE
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BACKGROUND_OUT_DIR))
@@ -101,6 +100,7 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(RANKED_BAR_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(ACTION_BAR_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(PLAYLIST_CARD_OUT_DIR))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(FIELD_ART_OUT_DIR))
 
 	# No central icon here (unlike every other screen) -- the real UI
 	# already places two big Online/Local cards front-and-center over this
@@ -163,6 +163,8 @@ func _ready() -> void:
 	for id in PlaylistCatalog.PLAYLIST_ORDER:
 		await _make_playlist_card_art(id, PlaylistCatalog.team_count(id), PlaylistCatalog.team_size(id), PlaylistCatalog.display_name(id))
 
+	_make_field_art()
+
 	print("GENERATE_DONE")
 	get_tree().quit()
 
@@ -185,7 +187,8 @@ func _make_background(key: String, color: Color, icon: String, color2: Color = C
 	if icon != "none":
 		var icon_img := Image.create(BG_DESIGN_SIZE.x, BG_DESIGN_SIZE.y, false, Image.FORMAT_RGBA8)
 		icon_img.fill(Color(0, 0, 0, 0))
-		_draw_icon(icon_img, icon, BG_DESIGN_SIZE.x / 2, int(BG_DESIGN_SIZE.y * 0.48), 28, color, color2)
+		var r := int(28 * BG_ICON_RADIUS_SCALE.get(icon, 1.0))
+		_draw_icon(icon_img, icon, BG_DESIGN_SIZE.x / 2, int(BG_DESIGN_SIZE.y * 0.48), r, color, color2)
 		_blend_onto(img, icon_img, 0.32)
 	_px_rect(img, 0, BG_DESIGN_SIZE.y - 6, BG_DESIGN_SIZE.x, 6, BG_BOTTOM.darkened(0.2))
 	_px_border(img, color)
@@ -284,43 +287,44 @@ func _make_horizontal_bar_art(out_dir: String, key: String, color: Color, icon: 
 	img.save_png("%s/%s.png" % [out_dir, key])
 	print("painted local bar art: ", key)
 
-## Whole-card art for one ranked playlist entry (ranked_playlist_select.gd) --
-## a banded-sky backdrop like every other painted asset, plus a cluster of
-## mini characters per side (see _draw_playlist_figures) so the shape of the
-## matchup (how many sides, how big each side is) reads at a glance instead
-## of needing the sub-label text to explain it.
+## Whole-bar art for one ranked playlist entry (ranked_playlist_select.gd) --
+## same horizontal-bar composition as _make_horizontal_bar_art (banded sky,
+## a glyph cluster left-of-center, border, label right-of-center), except
+## the "icon" is a cluster of mini characters per side (see
+## _draw_playlist_figures) so the shape of the matchup (how many sides, how
+## big each side is) reads at a glance instead of needing the label text to
+## explain it. Sized identically to ACTION_BARS so the picker reads as a
+## vertical list of buttons, not a row of cards.
 func _make_playlist_card_art(key: String, team_count: int, team_size: int, label_text: String) -> void:
 	var img := Image.create(PLAYLIST_CARD_DESIGN_SIZE.x, PLAYLIST_CARD_DESIGN_SIZE.y, false, Image.FORMAT_RGBA8)
 	_paint_banded_sky(img, COLOR_RANKED)
 	_scatter_stars(img, key)
-	_draw_playlist_figures(img, team_count, team_size, COLOR_RANKED)
-	_px_rect(img, 0, PLAYLIST_CARD_DESIGN_SIZE.y - 6, PLAYLIST_CARD_DESIGN_SIZE.x, 6, BG_BOTTOM.darkened(0.3))
+	var figures_cx := int(PLAYLIST_CARD_DESIGN_SIZE.x * 0.22)
+	_draw_playlist_figures(img, team_count, team_size, COLOR_RANKED, figures_cx)
 	_px_border(img, COLOR_RANKED)
 	img.resize(PLAYLIST_CARD_FINAL_SIZE.x, PLAYLIST_CARD_FINAL_SIZE.y, Image.INTERPOLATE_NEAREST)
 	var text_img := await _render_text(label_text, 20)
-	_blit_centered(img, text_img, PLAYLIST_CARD_FINAL_SIZE.x / 2, PLAYLIST_CARD_FINAL_SIZE.y - 32)
+	_blit_centered(img, text_img, PLAYLIST_CARD_FINAL_SIZE.x / 2 + int(PLAYLIST_CARD_FINAL_SIZE.x * 0.1), PLAYLIST_CARD_FINAL_SIZE.y / 2)
 	img.save_png("%s/%s.png" % [PLAYLIST_CARD_OUT_DIR, key])
 	print("painted playlist card: ", key)
 
 ## Draws `team_count` side-by-side clusters of `team_size` mini characters
-## each, alternating shade per side so opposing sides read as distinct even
-## in this single-accent-color card (this is a picker card, not the live
-## roster preview -- see team_lobby_view.gd for actual per-player team
-## colors). More sides or bigger teams naturally reads as "busier," which is
-## exactly the at-a-glance cue a 1v1 vs 2v2 vs 1v1v1v1 card needs.
-func _draw_playlist_figures(img: Image, team_count: int, team_size: int, color: Color) -> void:
-	var w := img.get_width()
-	var cy := int(img.get_height() * 0.38)
+## each centered on `center_x`, alternating shade per side so opposing sides
+## read as distinct even in this single-accent-color bar (this is a picker
+## button, not the live roster preview -- see team_lobby_view.gd for actual
+## per-player team colors). More sides or bigger teams naturally reads as
+## "busier," which is exactly the at-a-glance cue a 1v1 vs 2v2 vs 1v1v1v1
+## button needs.
+func _draw_playlist_figures(img: Image, team_count: int, team_size: int, color: Color, center_x: int) -> void:
+	var cy := img.get_height() / 2
 	var slot_gap := 2
-	var side_gap := 4
-	var margin := 4
-	var available_w := w - margin * 2
-	# Shrinks characters just enough to fit every side within the design
-	# canvas -- a fixed size worked fine for 1v1's 2 figures but overflowed
-	# the canvas (and crashed _px_character's unclamped eye pixels, fixed
-	# above) once 1v1v1v1 needed 4 side-by-side clusters in the same width.
+	var side_gap := 3
+	# The figures cluster only owns the left ~40% of a wide horizontal bar
+	# (the label needs the rest) -- much tighter than the old square card's
+	# nearly-full-width budget, so characters shrink further here.
+	var available_w := int(img.get_width() * 0.4)
 	var char_size := 7
-	while char_size > 3:
+	while char_size > 2:
 		var cluster_w := team_size * char_size + (team_size - 1) * slot_gap
 		var total_w := team_count * cluster_w + (team_count - 1) * side_gap
 		if total_w <= available_w:
@@ -328,12 +332,28 @@ func _draw_playlist_figures(img: Image, team_count: int, team_size: int, color: 
 		char_size -= 1
 	var cluster_w := team_size * char_size + (team_size - 1) * slot_gap
 	var total_w := team_count * cluster_w + (team_count - 1) * side_gap
-	var start_x := w / 2 - total_w / 2
+	var start_x := center_x - total_w / 2
 	for side in team_count:
 		var side_color := color if side % 2 == 0 else color.darkened(0.3)
 		var side_x := start_x + side * (cluster_w + side_gap)
 		for slot in team_size:
 			_px_character(img, side_x + slot * (char_size + slot_gap), cy - char_size / 2, char_size, side_color)
+
+## Whole-field background for every LineEdit in the app (see
+## UIStyle.apply_field_art()) -- one shared painted texture, same banded-sky
+## + border treatment as every other painted asset, reused everywhere (like
+## action_bars' "back"). No icon or label baked in, deliberately: real
+## typed/placeholder text renders on top of this via Godot's own font
+## system, so baking anything busy into the art itself would fight with
+## whatever the player is actually reading here.
+func _make_field_art() -> void:
+	var img := Image.create(ACTION_BAR_DESIGN_SIZE.x, ACTION_BAR_DESIGN_SIZE.y, false, Image.FORMAT_RGBA8)
+	_paint_banded_sky(img, COLOR_NEUTRAL)
+	_scatter_stars(img, "field_art")
+	_px_border(img, COLOR_NEUTRAL)
+	img.resize(ACTION_BAR_FINAL_SIZE.x, ACTION_BAR_FINAL_SIZE.y, Image.INTERPOLATE_NEAREST)
+	img.save_png("%s/field.png" % FIELD_ART_OUT_DIR)
+	print("painted field art")
 
 func _render_text(text: String, font_size: int) -> Image:
 	var viewport := SubViewport.new()
@@ -470,6 +490,22 @@ func _icon_gift(img: Image, cx: int, cy: int, r: int, color: Color) -> void:
 	_px_rect(img, cx - w / 2, cy - h / 4, w, h, color.darkened(0.15))
 	_px_rect(img, cx - 2, cy - h / 4, 4, h, color.lightened(0.3))
 	_px_rect(img, cx - w / 2, cy - h / 4 - 4, w, 4, color.lightened(0.2))
+
+## _make_background()'s watermark icon is drawn at the same fixed radius
+## and blend alpha for every screen -- fine for a sparse/thin-lined icon
+## (e.g. "signal"'s 4 thin bars), but a near-solid bitmap like
+## HEART_PATTERN below covers far more of its bounding radius, so at that
+## same radius it reads far more prominent/heavy than every other
+## screen's watermark (confirmed by screenshot: friends_menu's heart
+## watermark visibly overpowered the foreground panel/fields). Scales
+## _make_background()'s effective radius down for icons dense enough that
+## the flat per-icon treatment would otherwise look broken; every other
+## icon defaults to 1.0 (unchanged). Doesn't affect this same icon's use
+## elsewhere (e.g. online_menu's Friends bar), which draws at its own
+## explicit radius through a different call path.
+const BG_ICON_RADIUS_SCALE := {
+	"heart": 0.6,
+}
 
 ## Explicit bitmap, same reasoning as BOLT_PATTERN -- the previous
 ## circles-plus-triangle version lost its notch entirely at small sizes
