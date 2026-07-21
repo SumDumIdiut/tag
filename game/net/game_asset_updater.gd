@@ -12,34 +12,11 @@ class_name GameAssetUpdater
 
 signal check_completed(result: Dictionary) # {available: bool, categories: Array, manifest: Dictionary}
 
+const Categories := preload("res://net/game_asset_categories.gd")
+
 const MANIFEST_URL := "https://codecade.co.za/tag/api/game-assets/manifest"
 const DOWNLOAD_BASE := "https://codecade.co.za/tag/api/game-assets"
 const VERSIONS_PATH := "user://game_asset_versions.json"
-const MODE_BUTTON_KEYS := ["online", "local"] # mirrors art_tool.gd's MODE_BUTTON_KEYS
-# Mirrors art_tool.gd's BACKGROUND_KEYS -- every menu screen with a
-# paintable background (see UIStyle.add_background).
-const BACKGROUND_KEYS := [
-	"main_menu", "online_menu", "local_menu", "shop", "friends_menu",
-	"lobby_room", "host_setup", "login_screen", "match_intro", "match_results",
-	"multiplayer_connect", "quick_play", "ranked_queue", "server_browser",
-]
-# Mirrors online_menu.gd's 5 bars -- see tools/generate_menu_art.gd.
-const ONLINE_BAR_KEYS := ["quick_play", "ranked", "browse_servers", "host_server", "friends"]
-# Mirrors local_menu.gd's Play Tag button (Back moved to ACTION_BAR_KEYS,
-# shared with every other screen's Back).
-const LOCAL_BAR_KEYS := ["play"]
-# Mirrors match_intro.gd's ranked VS reveal "Ready!" button.
-const RANKED_BAR_KEYS := ["ready"]
-# Mirrors art_tool.gd's ACTION_BAR_KEYS -- one shared image per key reused
-# across every screen that has that button (see ui/ui_style.gd's
-# apply_bar_art).
-const ACTION_BAR_KEYS := ["back", "connect", "watch", "host_server", "ready", "start_match", "login", "create_account", "logout"]
-# Mirrors art_tool.gd's PLAYLIST_CARD_KEYS / ranked_playlist_select.gd's
-# whole-card art check.
-const PLAYLIST_CARD_KEYS := ["1v1", "2v2", "1v1v1", "1v1v1v1"]
-# Mirrors art_tool.gd's FIELD_ART_KEYS / UIStyle.apply_field_art() -- one
-# shared background image reused by every LineEdit in the app.
-const FIELD_ART_KEYS := ["field"]
 
 # Multi-key categories publish as one file per key (like mode_buttons/
 # backgrounds/online_bars) rather than a single shared atlas image (like
@@ -61,14 +38,14 @@ static var MULTI_KEY_CATEGORIES: Dictionary = {}
 
 static func _static_init() -> void:
 	MULTI_KEY_CATEGORIES = {
-		"mode_buttons": [MODE_BUTTON_KEYS, GameAssetOverrides.mode_button_override_path],
-		"backgrounds": [BACKGROUND_KEYS, GameAssetOverrides.background_override_path],
-		"online_bars": [ONLINE_BAR_KEYS, GameAssetOverrides.online_bar_override_path],
-		"local_bars": [LOCAL_BAR_KEYS, GameAssetOverrides.local_bar_override_path],
-		"ranked_bars": [RANKED_BAR_KEYS, GameAssetOverrides.ranked_bar_override_path],
-		"action_bars": [ACTION_BAR_KEYS, GameAssetOverrides.action_bar_override_path],
-		"playlist_cards": [PLAYLIST_CARD_KEYS, GameAssetOverrides.playlist_card_override_path],
-		"field_art": [FIELD_ART_KEYS, GameAssetOverrides.field_art_override_path],
+		"mode_buttons": [Categories.MODE_BUTTON_KEYS, GameAssetOverrides.mode_button_override_path],
+		"backgrounds": [Categories.BACKGROUND_KEYS, GameAssetOverrides.background_override_path],
+		"online_bars": [Categories.ONLINE_BAR_KEYS, GameAssetOverrides.online_bar_override_path],
+		"local_bars": [Categories.LOCAL_BAR_KEYS, GameAssetOverrides.local_bar_override_path],
+		"ranked_bars": [Categories.RANKED_BAR_KEYS, GameAssetOverrides.ranked_bar_override_path],
+		"action_bars": [Categories.ACTION_BAR_KEYS, GameAssetOverrides.action_bar_override_path],
+		"playlist_cards": [Categories.PLAYLIST_CARD_KEYS, GameAssetOverrides.playlist_card_override_path],
+		"field_art": [Categories.FIELD_ART_KEYS, GameAssetOverrides.field_art_override_path],
 	}
 
 func check() -> void:
