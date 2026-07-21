@@ -37,21 +37,39 @@ const ACTION_BAR_KEYS := ["back", "connect", "watch", "host_server", "ready", "s
 # Mirrors art_tool.gd's PLAYLIST_CARD_KEYS / ranked_playlist_select.gd's
 # whole-card art check.
 const PLAYLIST_CARD_KEYS := ["1v1", "2v2", "1v1v1", "1v1v1v1"]
+# Mirrors art_tool.gd's FIELD_ART_KEYS / UIStyle.apply_field_art() -- one
+# shared background image reused by every LineEdit in the app.
+const FIELD_ART_KEYS := ["field"]
 
 # Multi-key categories publish as one file per key (like mode_buttons/
 # backgrounds/online_bars) rather than a single shared atlas image (like
 # icons/tiles) -- this maps each such category to its key list and override-
 # path function so _download_category doesn't need one hand-written branch
 # per category.
-const MULTI_KEY_CATEGORIES := {
-	"mode_buttons": [MODE_BUTTON_KEYS, GameAssetOverrides.mode_button_override_path],
-	"backgrounds": [BACKGROUND_KEYS, GameAssetOverrides.background_override_path],
-	"online_bars": [ONLINE_BAR_KEYS, GameAssetOverrides.online_bar_override_path],
-	"local_bars": [LOCAL_BAR_KEYS, GameAssetOverrides.local_bar_override_path],
-	"ranked_bars": [RANKED_BAR_KEYS, GameAssetOverrides.ranked_bar_override_path],
-	"action_bars": [ACTION_BAR_KEYS, GameAssetOverrides.action_bar_override_path],
-	"playlist_cards": [PLAYLIST_CARD_KEYS, GameAssetOverrides.playlist_card_override_path],
-}
+#
+# static var + _static_init(), NOT const: a dict literal containing
+# cross-class static-method references (GameAssetOverrides.xxx_path) isn't
+# actually foldable as a GDScript constant expression -- confirmed via a
+# real repro (isolated single-entry dict, same error) that this has been
+# silently broken since this pattern was first introduced, cascading into
+# main_menu.gd failing to compile at all (its preload of this script fails)
+# the moment anything actually forces this script to reload/recompile,
+# which none of this session's prior verification passes happened to
+# trigger. _static_init() runs as real code, not constant-folding, so the
+# same cross-class references that fail as a const work here unchanged.
+static var MULTI_KEY_CATEGORIES: Dictionary = {}
+
+static func _static_init() -> void:
+	MULTI_KEY_CATEGORIES = {
+		"mode_buttons": [MODE_BUTTON_KEYS, GameAssetOverrides.mode_button_override_path],
+		"backgrounds": [BACKGROUND_KEYS, GameAssetOverrides.background_override_path],
+		"online_bars": [ONLINE_BAR_KEYS, GameAssetOverrides.online_bar_override_path],
+		"local_bars": [LOCAL_BAR_KEYS, GameAssetOverrides.local_bar_override_path],
+		"ranked_bars": [RANKED_BAR_KEYS, GameAssetOverrides.ranked_bar_override_path],
+		"action_bars": [ACTION_BAR_KEYS, GameAssetOverrides.action_bar_override_path],
+		"playlist_cards": [PLAYLIST_CARD_KEYS, GameAssetOverrides.playlist_card_override_path],
+		"field_art": [FIELD_ART_KEYS, GameAssetOverrides.field_art_override_path],
+	}
 
 func check() -> void:
 	var req := HTTPRequest.new()

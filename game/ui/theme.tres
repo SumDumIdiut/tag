@@ -1,4 +1,6 @@
-[gd_resource type="Theme" load_steps=10 format=3]
+[gd_resource type="Theme" load_steps=11 format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/pixel_font.tres" id="1"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_normal"]
 bg_color = Color(0.6, 0.63, 0.72, 0.14)
@@ -120,6 +122,7 @@ corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
 
 [resource]
+default_font = ExtResource("1")
 default_font_size = 16
 Button/colors/font_color = Color(0.894, 0.906, 0.941, 1)
 Button/colors/font_hover_color = Color(1, 1, 1, 1)

@@ -108,7 +108,7 @@ const MAX_LEVEL_UPLOAD_BYTES = 150 * 1024;
 const GAME_ASSETS_DIR = path.join(DATA_DIR, 'game_assets');
 const GAME_ASSETS_MANIFEST_PATH = path.join(DATA_DIR, 'game_assets_manifest.json');
 const ASSET_PUBLISH_KEY = process.env.ASSET_PUBLISH_KEY || '';
-const GAME_ASSET_CATEGORIES = ['icons', 'mode_buttons', 'backgrounds', 'online_bars', 'local_bars', 'ranked_bars', 'action_bars', 'playlist_cards'];
+const GAME_ASSET_CATEGORIES = ['icons', 'mode_buttons', 'backgrounds', 'online_bars', 'local_bars', 'ranked_bars', 'action_bars', 'playlist_cards', 'field_art'];
 const MODE_BUTTON_KEYS = ['online', 'local']; // mirrors art_tool.gd's MODE_BUTTON_KEYS
 // Mirrors art_tool.gd's BACKGROUND_KEYS -- every menu screen with a
 // paintable background (see game/ui/ui_style.gd's add_background).
@@ -131,6 +131,9 @@ const ACTION_BAR_KEYS = ['back', 'connect', 'watch', 'host_server', 'ready', 'st
 // Mirrors art_tool.gd's PLAYLIST_CARD_KEYS -- ranked_playlist_select.gd's
 // 4 whole-card images.
 const PLAYLIST_CARD_KEYS = ['1v1', '2v2', '1v1v1', '1v1v1v1'];
+// Mirrors art_tool.gd's FIELD_ART_KEYS -- one shared LineEdit background
+// image reused everywhere.
+const FIELD_ART_KEYS = ['field'];
 // Categories that publish as one file per key (like a per-key subfolder)
 // rather than a single shared atlas image (like icons/tiles) -- maps each
 // to its key list so the publish/download routes below don't need one
@@ -143,6 +146,7 @@ const MULTI_KEY_CATEGORIES = {
   ranked_bars: RANKED_BAR_KEYS,
   action_bars: ACTION_BAR_KEYS,
   playlist_cards: PLAYLIST_CARD_KEYS,
+  field_art: FIELD_ART_KEYS,
 };
 // A full-screen background (1152x648, far bigger than any icon/mode-button
 // canvas) needs more headroom than those -- bumped along with the

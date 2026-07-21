@@ -253,17 +253,58 @@ static func style_back_button(btn: Button) -> void:
 ## screen, reading as barely-there next to every button's opaque
 ## hard-bordered panel_box()/button_box() look -- this gives text fields
 ## the exact same visual language as style_back_button() (same
-## button_box() alpha levels, same neutral color by default), so an input
-## field reads as "part of this UI" instead of a leftover default control.
+## button_box() alpha levels, same neutral color by default) as a
+## guaranteed fallback, but tries a real painted background first (see
+## apply_field_art()) same "never hard-fail on missing custom content"
+## rule as apply_bar_art() -- painted art wins when it exists, the flat
+## box is what's left when it doesn't.
 static func style_line_edit(edit: LineEdit, color: Color = COLOR_NEUTRAL, radius: int = 8) -> void:
-	edit.add_theme_stylebox_override("normal", button_box(color, 0.14, 0.35, radius))
-	edit.add_theme_stylebox_override("focus", button_box(color, 0.26, 0.75, radius))
-	edit.add_theme_stylebox_override("read_only", button_box(color, 0.08, 0.2, radius))
 	edit.add_theme_color_override("font_color", Color(0.894, 0.906, 0.941, 1))
 	edit.add_theme_color_override("font_placeholder_color", Color(color.r, color.g, color.b, 0.6))
 	edit.add_theme_color_override("font_uneditable_color", Color(color.r, color.g, color.b, 0.8))
 	edit.add_theme_color_override("caret_color", color.lightened(0.4))
 	edit.add_theme_color_override("selection_color", Color(color.r, color.g, color.b, 0.35))
+	if apply_field_art(edit):
+		return
+	edit.add_theme_stylebox_override("normal", button_box(color, 0.14, 0.35, radius))
+	edit.add_theme_stylebox_override("focus", button_box(color, 0.26, 0.75, radius))
+	edit.add_theme_stylebox_override("read_only", button_box(color, 0.08, 0.2, radius))
+
+## Whole-field painted background (see the Art Tool's Icons page "Input
+## Field Art" section) -- unlike apply_bar_art() (which overlays a
+## TextureRect on top of a Button, hiding its stylebox), a LineEdit draws
+## its own stylebox with no child slot to overlay, so this wraps the same
+## painted texture in a StyleBoxTexture instead: texture_margin_* keeps
+## the border pixels fixed-width (9-patch stretch) so one shared image
+## can stretch cleanly across every field's own width without warping,
+## the same distortion problem apply_bar_art()'s KEEP_ASPECT_CENTERED
+## fix solved for buttons. One shared image (like action_bars' "back")
+## reused for every field, focus state modulated brighter for feedback
+## instead of needing a second painted asset.
+static func apply_field_art(edit: LineEdit) -> bool:
+	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.bar_override_path("field_art", "field"))
+	if not tex:
+		var path := "res://assets/icons/field_art/field.png"
+		if ResourceLoader.exists(path):
+			tex = load(path)
+	if not tex:
+		return false
+	var normal := StyleBoxTexture.new()
+	normal.texture = tex
+	normal.texture_margin_left = 16
+	normal.texture_margin_right = 16
+	normal.texture_margin_top = 10
+	normal.texture_margin_bottom = 10
+	normal.content_margin_left = 12
+	normal.content_margin_right = 12
+	normal.content_margin_top = 8
+	normal.content_margin_bottom = 8
+	edit.add_theme_stylebox_override("normal", normal)
+	edit.add_theme_stylebox_override("read_only", normal)
+	var focus := normal.duplicate()
+	focus.modulate_color = Color(1.3, 1.3, 1.35, 1.0)
+	edit.add_theme_stylebox_override("focus", focus)
+	return true
 
 ## A small colored icon glyph anchored to a button's left edge, over its
 ## existing text (which should start with a couple spaces of padding to
