@@ -42,6 +42,7 @@ const UpdatePromptScene := preload("res://ui/update_prompt.gd")
 const TileCanvasScene := preload("res://main/tile_canvas.gd")
 const LevelData := preload("res://levels/level_data.gd")
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
+const Categories := preload("res://net/game_asset_categories.gd")
 
 const ZOOM := 18
 
@@ -289,7 +290,7 @@ var _icon_select_buttons: Array[Button] = []
 # it) as one image, same canvas size the real button renders at, so what's
 # painted here is exactly what shows up in-game. Matches main_menu.gd's
 # MODES key order exactly -- "online"/"local" (Sandbox removed).
-const MODE_BUTTON_KEYS := ["online", "local"]
+const MODE_BUTTON_KEYS := Categories.MODE_BUTTON_KEYS
 const MODE_BUTTON_NAMES := ["Online", "Local"]
 const MODE_BUTTON_SIZE := Vector2i(190, 360) # matches main_menu.gd's BAR_SIZE exactly
 const MODE_BUTTON_ART_DIR := "res://assets/icons/mode_buttons"
@@ -307,11 +308,7 @@ var _button_art_select_buttons: Array[Button] = []
 # game_asset_updater.gd's BACKGROUND_KEYS and relay-server/server.js's,
 # same "kept in sync by convention" relationship MODE_BUTTON_KEYS already
 # has across those same 3 files).
-const BACKGROUND_KEYS := [
-	"main_menu", "online_menu", "local_menu", "shop", "friends_menu",
-	"lobby_room", "host_setup", "login_screen", "match_intro", "match_results",
-	"multiplayer_connect", "quick_play", "ranked_queue", "server_browser",
-]
+const BACKGROUND_KEYS := Categories.BACKGROUND_KEYS
 const BACKGROUND_NAMES := [
 	"Main Menu", "Online Menu", "Local Menu", "Shop", "Friends",
 	"Lobby Room", "Host Setup", "Login Screen", "Match Intro", "Match Results",
@@ -328,7 +325,7 @@ var _background_select_buttons: Array[Button] = []
 # Create Account/Log Out) -- see tools/generate_menu_art.gd's ACTION_BARS
 # for the same key set/order this must stay in sync with, one whole-bar
 # image each (not a shared atlas), same shape as mode button art above.
-const ACTION_BAR_KEYS := ["back", "connect", "watch", "host_server", "ready", "start_match", "login", "create_account", "logout"]
+const ACTION_BAR_KEYS := Categories.ACTION_BAR_KEYS
 const ACTION_BAR_NAMES := ["Back", "Connect", "Watch", "Host Server", "Ready", "Start Match", "Log In", "Create Account", "Log Out"]
 const ACTION_BAR_SIZE := Vector2i(380, 44) # matches generate_menu_art.gd's ACTION_BAR_FINAL_SIZE
 const ACTION_BAR_ART_DIR := "res://assets/icons/action_bars"
@@ -342,7 +339,7 @@ var _action_bar_select_buttons: Array[Button] = []
 # order must match PlaylistCatalog.PLAYLIST_ORDER, same "kept in sync by
 # convention" relationship every other *_KEYS list on this page already
 # has with its own real source of truth.
-const PLAYLIST_CARD_KEYS := ["1v1", "2v2", "1v1v1", "1v1v1v1"]
+const PLAYLIST_CARD_KEYS := Categories.PLAYLIST_CARD_KEYS
 const PLAYLIST_CARD_NAMES := ["1v1", "2v2", "1v1v1", "1v1v1v1"]
 const PLAYLIST_CARD_SIZE := Vector2i(380, 44) # matches ACTION_BAR_SIZE -- picker buttons are now wide horizontal bars, not square cards
 const PLAYLIST_CARD_ART_DIR := "res://assets/icons/playlist_cards"
@@ -354,7 +351,7 @@ var _playlist_card_select_buttons: Array[Button] = []
 # Every LineEdit's shared background (UIStyle.apply_field_art()) -- a
 # single-key category (like LOCAL_BAR_KEYS' one "play") since every field
 # in the app reuses the same one painted image.
-const FIELD_ART_KEYS := ["field"]
+const FIELD_ART_KEYS := Categories.FIELD_ART_KEYS
 const FIELD_ART_NAMES := ["Field Background"]
 const FIELD_ART_SIZE := Vector2i(380, 44) # matches generate_menu_art.gd's ACTION_BAR_FINAL_SIZE
 const FIELD_ART_ART_DIR := "res://assets/icons/field_art"
