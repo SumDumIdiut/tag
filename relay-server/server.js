@@ -108,34 +108,12 @@ const MAX_LEVEL_UPLOAD_BYTES = 150 * 1024;
 const GAME_ASSETS_DIR = path.join(DATA_DIR, 'game_assets');
 const GAME_ASSETS_MANIFEST_PATH = path.join(DATA_DIR, 'game_assets_manifest.json');
 const ASSET_PUBLISH_KEY = process.env.ASSET_PUBLISH_KEY || '';
-// SYNC: every key list below mirrors game/net/game_asset_categories.gd,
-// the single GDScript-side source of truth both art_tool.gd and
-// game_asset_updater.gd preload instead of hand-copying. This file can't
-// share that literal source across languages, so these are the one
-// remaining manual-sync copy -- keep both sides updated together.
-const GAME_ASSET_CATEGORIES = ['icons', 'mode_buttons', 'backgrounds', 'online_bars', 'local_bars', 'ranked_bars', 'action_bars', 'playlist_cards', 'field_art', 'chrome'];
-const MODE_BUTTON_KEYS = ['online', 'local'];
-// Every menu screen with a paintable background (see game/ui/ui_style.gd's
-// add_background).
-const BACKGROUND_KEYS = [
-  'main_menu', 'online_menu', 'local_menu', 'shop', 'friends_menu',
-  'lobby_room', 'host_setup', 'login_screen', 'match_intro', 'match_results',
-  'multiplayer_connect', 'ranked_queue',
-];
-// Mirrors game/main/online_menu.gd's 4 bars.
-const ONLINE_BAR_KEYS = ['casual', 'ranked', 'private', 'friends'];
-// Mirrors tools/generate_menu_art.gd's local_menu Play Tag button (Back
-// moved to action_bars below, shared with every other screen's Back).
-const LOCAL_BAR_KEYS = ['play'];
-// Mirrors match_intro.gd's ranked VS reveal "Ready!" button.
-const RANKED_BAR_KEYS = ['ready'];
-// One shared image per key reused across every screen that has that
-// button (see ui/ui_style.gd's apply_bar_art).
-const ACTION_BAR_KEYS = ['back', 'connect', 'watch', 'ready', 'start_match', 'login', 'create_account', 'logout'];
-// ranked_playlist_select.gd's 4 whole-card images.
-const PLAYLIST_CARD_KEYS = ['1v1', '2v2', '1v1v1', '1v1v1v1'];
-// One shared LineEdit background image reused everywhere.
-const FIELD_ART_KEYS = ['field'];
+// SYNC: mirrors game/net/game_asset_categories.gd, the single GDScript-side
+// source of truth both art_tool.gd and game_asset_updater.gd preload
+// instead of hand-copying. This file can't share that literal source
+// across languages, so this is the one remaining manual-sync copy -- keep
+// both sides updated together.
+const GAME_ASSET_CATEGORIES = ['icons', 'chrome'];
 // The app's shared button/panel/slider box art.
 const CHROME_KEYS = ['button', 'panel', 'slider_groove', 'slider_fill'];
 // Categories that publish as one file per key (like a per-key subfolder)
@@ -143,14 +121,6 @@ const CHROME_KEYS = ['button', 'panel', 'slider_groove', 'slider_fill'];
 // to its key list so the publish/download routes below don't need one
 // hand-written branch per category.
 const MULTI_KEY_CATEGORIES = {
-  mode_buttons: MODE_BUTTON_KEYS,
-  backgrounds: BACKGROUND_KEYS,
-  online_bars: ONLINE_BAR_KEYS,
-  local_bars: LOCAL_BAR_KEYS,
-  ranked_bars: RANKED_BAR_KEYS,
-  action_bars: ACTION_BAR_KEYS,
-  playlist_cards: PLAYLIST_CARD_KEYS,
-  field_art: FIELD_ART_KEYS,
   chrome: CHROME_KEYS,
 };
 // A full-screen background (1152x648, far bigger than any icon/mode-button

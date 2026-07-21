@@ -22,13 +22,6 @@ const MODES := [
 ]
 
 const BAR_SIZE := Vector2(190, 360)
-# A whole-button custom image an artist painted for this mode (see the Art
-# Tool's Icons page "Mode Button Art" section) -- if it exists, it replaces
-# the entire procedural box (glow/portrait/label) below, background and all.
-# "%s" is mode["key"]. Never required: falls back to the procedural bar for
-# any mode that doesn't have one yet, same "never hard-fail on missing
-# custom content" rule the rest of the project already follows.
-const MODE_BUTTON_ART_PATH := "res://assets/icons/mode_buttons/%s.png"
 
 @onready var mode_bar: HBoxContainer = $VBox/ModeBar
 
@@ -69,12 +62,9 @@ func _on_asset_check_completed(result: Dictionary) -> void:
 	var prompt := GameAssetUpdatePromptScene.new()
 	add_child(prompt)
 	prompt.setup(result.categories, result.manifest)
-	# Mode button art is picked up immediately -- rebuild the bar so a
-	# freshly downloaded whole-button painting shows up without needing to
-	# leave and come back to the main menu. Icon-atlas/tile changes are
-	# already live for anything built after the download (see
-	# GameAssetOverrides) but don't need an explicit refresh here since
-	# nothing on this screen renders through them directly.
+	# A freshly downloaded chrome update only affects buttons built after the
+	# download (see GameAssetOverrides) -- rebuild the bar so it doesn't need
+	# leaving and coming back to the main menu to pick it up.
 	prompt.applied.connect(_rebuild_mode_bar)
 
 func _rebuild_mode_bar() -> void:
@@ -93,34 +83,6 @@ func _build_bar(mode: Dictionary) -> Button:
 	btn.clip_contents = true
 	UIStyle.style_button(btn, color, 18)
 	btn.pressed.connect(_on_mode_pressed.bind(mode["scene"]))
-
-	# A downloaded override (see game_asset_updater.gd) takes priority over
-	# whatever got baked into this build at CI time, same "newest wins"
-	# rule the icon atlas follows in mode_icon.gd.
-	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.mode_button_override_path(mode["key"]))
-	if not tex:
-		var art_path := MODE_BUTTON_ART_PATH % mode["key"]
-		if ResourceLoader.exists(art_path):
-			tex = load(art_path)
-	if tex:
-		# A friend's whole-button painting (see the Art Tool's Icons page) --
-		# replaces the procedural glow/portrait/label box below entirely,
-		# full-bleed over the button's own clickable area.
-		var art := TextureRect.new()
-		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		art.texture = tex
-		art.stretch_mode = TextureRect.STRETCH_SCALE
-		# Without this, TextureRect's default EXPAND_KEEP_SIZE lets the
-		# texture's own native resolution fight the anchor-based FULL_RECT
-		# sizing below, leaving part of the button's own colored panel
-		# (drawn behind this as its stylebox) visible past the art's edge
-		# whenever the button's real rect doesn't land exactly on
-		# BAR_SIZE's 190x360. Same fix UIStyle.add_background's own
-		# background TextureRect already applies.
-		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		btn.add_child(art)
-		return btn
 
 	# A soft radial glow behind the character, in the bar's own color --
 	# gives the portrait a bit of depth/stage-lighting instead of sitting

@@ -39,78 +39,41 @@ const RANK_TIER_DEFAULT_COLOR := Color(0.6, 0.63, 0.72)
 static func tier_color(tier: String) -> Color:
 	return RANK_TIER_COLORS.get(tier, RANK_TIER_DEFAULT_COLOR)
 
-## Matches project.godot's window/size/viewport_width/height -- a painted
-## menu background (see the Art Tool's Icons page) is exported at exactly
-## this size so it fills the screen at native resolution, same as
-## MODE_BUTTON_SIZE matching main_menu.gd's BAR_SIZE.
-const BACKGROUND_SIZE := Vector2i(1152, 648)
-const BACKGROUND_ART_DIR := "res://assets/backgrounds"
-
-## Adds a screen's backdrop as the first child of `root` -- call once from a
-## screen's _ready(), before any other setup, so it renders behind
-## everything else without needing every screen's own .tscn to carry a
-## duplicate gradient sub-resource.
-## `screen_key`: identifies which menu screen this is (e.g. "main_menu",
-## "online_menu") so a friend's painted background (see the Art Tool's
-## Icons page > MENU BACKGROUNDS) can be looked up for it -- a downloaded
-## override (GameAssetOverrides) wins over whatever got baked in at CI
-## time, same "newest wins" rule the mode-button art already follows. Left
-## empty (the default), this always falls back to the plain procedural
-## gradient -- used by screens that intentionally don't take a painted
-## background, e.g. the Art Tool's own UI.
-static func add_background(root: Control, screen_key: String = "") -> void:
-	var bg: Control
-	var tex: Texture2D = _load_background_texture(screen_key) if not screen_key.is_empty() else null
-	if tex:
-		var art := TextureRect.new()
-		art.texture = tex
-		art.stretch_mode = TextureRect.STRETCH_SCALE
-		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		art.set_anchors_preset(Control.PRESET_FULL_RECT)
-		bg = art
-	else:
-		var grad := Gradient.new()
-		grad.colors = PackedColorArray([BG_TOP, BG_BOTTOM])
-		var grad_tex := GradientTexture2D.new()
-		grad_tex.gradient = grad
-		grad_tex.fill = GradientTexture2D.FILL_RADIAL
-		grad_tex.fill_from = Vector2(0.5, 0.5)
-		grad_tex.fill_to = Vector2(1.0, 1.0)
-		var grad_rect := TextureRect.new()
-		grad_rect.texture = grad_tex
-		grad_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		grad_rect.stretch_mode = TextureRect.STRETCH_SCALE
-		grad_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		grad_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-		bg = grad_rect
-	root.add_child(bg)
-	root.move_child(bg, 0)
-
-## Override (a friend's painted background downloaded live, see
-## GameAssetUpdater) first, baked-into-this-build second, same fallback
-## order main_menu.gd already uses for mode-button art.
-static func _load_background_texture(screen_key: String) -> Texture2D:
-	var tex := GameAssetOverrides.load_override_texture(GameAssetOverrides.background_override_path(screen_key))
-	if tex:
-		return tex
-	var art_path := "%s/%s.png" % [BACKGROUND_ART_DIR, screen_key]
-	if ResourceLoader.exists(art_path):
-		return load(art_path)
-	return null
+## Adds a screen's plain radial-gradient backdrop as the first child of
+## `root` -- call once from a screen's _ready(), before any other setup, so
+## it renders behind everything else without needing every screen's own
+## .tscn to carry a duplicate gradient sub-resource. `screen_key` is kept as
+## a no-op parameter so every existing call site (`add_background(self,
+## "online_menu")` etc.) still compiles unchanged; it no longer selects
+## anything.
+static func add_background(root: Control, _screen_key: String = "") -> void:
+	var grad := Gradient.new()
+	grad.colors = PackedColorArray([BG_TOP, BG_BOTTOM])
+	var grad_tex := GradientTexture2D.new()
+	grad_tex.gradient = grad
+	grad_tex.fill = GradientTexture2D.FILL_RADIAL
+	grad_tex.fill_from = Vector2(0.5, 0.5)
+	grad_tex.fill_to = Vector2(1.0, 1.0)
+	var grad_rect := TextureRect.new()
+	grad_rect.texture = grad_tex
+	grad_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	grad_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	grad_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	grad_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(grad_rect)
+	root.move_child(grad_rect, 0)
 
 const CHROME_DIR := "res://assets/icons/chrome"
 
 ## Loads a baked 9-patch chrome sprite (see tools/build_chrome_art.gd) as a
-## StyleBoxTexture, or null if it's missing -- same "art first, procedural
-## StyleBoxFlat fallback" rule apply_bar_art()/apply_field_art() already
-## follow. `texture_margin` keeps the border/corner pixels a fixed
-## on-screen size while the middle stretches to whatever size the caller's
-## real button/panel/slider ends up at (the same technique
-## apply_field_art() already proved for LineEdit fields). `modulate`
-## carries both the accent color AND the target alpha -- see
-## build_chrome_art.gd's header comment for why a single alpha scalar on
-## the whole baked image reproduces button_box()'s real per-state
-## border/fill alpha pairs almost exactly.
+## StyleBoxTexture, or null if it's missing -- falls back to a procedural
+## StyleBoxFlat in button_box()/panel_box()/style_slider() below when it is.
+## `texture_margin` keeps the border/corner pixels a fixed on-screen size
+## while the middle stretches to whatever size the caller's real button/
+## panel/slider ends up at. `modulate` carries both the accent color AND
+## the target alpha -- see build_chrome_art.gd's header comment for why a
+## single alpha scalar on the whole baked image reproduces button_box()'s
+## real per-state border/fill alpha pairs almost exactly.
 static func _chrome_stylebox(kind: String, modulate: Color, texture_margin: float) -> StyleBoxTexture:
 	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.bar_override_path("chrome", kind))
 	if not tex:
@@ -317,58 +280,16 @@ static func style_back_button(btn: Button) -> void:
 ## screen, reading as barely-there next to every button's opaque
 ## hard-bordered panel_box()/button_box() look -- this gives text fields
 ## the exact same visual language as style_back_button() (same
-## button_box() alpha levels, same neutral color by default) as a
-## guaranteed fallback, but tries a real painted background first (see
-## apply_field_art()) same "never hard-fail on missing custom content"
-## rule as apply_bar_art() -- painted art wins when it exists, the flat
-## box is what's left when it doesn't.
+## button_box() alpha levels, same neutral color by default).
 static func style_line_edit(edit: LineEdit, color: Color = COLOR_NEUTRAL, radius: int = 8) -> void:
 	edit.add_theme_color_override("font_color", Color(0.894, 0.906, 0.941, 1))
 	edit.add_theme_color_override("font_placeholder_color", Color(color.r, color.g, color.b, 0.6))
 	edit.add_theme_color_override("font_uneditable_color", Color(color.r, color.g, color.b, 0.8))
 	edit.add_theme_color_override("caret_color", color.lightened(0.4))
 	edit.add_theme_color_override("selection_color", Color(color.r, color.g, color.b, 0.35))
-	if apply_field_art(edit):
-		return
 	edit.add_theme_stylebox_override("normal", button_box(color, 0.14, 0.35, radius))
 	edit.add_theme_stylebox_override("focus", button_box(color, 0.26, 0.75, radius))
 	edit.add_theme_stylebox_override("read_only", button_box(color, 0.08, 0.2, radius))
-
-## Whole-field painted background (see the Art Tool's Icons page "Input
-## Field Art" section) -- unlike apply_bar_art() (which overlays a
-## TextureRect on top of a Button, hiding its stylebox), a LineEdit draws
-## its own stylebox with no child slot to overlay, so this wraps the same
-## painted texture in a StyleBoxTexture instead: texture_margin_* keeps
-## the border pixels fixed-width (9-patch stretch) so one shared image
-## can stretch cleanly across every field's own width without warping,
-## the same distortion problem apply_bar_art()'s KEEP_ASPECT_CENTERED
-## fix solved for buttons. One shared image (like action_bars' "back")
-## reused for every field, focus state modulated brighter for feedback
-## instead of needing a second painted asset.
-static func apply_field_art(edit: LineEdit) -> bool:
-	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.bar_override_path("field_art", "field"))
-	if not tex:
-		var path := "res://assets/icons/field_art/field.png"
-		if ResourceLoader.exists(path):
-			tex = load(path)
-	if not tex:
-		return false
-	var normal := StyleBoxTexture.new()
-	normal.texture = tex
-	normal.texture_margin_left = 16
-	normal.texture_margin_right = 16
-	normal.texture_margin_top = 10
-	normal.texture_margin_bottom = 10
-	normal.content_margin_left = 12
-	normal.content_margin_right = 12
-	normal.content_margin_top = 8
-	normal.content_margin_bottom = 8
-	edit.add_theme_stylebox_override("normal", normal)
-	edit.add_theme_stylebox_override("read_only", normal)
-	var focus := normal.duplicate()
-	focus.modulate_color = Color(1.3, 1.3, 1.35, 1.0)
-	edit.add_theme_stylebox_override("focus", focus)
-	return true
 
 ## A small colored icon glyph anchored to a button's left edge, over its
 ## existing text (which should start with a couple spaces of padding to
@@ -390,49 +311,6 @@ static func prefix_icon(btn: Button, icon_type: String, color: Color) -> void:
 	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
 	icon_wrap.add_child(icon)
 	btn.add_child(icon_wrap)
-
-## Painted whole-button art if available (a downloaded live-published
-## override first, then whatever got baked into this build at CI time),
-## replacing the button's text with a full-bleed TextureRect -- same
-## fallback chain every painted button in the app already uses (mode bars,
-## online submenu bars, local menu's Play Tag/Back, the ranked VS screen's
-## Ready button). No-op if neither exists, leaving the plain UIStyle-colored
-## button already applied by style_button() as the fallback -- always safe
-## to call speculatively, same "never hard-fail on missing custom content"
-## rule the rest of the project follows.
-## Returns true if real art was found and applied, false if the caller is
-## left with the plain flat-colored fallback -- callers that build their own
-## extra child controls (icon/label) on top of the plain fallback (e.g.
-## ranked_playlist_select.gd's cards) use this to skip that procedural
-## layer entirely when full art already covers it.
-static func apply_bar_art(btn: Button, category: String, key: String) -> bool:
-	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.bar_override_path(category, key))
-	if not tex:
-		var path := "res://assets/icons/%s/%s.png" % [category, key]
-		if ResourceLoader.exists(path):
-			tex = load(path)
-	if not tex:
-		return false
-	btn.text = ""
-	btn.clip_contents = true
-	var art := TextureRect.new()
-	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	art.texture = tex
-	# KEEP_ASPECT_CENTERED, not SCALE -- these buttons range from a narrow
-	# half-width login button to a nearly-full-screen-wide friends-menu Back
-	# button, all sharing the same handful of baked art pieces (deliberately,
-	# to avoid painting a near-duplicate per screen). Force-stretching a
-	# fixed-aspect image across that range visibly warped the icon/text at
-	# the extremes (confirmed by screenshot on friends_menu's Back button --
-	# the arrow and lettering both smeared sideways). Centered-and-preserved
-	# just floats the art as a "pill" on the button's own flat-colored base
-	# (already applied by style_button() before this runs) when the aspect
-	# ratios don't match, which reads fine and never distorts.
-	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	btn.add_child(art)
-	return true
 
 static func title_label(text: String, size: int = 40) -> Label:
 	var l := Label.new()

@@ -24,11 +24,6 @@ func _ready() -> void:
 	UIStyle.style_button(ready_button, UIStyle.COLOR_ONLINE)
 	UIStyle.style_button(start_button, UIStyle.COLOR_ONLINE)
 	UIStyle.style_back_button(leave_button)
-	# ready_button intentionally has no painted art -- its label toggles
-	# between "Ready"/"Unready" (see _on_ready_pressed), which baked art
-	# can't represent for both states.
-	UIStyle.apply_bar_art(start_button, "action_bars", "start_match")
-	UIStyle.apply_bar_art(leave_button, "action_bars", "back")
 
 	ready_button.pressed.connect(_on_ready_pressed)
 	start_button.pressed.connect(_on_start_pressed)

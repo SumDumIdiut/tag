@@ -1,8 +1,8 @@
 extends Node
 class_name GameAssetUpdater
 
-# Checks the relay's built-in-art manifest (icons/mode_buttons/backgrounds/
-# online_bars -- see relay-server/server.js's "HTTP: game assets" section, and art_tool.gd's
+# Checks the relay's built-in-art manifest (icons/chrome -- see
+# relay-server/server.js's "HTTP: game assets" section, and art_tool.gd's
 # Export Edits button, the one thing that publishes to it) against whatever
 # this client last downloaded, and offers to fetch anything newer. Distinct
 # from UpdateChecker/UpdatePrompt (whole-binary updates, requires a
@@ -38,14 +38,6 @@ static var MULTI_KEY_CATEGORIES: Dictionary = {}
 
 static func _static_init() -> void:
 	MULTI_KEY_CATEGORIES = {
-		"mode_buttons": [Categories.MODE_BUTTON_KEYS, GameAssetOverrides.mode_button_override_path],
-		"backgrounds": [Categories.BACKGROUND_KEYS, GameAssetOverrides.background_override_path],
-		"online_bars": [Categories.ONLINE_BAR_KEYS, GameAssetOverrides.online_bar_override_path],
-		"local_bars": [Categories.LOCAL_BAR_KEYS, GameAssetOverrides.local_bar_override_path],
-		"ranked_bars": [Categories.RANKED_BAR_KEYS, GameAssetOverrides.ranked_bar_override_path],
-		"action_bars": [Categories.ACTION_BAR_KEYS, GameAssetOverrides.action_bar_override_path],
-		"playlist_cards": [Categories.PLAYLIST_CARD_KEYS, GameAssetOverrides.playlist_card_override_path],
-		"field_art": [Categories.FIELD_ART_KEYS, GameAssetOverrides.field_art_override_path],
 		"chrome": [Categories.CHROME_KEYS, GameAssetOverrides.chrome_override_path],
 	}
 

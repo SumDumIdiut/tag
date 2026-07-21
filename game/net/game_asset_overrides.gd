@@ -13,36 +13,11 @@ class_name GameAssetOverrides
 
 const ICONS_OVERRIDE_PATH := "user://game_assets/icons.png"
 
-static func mode_button_override_path(key: String) -> String:
-	return "user://game_assets/mode_buttons/%s.png" % key
-
-static func background_override_path(key: String) -> String:
-	return "user://game_assets/backgrounds/%s.png" % key
-
-static func online_bar_override_path(key: String) -> String:
-	return "user://game_assets/online_bars/%s.png" % key
-
-static func local_bar_override_path(key: String) -> String:
-	return "user://game_assets/local_bars/%s.png" % key
-
-static func ranked_bar_override_path(key: String) -> String:
-	return "user://game_assets/ranked_bars/%s.png" % key
-
-static func action_bar_override_path(key: String) -> String:
-	return "user://game_assets/action_bars/%s.png" % key
-
-static func playlist_card_override_path(key: String) -> String:
-	return "user://game_assets/playlist_cards/%s.png" % key
-
-static func field_art_override_path(key: String) -> String:
-	return "user://game_assets/field_art/%s.png" % key
-
 static func chrome_override_path(key: String) -> String:
 	return "user://game_assets/chrome/%s.png" % key
 
-## Generic form of the category-specific helpers above -- new categories
-## (see UIStyle.apply_bar_art, tools/art_tool.gd's Action Buttons section)
-## use this directly instead of a new one-off wrapper function each time.
+## Generic form of chrome_override_path() above -- ui_style.gd's
+## _chrome_stylebox() uses this directly.
 static func bar_override_path(category: String, key: String) -> String:
 	return "user://game_assets/%s/%s.png" % [category, key]
 
