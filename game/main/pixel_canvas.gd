@@ -3,11 +3,9 @@ class_name PixelCanvas
 
 # A pixel-art painting widget -- click/drag paints image pixels 1:1,
 # displayed scaled up by `zoom` with nearest-neighbor filtering so brush
-# strokes stay crisp instead of blurring. Used by skin_editor.gd (one
-# instance per paintable cosmetic part, brush/eraser only via `erasing`) and
-# by the standalone Art Tool (tools/art_tool.gd, the full toolset below) --
-# the caller owns `image` and reads it back directly after painting, no
-# signal round-trip needed for that.
+# strokes stay crisp instead of blurring. Used by the standalone Art Tool
+# (tools/art_tool.gd, the full toolset below) -- the caller owns `image` and
+# reads it back directly after painting, no signal round-trip needed for that.
 
 enum Tool {
 	BRUSH, ERASER, FILL, EYEDROPPER,
@@ -18,7 +16,7 @@ enum Tool {
 var image: Image
 var zoom: int = 12
 var paint_color := Color(1, 1, 1, 1)
-var erasing := false # kept for skin_editor.gd's existing usage; equivalent to tool = ERASER
+var erasing := false # equivalent to tool = ERASER
 var tool: int = Tool.BRUSH
 var brush_size: int = 1
 ## 0..1 -- painted color is alpha-blended onto the existing pixel instead of

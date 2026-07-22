@@ -68,8 +68,8 @@ func _ready() -> void:
 	add_row.add_child(_add_edit)
 	var add_btn := Button.new()
 	add_btn.text = "  Add Friend"
-	UIStyle.style_button(add_btn, UIStyle.COLOR_SHOP, 8)
-	UIStyle.prefix_icon(add_btn, "heart", UIStyle.COLOR_SHOP)
+	UIStyle.style_button(add_btn, UIStyle.COLOR_ACCENT, 8)
+	UIStyle.prefix_icon(add_btn, "heart", UIStyle.COLOR_ACCENT)
 	add_btn.pressed.connect(_on_add_pressed)
 	add_row.add_child(add_btn)
 

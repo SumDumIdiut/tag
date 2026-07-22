@@ -46,7 +46,7 @@ func _build_friends_bar() -> void:
 	friends_button.clip_contents = true
 	friends_button.pressed.connect(func(): get_tree().change_scene_to_file("res://main/friends_menu.tscn"))
 	bar_row.add_child(friends_button)
-	_style_bar(friends_button, UIStyle.COLOR_SHOP, "Friends")
+	_style_bar(friends_button, UIStyle.COLOR_ACCENT, "Friends")
 
 func _on_ranked_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/ranked_playlist_select.tscn")

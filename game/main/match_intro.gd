@@ -1,7 +1,7 @@
 extends Control
 
 # Brief pre-match beat between the lobby and actual gameplay -- shows who's
-# in the match and what they're wearing, then hands off to net_game.tscn
+# in the match and their assigned color, then hands off to net_game.tscn
 # exactly the way lobby_room.gd used to do directly. Purely client-side: no
 # NetworkManager/RPC changes, just where the scene swap happens.
 #
@@ -16,6 +16,7 @@ const NET_GAME_SCENE := preload("res://main/net_game.tscn")
 const UIStyle := preload("res://ui/ui_style.gd")
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 const TeamLobbyViewScene := preload("res://ui/team_lobby_view.gd")
+const CharacterPreviewScene := preload("res://ui/character_preview.gd")
 const INTRO_DURATION_SEC := 2.5
 const VS_INTRO_DURATION_SEC := 4.0 # longer -- there's an entrance animation to let play out
 
@@ -30,7 +31,6 @@ var _ranked := false
 var _playlist_id := ""
 var _time_left := INTRO_DURATION_SEC
 var _proceeded := false
-var _previews := {} # peer_id -> TextureRect, so a late-arriving custom skin can be re-applied
 var _vs_mode := false
 
 func setup(my_id: int, roster: Dictionary, level_id: String = "", ranked: bool = false, playlist_id: String = "") -> void:
@@ -61,18 +61,15 @@ func _ready() -> void:
 		skip_button.pressed.connect(_proceed)
 		for peer_id in _roster.keys():
 			roster_box.add_child(_build_row(peer_id, _roster[peer_id]))
-	SkinCatalog.skin_received.connect(_on_skin_received)
 
 func _build_row(peer_id: int, info: Dictionary) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 
-	var preview := TextureRect.new()
-	preview.custom_minimum_size = Vector2(SkinCatalog.VISUAL_WIDTH, SkinCatalog.VISUAL_HEIGHT)
-	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	preview.texture = SkinCatalog.get_texture(info.get("skin_id", "red"))
+	var preview := CharacterPreviewScene.new()
+	preview.custom_minimum_size = Vector2(40, 40)
+	preview.color_id = info.get("color_id", PlayerColors.DEFAULT_ID)
 	row.add_child(preview)
-	_previews[peer_id] = preview
 
 	var name_label := Label.new()
 	var you_tag := "  (you)" if peer_id == _my_id else ""
@@ -82,11 +79,6 @@ func _build_row(peer_id: int, info: Dictionary) -> Control:
 	row.add_child(name_label)
 
 	return row
-
-func _on_skin_received(skin_id: String) -> void:
-	for peer_id in _roster.keys():
-		if _roster[peer_id].get("skin_id", "") == skin_id and _previews.has(peer_id):
-			_previews[peer_id].texture = SkinCatalog.get_texture(skin_id)
 
 func _process(delta: float) -> void:
 	_time_left -= delta

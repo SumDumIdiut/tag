@@ -37,135 +37,14 @@ layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 8
 
-[node name="PaintTabButton" type="Button" parent="VBox/PageTabRow"]
-layout_mode = 2
-custom_minimum_size = Vector2(140, 38)
-toggle_mode = true
-button_pressed = true
-text = "Paint"
-
-[node name="PreviewTabButton" type="Button" parent="VBox/PageTabRow"]
-layout_mode = 2
-custom_minimum_size = Vector2(140, 38)
-toggle_mode = true
-text = "Preview"
-
 [node name="LevelTabButton" type="Button" parent="VBox/PageTabRow"]
 layout_mode = 2
 custom_minimum_size = Vector2(140, 38)
 toggle_mode = true
+button_pressed = true
 text = "Level"
 
-[node name="PaintPage" type="HBoxContainer" parent="VBox"]
-layout_mode = 2
-size_flags_vertical = 3
-theme_override_constants/separation = 12
-
-[node name="PartPanel" type="PanelContainer" parent="VBox/PaintPage"]
-layout_mode = 2
-custom_minimum_size = Vector2(190, 0)
-
-[node name="PartScroll" type="ScrollContainer" parent="VBox/PaintPage/PartPanel"]
-layout_mode = 2
-horizontal_scroll_mode = 0
-
-[node name="PartList" type="VBoxContainer" parent="VBox/PaintPage/PartPanel/PartScroll"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 6
-
-[node name="CanvasPanel" type="PanelContainer" parent="VBox/PaintPage"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-
-[node name="CanvasBox" type="VBoxContainer" parent="VBox/PaintPage/CanvasPanel"]
-layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="Toolbar" type="HBoxContainer" parent="VBox/PaintPage/CanvasPanel/CanvasBox"]
-layout_mode = 2
-alignment = 1
-theme_override_constants/separation = 6
-
-[node name="CanvasHolder" type="CenterContainer" parent="VBox/PaintPage/CanvasPanel/CanvasBox"]
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="EmptyStateLabel" type="Label" parent="VBox/PaintPage/CanvasPanel/CanvasBox"]
-layout_mode = 2
-size_flags_vertical = 3
-custom_minimum_size = Vector2(400, 0)
-horizontal_alignment = 1
-vertical_alignment = 1
-autowrap_mode = 2
-theme_override_colors/font_color = Color(0.6, 0.63, 0.72, 1)
-text = "Create a custom skin or hat on the left to start painting."
-
-[node name="RightPanel" type="PanelContainer" parent="VBox/PaintPage"]
-layout_mode = 2
-custom_minimum_size = Vector2(240, 0)
-
-[node name="RightBox" type="VBoxContainer" parent="VBox/PaintPage/RightPanel"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="PaintColorLabel" type="Label" parent="VBox/PaintPage/RightPanel/RightBox"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 14
-text = "COLOR"
-
-[node name="ColorPicker" type="ColorPicker" parent="VBox/PaintPage/RightPanel/RightBox"]
-layout_mode = 2
-color = Color(0.85, 0.2, 0.2, 1)
-sampled_bg_color = Color(0.85, 0.2, 0.2, 1)
-
-[node name="PreviewPage" type="VBoxContainer" parent="VBox"]
-visible = false
-layout_mode = 2
-size_flags_vertical = 3
-theme_override_constants/separation = 14
-
-[node name="BigPreviewPanel" type="PanelContainer" parent="VBox/PreviewPage"]
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="BigPreviewCenter" type="CenterContainer" parent="VBox/PreviewPage/BigPreviewPanel"]
-layout_mode = 2
-
-[node name="SelectorRow" type="HBoxContainer" parent="VBox/PreviewPage"]
-layout_mode = 2
-alignment = 1
-theme_override_constants/separation = 24
-
-[node name="SkinSelectBox" type="VBoxContainer" parent="VBox/PreviewPage/SelectorRow"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="SkinSelectLabel" type="Label" parent="VBox/PreviewPage/SelectorRow/SkinSelectBox"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 13
-text = "SKIN"
-
-[node name="SkinSelect" type="OptionButton" parent="VBox/PreviewPage/SelectorRow/SkinSelectBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(220, 38)
-
-[node name="HatSelectBox" type="VBoxContainer" parent="VBox/PreviewPage/SelectorRow"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="HatSelectLabel" type="Label" parent="VBox/PreviewPage/SelectorRow/HatSelectBox"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 13
-text = "HAT"
-
-[node name="HatSelect" type="OptionButton" parent="VBox/PreviewPage/SelectorRow/HatSelectBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(220, 38)
-
 [node name="LevelPage" type="HBoxContainer" parent="VBox"]
-visible = false
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 12

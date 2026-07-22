@@ -17,7 +17,7 @@ extends Control
 const UIStyle := preload("res://ui/ui_style.gd")
 const AUTH_BASE := "https://codecade.co.za/tag/api/auth"
 const SESSION_TOKEN_PATH := "user://session_token.txt"
-const ACCENT := UIStyle.COLOR_SHOP
+const ACCENT := UIStyle.COLOR_ACCENT
 
 var _status_label: Label
 var _logged_in_box: VBoxContainer

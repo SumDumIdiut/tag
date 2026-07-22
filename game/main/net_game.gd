@@ -9,7 +9,7 @@ const LEVEL_DATA_URL := "https://codecade.co.za/tag/api/levels/data/%s"
 var arena: Node2D
 var avatars := {} # peer_id -> RemoteAvatar, including your own
 var my_peer_id := -1
-var roster := {} # peer_id -> {username, skin_id}
+var roster := {} # peer_id -> {username, color_id}
 var level_id := ""
 var hud: Label
 
@@ -38,8 +38,6 @@ func _ready() -> void:
 	NetworkManager.match_state_received.connect(_on_match_state)
 	NetworkManager.disconnected_from_server.connect(_on_disconnected)
 	NetworkManager.match_ended.connect(_on_match_ended)
-	SkinCatalog.skin_received.connect(_on_skin_received)
-	SkinCatalog.hat_received.connect(_on_hat_received)
 
 	# Every player, yours included, is a RemoteAvatar -- there's no local
 	# prediction anywhere anymore, so no reason for your own avatar to be
@@ -52,9 +50,7 @@ func _ready() -> void:
 		add_child(avatar)
 		avatar.display_name = info.username
 		avatars[peer_id] = avatar
-		_apply_skin(peer_id)
-		_apply_hat(peer_id)
-		_apply_trail(peer_id)
+		_apply_color(peer_id)
 
 	# my_peer_id == -1 means we're spectating (see NetworkManager.start_
 	# spectator) -- there's no local avatar to own the camera, so fall back
@@ -66,28 +62,11 @@ func _ready() -> void:
 		followed.camera.make_current()
 		hud.text = "Spectating"
 
-## A custom skin's image can still be in flight (relayed from the server,
-## see NetworkManager) when a match starts -- SkinCatalog.get_part_textures()
-## just returns {} for a not-yet-known custom id, so avatar.set_skin() no-ops
-## and the avatar keeps its default placeholder until _on_skin_received
-## re-applies it for real.
-func _apply_skin(peer_id: int) -> void:
+func _apply_color(peer_id: int) -> void:
 	if not avatars.has(peer_id) or not roster.has(peer_id):
 		return
-	var skin_id: String = roster[peer_id].get("skin_id", "red")
-	avatars[peer_id].set_skin(skin_id)
-
-func _apply_hat(peer_id: int) -> void:
-	if not avatars.has(peer_id) or not roster.has(peer_id):
-		return
-	var hat_id: String = roster[peer_id].get("hat_id", "")
-	avatars[peer_id].set_hat(hat_id)
-
-func _apply_trail(peer_id: int) -> void:
-	if not avatars.has(peer_id) or not roster.has(peer_id):
-		return
-	var trail_id: String = roster[peer_id].get("trail_id", "")
-	avatars[peer_id].set_trail(trail_id)
+	var color_id: String = roster[peer_id].get("color_id", PlayerColors.DEFAULT_ID)
+	avatars[peer_id].set_color(color_id)
 
 ## Independently fetches and builds the exact same custom level the server
 ## is authoritatively simulating (see server_match.gd's identical fetch),
@@ -109,16 +88,6 @@ func _fetch_custom_arena(id: String) -> void:
 		add_child(arena)
 	)
 	req.request(LEVEL_DATA_URL % id)
-
-func _on_skin_received(skin_id: String) -> void:
-	for peer_id in roster.keys():
-		if roster[peer_id].get("skin_id", "") == skin_id:
-			_apply_skin(peer_id)
-
-func _on_hat_received(hat_id: String) -> void:
-	for peer_id in roster.keys():
-		if roster[peer_id].get("hat_id", "") == hat_id:
-			_apply_hat(peer_id)
 
 func _physics_process(_delta: float) -> void:
 	# A spectator (my_peer_id == -1, see setup()/start_spectator()) has no

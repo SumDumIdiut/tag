@@ -35,9 +35,7 @@ var playlist_id := "" # set by network_manager.gd right after construction, "" f
 var _level_id_override := ""
 var _network_manager: Node
 var _usernames := {} # peer_id -> String
-var _skin_ids := {}  # peer_id -> String
-var _hat_ids := {}   # peer_id -> String, "" means no hat
-var _trail_ids := {} # peer_id -> String, "" means no trail
+var _color_ids := {} # peer_id -> String
 var _client_ids := {} # peer_id -> String, server-side only -- never sent to clients
 var _teams := {} # peer_id -> int, -1 if no team-mode playlist is active for this match
 var _players := {}   # peer_id -> Player
@@ -72,9 +70,7 @@ func _init(network_manager: Node, p_lobby_id: int, members: Dictionary, p_ranked
 	_level_id_override = p_level_id_override
 	for peer_id in members.keys():
 		_usernames[peer_id] = members[peer_id].username
-		_skin_ids[peer_id] = members[peer_id].get("skin_id", "red")
-		_hat_ids[peer_id] = members[peer_id].get("hat_id", "")
-		_trail_ids[peer_id] = members[peer_id].get("trail_id", "")
+		_color_ids[peer_id] = members[peer_id].get("color_id", PlayerColors.DEFAULT_ID)
 		_client_ids[peer_id] = members[peer_id].get("client_id", "")
 		_teams[peer_id] = members[peer_id].get("team", -1)
 
@@ -133,8 +129,7 @@ func _finish_setup() -> void:
 
 	for peer_id in _usernames.keys():
 		roster[peer_id] = {
-			"username": _usernames[peer_id], "skin_id": _skin_ids[peer_id],
-			"hat_id": _hat_ids[peer_id], "trail_id": _trail_ids[peer_id],
+			"username": _usernames[peer_id], "color_id": _color_ids[peer_id],
 			"team": _teams.get(peer_id, -1),
 		}
 	# Simulation is already ticking (players spawned, TagMode running) by this
@@ -292,9 +287,7 @@ func remove_peer(peer_id: int) -> void:
 	p.queue_free()
 	_players.erase(peer_id)
 	_usernames.erase(peer_id)
-	_skin_ids.erase(peer_id)
-	_hat_ids.erase(peer_id)
-	_trail_ids.erase(peer_id)
+	_color_ids.erase(peer_id)
 	_coalesced_input.erase(peer_id)
 
 func _physics_process(delta: float) -> void:
@@ -363,7 +356,7 @@ func _report_state_summary() -> void:
 			"x": p.global_position.x,
 			"y": p.global_position.y,
 			"isIt": _tag_mode.is_it(p),
-			"skinId": _skin_ids.get(peer_id, "red"),
+			"colorId": _color_ids.get(peer_id, PlayerColors.DEFAULT_ID),
 			"facing": p.facing,
 		})
 	_network_manager.report_match_state_summary(lobby_id, {

@@ -72,10 +72,8 @@ var _lobbies := {}       # lobby_id -> {id, name, host_peer, max_players, member
 var _next_lobby_id := 1
 var _ranked_lobby_id := -1 # the single reserved lobby a ranked server auto-fills, recreated after each round
 var _peer_username := {} # peer_id -> String
-var _peer_skin_id := {}  # peer_id -> String
-var _peer_hat_id := {}   # peer_id -> String, "" means no hat
-var _peer_trail_id := {} # peer_id -> String, "" means no trail
-var _peer_client_id := {} # peer_id -> String, the anonymous cosmetics/ranked identity -- server-side only, never broadcast to other clients
+var _peer_color_id := {} # peer_id -> String, auto-assigned (see PlayerColors.id_for_peer)
+var _peer_client_id := {} # peer_id -> String, the anonymous ranked/friends identity -- server-side only, never broadcast to other clients
 var _peer_lobby := {}    # peer_id -> lobby_id
 var _matches := {}       # lobby_id -> ServerMatch
 var _spectators := {}    # lobby_id -> Array[peer_id], read-only observers of an in-progress match
@@ -217,7 +215,7 @@ func _on_connected_to_server() -> void:
 		_pending_as_spectator = false
 		rpc_id(1, "_server_register_spectator")
 	else:
-		rpc_id(1, "_server_register_player", username, SkinCatalog.selected_skin_id, SkinCatalog.selected_hat_id, SkinCatalog.selected_trail_id, PlayerIdentity.client_id)
+		rpc_id(1, "_server_register_player", username, PlayerIdentity.client_id)
 	connected_to_server.emit()
 
 func _on_connection_failed() -> void:
@@ -230,9 +228,7 @@ func _on_peer_disconnected(id: int) -> void:
 	if not is_server:
 		return
 	_peer_username.erase(id)
-	_peer_skin_id.erase(id)
-	_peer_hat_id.erase(id)
-	_peer_trail_id.erase(id)
+	_peer_color_id.erase(id)
 	_peer_client_id.erase(id)
 	var lobby_id: int = _peer_lobby.get(id, -1)
 	if lobby_id != -1:
@@ -246,19 +242,14 @@ func _on_peer_disconnected(id: int) -> void:
 # ==================== Server-side RPC endpoints (client -> server) ====================
 
 @rpc("any_peer", "reliable")
-func _server_register_player(display_name: String, skin_id: String, hat_id: String = "", trail_id: String = "", client_id: String = "") -> void:
+func _server_register_player(display_name: String, client_id: String = "") -> void:
 	if not is_server:
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	_peer_username[sender] = _sanitize_username(display_name)
-	# Just the ids -- a custom skin/hat/trail's actual image lives on the
-	# cosmetics service (codecade.co.za/tag/api/skins, /api/hats, /api/trails),
-	# not here, so any client that needs to render it (see roster's skin_id/
-	# hat_id/trail_id in match state) fetches it directly from there itself
-	# instead of relying on peer-to-peer relay.
-	_peer_skin_id[sender] = skin_id
-	_peer_hat_id[sender] = hat_id
-	_peer_trail_id[sender] = trail_id
+	# No selection to take from the client -- color is just a deterministic
+	# function of peer_id (see PlayerColors.id_for_peer).
+	_peer_color_id[sender] = PlayerColors.id_for_peer(sender)
 	_peer_client_id[sender] = client_id
 	if is_ranked_server:
 		_join_ranked_lobby(sender)
@@ -342,14 +333,14 @@ func _server_quick_join_lobby() -> void:
 			return
 	_create_lobby_internal(sender, "Quick Match", MAX_LOBBY_PLAYERS)
 
-## skin_id/hat_id here (not just username/ready) so a live lobby-waiting
-## view (see TeamLobbyView) can show real character portraits before the
-## match even starts, not just names -- match-start's own members_with_extras
+## color_id here (not just username/ready) so a live lobby-waiting view (see
+## TeamLobbyView) can show real character portraits before the match even
+## starts, not just names -- match-start's own members_with_extras
 ## duplicates this same lookup for the same reason.
 func _member_entry(peer_id: int, ready: bool) -> Dictionary:
 	return {
 		"username": _peer_username.get(peer_id, "Player"), "ready": ready,
-		"skin_id": _peer_skin_id.get(peer_id, "red"), "hat_id": _peer_hat_id.get(peer_id, ""),
+		"color_id": _peer_color_id.get(peer_id, PlayerColors.DEFAULT_ID),
 	}
 
 func _create_lobby_internal(sender: int, lobby_name: String, max_players: int, p_playlist_id: String = "") -> void:
@@ -599,9 +590,7 @@ func _start_match_for_lobby(lobby_id: int, ranked: bool, chosen_level_id: String
 		for peer_id in teams.keys():
 			members_with_extras[peer_id]["team"] = teams[peer_id]
 	for peer_id in members_with_extras.keys():
-		members_with_extras[peer_id]["skin_id"] = _peer_skin_id.get(peer_id, "red")
-		members_with_extras[peer_id]["hat_id"] = _peer_hat_id.get(peer_id, "")
-		members_with_extras[peer_id]["trail_id"] = _peer_trail_id.get(peer_id, "")
+		members_with_extras[peer_id]["color_id"] = _peer_color_id.get(peer_id, PlayerColors.DEFAULT_ID)
 		members_with_extras[peer_id]["client_id"] = _peer_client_id.get(peer_id, "")
 	var match_instance := ServerMatch.new(self, lobby_id, members_with_extras, ranked, chosen_level_id)
 	match_instance.playlist_id = lobby_playlist

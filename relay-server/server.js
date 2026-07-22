@@ -19,66 +19,24 @@ const MAX_NAME_LEN = 40;
 const MAX_PAYLOAD_BYTES = 64 * 1024;
 // Mirrors NetworkManager.MAX_LOBBY_PLAYERS in game/net/network_manager.gd --
 // kept in sync by hand, same tradeoff already accepted for other client-
-// mirrored constants in this file (PART_DIMENSIONS, tile index ranges).
+// mirrored constants in this file (level tile index ranges, below).
 const MAX_LOBBY_PLAYERS = 8;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 5;
 
-// ─── Skins (server-side cosmetic storage) ────────────────────────────────────
-// The skin/hat catalog (built-in colors are client-side; custom images live
-// here) is server-curated in two different ways at once: add-skin.js (local
-// to this machine, no HTTP exposure) can add anything, and clients can ALSO
-// draw and upload their own skins/hats through a narrowly scoped endpoint
-// (POST .../upload below) -- fixed-size canvas strokes per rig part only,
-// not arbitrary file upload, with rate-limit/size/per-client-count caps.
-//
-// catalog.json is deliberately not cached in memory: add-skin.js writes it
-// directly on disk while this server may be running, so every read re-reads
-// it fresh from disk (cheap -- it's tiny). Caching it would mean the next
-// write from this server (an upload, or a client's selection save under the
-// old combined-file scheme) could silently clobber whatever add-skin.js had
-// just written. Selections ARE cached in memory, since this server is their
-// only writer.
+// catalog.json currently holds published levels (type: 'level') only --
+// players are flat auto-colored rectangles now, no client-curated cosmetic
+// catalog. Deliberately not cached in memory: re-read fresh from disk on
+// every request (cheap -- it's tiny).
 const DATA_DIR = path.join(__dirname, 'data');
-const SKIN_IMAGE_DIR = path.join(DATA_DIR, 'skin_images');
 const CATALOG_JSON_PATH = path.join(DATA_DIR, 'catalog.json');
-const SELECTIONS_JSON_PATH = path.join(DATA_DIR, 'selections.json');
-const HAT_SELECTIONS_JSON_PATH = path.join(DATA_DIR, 'hat_selections.json');
-const TRAIL_SELECTIONS_JSON_PATH = path.join(DATA_DIR, 'trail_selections.json');
-const LEGACY_SKINS_JSON_PATH = path.join(DATA_DIR, 'skins.json');
 const CLIENT_ID_RE = /^[a-f0-9-]{8,64}$/i;
 
-// Mirrors SkinCatalog.PART_DEFS in game/cosmetics/skin_catalog.gd -- the
-// per-part canvas dimensions a drawn skin's upload must exactly match, kept
-// in sync by hand (same tradeoff already accepted for RANK_TIERS later). The
-// player model is a single square part now (see skin_catalog.gd's own
-// comment on why), so this is a one-entry map, not six.
-const PART_NAMES = ['body'];
-const PART_DIMENSIONS = {
-  body: { width: 40, height: 40 },
-};
-// Taller than the body's own crop -- a hat confined to that same box has no
-// actual headroom and just overlaps the face. The extra height lets a hat
-// stick up above the body's silhouette; only its bottom rows are meant to
-// overlap the body at all (see skin_catalog.gd's HAT_OVERLAP comment on
-// the client, which this must stay in sync with).
-const HAT_DIMENSIONS = { width: 18, height: 16 };
-// A trail is a single small particle sprite the game stamps repeatedly
-// behind a moving player (see player.gd's trail emitter), not a rig-sized
-// image -- 16x16 is plenty of room to draw a distinct shape/pattern at the
-// size it's actually rendered.
-const TRAIL_DIMENSIONS = { width: 16, height: 16 };
-const MAX_CUSTOM_SKINS_PER_CLIENT = 5;
-const MAX_HATS_PER_CLIENT = 5;
-const MAX_TRAILS_PER_CLIENT = 5;
-const MAX_UPLOAD_BYTES = 100 * 1024; // generous over what a handful of tiny PNGs actually need -- just an abuse backstop
-
-// Levels live in the same catalog.json (type: 'level') as skins/hats, but
-// each one's actual layout is plain JSON, not a PNG -- see
+// Each level's actual layout is plain JSON, not a PNG -- see
 // game/levels/level_data.gd on the client for the exact shape and why it's
 // safe to trust directly (tile-index numbers + spawn coordinates only,
 // never scenes/scripts). Dimension caps mirror LevelData's own -- kept in
-// sync by hand, same tradeoff already accepted for PART_DIMENSIONS above.
+// sync by hand.
 const LEVEL_DATA_DIR = path.join(DATA_DIR, 'level_data');
 const MAX_LEVELS_PER_CLIENT = 5;
 const MAX_LEVEL_TILES = 6000;
@@ -86,7 +44,7 @@ const MIN_LEVEL_SPAWN_POINTS = 2;
 const MAX_LEVEL_SPAWN_POINTS = 16;
 // Mirrors LevelData's own MAX_PLATFORMS/MIN_PERIOD_SEC/MAX_PERIOD_SEC in
 // game/levels/level_data.gd -- kept in sync by hand, same tradeoff already
-// accepted for PART_DIMENSIONS/tile caps above.
+// accepted for the tile caps above.
 const MAX_LEVEL_PLATFORMS = 20;
 const MIN_PLATFORM_PERIOD_SEC = 0.5;
 const MAX_PLATFORM_PERIOD_SEC = 60.0;
@@ -97,12 +55,11 @@ const MAX_PLATFORM_PERIOD_SEC = 60.0;
 const MAX_LEVEL_UPLOAD_BYTES = 150 * 1024;
 
 // Live-updatable *built-in* game art -- distinct from the player-drawn
-// custom skins/hats/trails/levels above (those are opt-in per-player
-// cosmetics anyone can publish freely). These three are the game's own
-// default look (tile textures, menu badge icons, whole mode-button art),
-// shared by every player -- so unlike the cosmetic uploads, publishing here
-// is gated by ASSET_PUBLISH_KEY (see verifyAssetKey below), not just rate
-// limiting. See game/tools/art_tool.gd's Export Edits button (the one place
+// custom levels above (those are opt-in per-player content anyone can
+// publish freely). These are the game's own default look (tile textures,
+// menu badge icons, chrome), shared by every player -- so unlike level
+// uploads, publishing here is gated by ASSET_PUBLISH_KEY (see verifyAssetKey
+// below), not just rate limiting. See game/tools/art_tool.gd's Export Edits button (the one place
 // that calls these) and game/net/game_asset_updater.gd on the client side
 // (checks the manifest on launch, offers to download whatever changed).
 const GAME_ASSETS_DIR = path.join(DATA_DIR, 'game_assets');
@@ -142,9 +99,8 @@ function pngDimensions(buf) {
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 }
 
-fs.mkdirSync(SKIN_IMAGE_DIR, { recursive: true });
 fs.mkdirSync(LEVEL_DATA_DIR, { recursive: true });
-const MATCHES_DIR = path.join(DATA_DIR, 'matches'); // one file per match, mirrors SKIN_IMAGE_DIR/LEVEL_DATA_DIR's one-file-per-id pattern
+const MATCHES_DIR = path.join(DATA_DIR, 'matches'); // one file per match, mirrors LEVEL_DATA_DIR's one-file-per-id pattern
 fs.mkdirSync(MATCHES_DIR, { recursive: true });
 for (const category of Object.keys(MULTI_KEY_CATEGORIES)) {
   fs.mkdirSync(path.join(GAME_ASSETS_DIR, category), { recursive: true });
@@ -171,65 +127,9 @@ function verifyAssetKey(candidateKey) {
   return crypto.timingSafeEqual(a, b);
 }
 
-// One-time migration from the old combined per-client format
-// ({ clientId: { selected, custom: [{id, name}] } }), from back when any
-// client could upload its own custom skins -- folds everything already
-// uploaded into the new shared catalog instead of discarding it, and keeps
-// everyone's existing selection.
-if (!fs.existsSync(CATALOG_JSON_PATH) && !fs.existsSync(SELECTIONS_JSON_PATH) && fs.existsSync(LEGACY_SKINS_JSON_PATH)) {
-  try {
-    const legacy = JSON.parse(fs.readFileSync(LEGACY_SKINS_JSON_PATH, 'utf-8'));
-    const catalog = [];
-    const selections = {};
-    const seenIds = new Set();
-    for (const [clientId, entry] of Object.entries(legacy || {})) {
-      if (!entry || typeof entry !== 'object') continue;
-      if (entry.selected) selections[clientId] = entry.selected;
-      for (const skin of entry.custom || []) {
-        if (skin && skin.id && !seenIds.has(skin.id)) {
-          seenIds.add(skin.id);
-          catalog.push({ id: skin.id, name: skin.name });
-        }
-      }
-    }
-    fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
-    fs.writeFileSync(SELECTIONS_JSON_PATH, JSON.stringify(selections));
-  } catch { /* legacy file unreadable -- just start fresh below */ }
-}
-
 function readCatalog() {
   try { return JSON.parse(fs.readFileSync(CATALOG_JSON_PATH, 'utf-8')); }
   catch { return []; }
-}
-
-function loadSelections() {
-  try { return JSON.parse(fs.readFileSync(SELECTIONS_JSON_PATH, 'utf-8')); }
-  catch { return {}; }
-}
-let selections = loadSelections(); // clientId -> skinId
-
-function saveSelections() {
-  fs.writeFileSync(SELECTIONS_JSON_PATH, JSON.stringify(selections));
-}
-
-function loadHatSelections() {
-  try { return JSON.parse(fs.readFileSync(HAT_SELECTIONS_JSON_PATH, 'utf-8')); }
-  catch { return {}; }
-}
-let hatSelections = loadHatSelections(); // clientId -> hatId, absent means no hat equipped
-
-function saveHatSelections() {
-  fs.writeFileSync(HAT_SELECTIONS_JSON_PATH, JSON.stringify(hatSelections));
-}
-
-function loadTrailSelections() {
-  try { return JSON.parse(fs.readFileSync(TRAIL_SELECTIONS_JSON_PATH, 'utf-8')); }
-  catch { return {}; }
-}
-let trailSelections = loadTrailSelections(); // clientId -> trailId, absent means no trail equipped
-
-function saveTrailSelections() {
-  fs.writeFileSync(TRAIL_SELECTIONS_JSON_PATH, JSON.stringify(trailSelections));
 }
 
 // ─── Ranked (ELO, ranks, matchmaking) ──────────────────────────────────────────
@@ -336,8 +236,8 @@ function applyEloUpdates(results, playlistId) {
 
 // ─── Accounts (username + password login) ──────────────────────────────────────
 // Deliberately a thin identity layer, not a replacement for clientId: every
-// other system in this file (ranks, selections, catalog createdBy, etc.) stays
-// keyed by clientId exactly as before. An account just resolves to one stable
+// other system in this file (ranks, catalog createdBy, etc.) stays keyed by
+// clientId exactly as before. An account just resolves to one stable
 // "primaryClientId" -- logging into the same account from a second device
 // means that device adopts the first device's clientId going forward, so both
 // devices land on the same already-existing rows everywhere else. That's the
@@ -476,7 +376,7 @@ function achievementList(ids) {
 }
 
 // One file per match at data/matches/<id>.json (mirrors the existing one-
-// file-per-id pattern already used for levels/skin images), plus a capped
+// file-per-id pattern already used for levels), plus a capped
 // (last 20) list of match-id references on each participant's own
 // progression row so a profile page can list "recent matches" without
 // scanning the whole matches directory.
@@ -521,7 +421,7 @@ function applyProgressionUpdates(results, playlistId) {
 
 // ─── Friends ──────────────────────────────────────────────────────────────────
 // A player's own clientId doubles as their friend code -- already a stable,
-// shareable string (SkinCatalog.client_id client-side), so there's nothing
+// shareable string (PlayerIdentity.client_id client-side), so there's nothing
 // new to generate or manage. Adding a friend is instant and symmetric (no
 // request/accept step) -- consistent with every other low-friction, no-
 // review trust decision already made elsewhere in this file.
@@ -592,243 +492,20 @@ app.get('/api/servers/:id/state', (req, res) => {
   res.json(s.matchState || { players: [], timeRemaining: 0, arenaWidth: 0, arenaHeight: 0, levelId: '', updatedAt: 0 });
 });
 
-// ─── HTTP: skins ──────────────────────────────────────────────────────────────
-app.use(express.json({ limit: '3mb' })); // was 256kb, then 1mb -- full-screen background publishes (see "HTTP: game assets" below) run much bigger than a skin/hat/icon upload
-
-// The shared catalog of server-curated + player-drawn custom skins -- every
-// client sees the same list. Hats, trails, and levels live in the same
-// catalog.json (see readCatalog()) but are filtered out here; use
-// /api/hats/catalog, /api/trails/catalog, and /api/levels/catalog for those.
-app.get('/api/skins/catalog', (req, res) => {
-  res.json(readCatalog().filter(e => e.type !== 'hat' && e.type !== 'trail' && e.type !== 'level'));
-});
-
-app.get('/api/skins/:clientId', (req, res) => {
-  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  res.json({ selected: selections[req.params.clientId] || 'red' });
-});
-
-app.post('/api/skins/:clientId/select', (req, res) => {
-  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  const skinId = String(req.body.skinId || '');
-  if (!skinId) return res.status(400).json({ error: 'skinId required' });
-  selections[req.params.clientId] = skinId;
-  saveSelections();
-  res.json({ ok: true });
-});
-
-// The one deliberately re-opened client-write path: a player draws a skin
-// (one small canvas per rig part, see PART_DIMENSIONS) in-app and it's
-// uploaded and visible to everyone immediately, same as any catalog skin --
-// no admin approval step. Scoped narrowly to exact-size canvas strokes
-// (not arbitrary file upload) with the same class of abuse mitigations the
-// original, since-removed whole-image upload endpoint had: a per-IP rate
-// limit, a per-client count cap, and a payload size cap.
-app.post('/api/skins/:clientId/upload', (req, res) => {
-  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
-
-  const clientId = req.params.clientId;
-  const existingCount = readCatalog().filter(e => e.createdBy === clientId && e.type === 'skin').length;
-  if (existingCount >= MAX_CUSTOM_SKINS_PER_CLIENT) {
-    return res.status(400).json({ error: `max ${MAX_CUSTOM_SKINS_PER_CLIENT} drawn skins per client` });
-  }
-
-  const name = sanitizeName(req.body.name);
-  const parts = req.body.parts;
-  if (!parts || typeof parts !== 'object') return res.status(400).json({ error: 'parts required' });
-
-  const decoded = {};
-  let totalBytes = 0;
-  for (const partName of PART_NAMES) {
-    const b64 = parts[partName];
-    if (typeof b64 !== 'string' || !b64) return res.status(400).json({ error: `missing part: ${partName}` });
-    let bytes;
-    try { bytes = Buffer.from(b64, 'base64'); } catch { return res.status(400).json({ error: 'bad image data' }); }
-    totalBytes += bytes.length;
-    if (totalBytes > MAX_UPLOAD_BYTES) return res.status(400).json({ error: 'upload too large' });
-    const dims = pngDimensions(bytes);
-    const expected = PART_DIMENSIONS[partName];
-    if (!dims || dims.width !== expected.width || dims.height !== expected.height) {
-      return res.status(400).json({ error: `${partName} must be exactly ${expected.width}x${expected.height}` });
-    }
-    decoded[partName] = bytes;
-  }
-
-  const id = 'part_' + crypto.randomBytes(8).toString('hex');
-  const dir = path.join(SKIN_IMAGE_DIR, id);
-  fs.mkdirSync(dir, { recursive: true });
-  for (const partName of PART_NAMES) {
-    fs.writeFileSync(path.join(dir, partName + '.png'), decoded[partName]);
-  }
-  const catalog = readCatalog();
-  catalog.push({ id, name, type: 'skin', createdBy: clientId, createdAt: Date.now() });
-  fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
-  res.json({ id });
-});
-
-// Any client (not just the owner) can fetch a custom skin's image by id --
-// this is what lets other players in a match actually see it, since the id
-// alone (already broadcast as part of match state) is enough to look it up
-// here instead of needing a peer-to-peer transfer.
-app.get('/api/skins/image/:skinId', (req, res) => {
-  const skinId = req.params.skinId;
-  if (!/^custom_[a-f0-9]{16}$/.test(skinId)) return res.status(400).end();
-  const imgPath = path.join(SKIN_IMAGE_DIR, skinId + '.png');
-  if (!fs.existsSync(imgPath)) return res.status(404).end();
-  res.set('Content-Type', 'image/png');
-  res.set('Cache-Control', 'public, max-age=86400');
-  fs.createReadStream(imgPath).pipe(res);
-});
-
-// Per-part image fetch for drawn (part_*) skins -- the legacy whole-image
-// route above stays untouched for custom_* ids.
-app.get('/api/skins/image/:skinId/:part', (req, res) => {
-  const skinId = req.params.skinId;
-  const part = req.params.part;
-  if (!/^part_[a-f0-9]{16}$/.test(skinId)) return res.status(400).end();
-  if (!PART_NAMES.includes(part)) return res.status(400).end();
-  const imgPath = path.join(SKIN_IMAGE_DIR, skinId, part + '.png');
-  if (!fs.existsSync(imgPath)) return res.status(404).end();
-  res.set('Content-Type', 'image/png');
-  res.set('Cache-Control', 'public, max-age=86400');
-  fs.createReadStream(imgPath).pipe(res);
-});
-
-// ─── HTTP: hats ───────────────────────────────────────────────────────────────
-// A second, independent cosmetic slot alongside skins -- same catalog.json
-// (filtered by type), same client-drawn-and-uploaded model, same
-// mitigations. A hat is a single image (no rig parts), rendered as a child
-// of the rig's Head node client-side.
-app.get('/api/hats/catalog', (req, res) => {
-  res.json(readCatalog().filter(e => e.type === 'hat'));
-});
-
-app.get('/api/hats/:clientId', (req, res) => {
-  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  res.json({ selected: hatSelections[req.params.clientId] || null });
-});
-
-app.post('/api/hats/:clientId/select', (req, res) => {
-  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  const hatId = req.body.hatId ? String(req.body.hatId) : null;
-  if (hatId) {
-    hatSelections[req.params.clientId] = hatId;
-  } else {
-    delete hatSelections[req.params.clientId]; // null/empty means "no hat"
-  }
-  saveHatSelections();
-  res.json({ ok: true });
-});
-
-app.post('/api/hats/:clientId/upload', (req, res) => {
-  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
-
-  const clientId = req.params.clientId;
-  const existingCount = readCatalog().filter(e => e.createdBy === clientId && e.type === 'hat').length;
-  if (existingCount >= MAX_HATS_PER_CLIENT) {
-    return res.status(400).json({ error: `max ${MAX_HATS_PER_CLIENT} drawn hats per client` });
-  }
-
-  const name = sanitizeName(req.body.name);
-  let bytes;
-  try { bytes = Buffer.from(String(req.body.imageBase64 || ''), 'base64'); } catch { return res.status(400).json({ error: 'bad image data' }); }
-  if (bytes.length === 0 || bytes.length > MAX_UPLOAD_BYTES) return res.status(400).json({ error: 'image too large or empty' });
-  const dims = pngDimensions(bytes);
-  if (!dims || dims.width !== HAT_DIMENSIONS.width || dims.height !== HAT_DIMENSIONS.height) {
-    return res.status(400).json({ error: `hat image must be exactly ${HAT_DIMENSIONS.width}x${HAT_DIMENSIONS.height}` });
-  }
-
-  const id = 'hat_' + crypto.randomBytes(8).toString('hex');
-  fs.writeFileSync(path.join(SKIN_IMAGE_DIR, id + '.png'), bytes);
-  const catalog = readCatalog();
-  catalog.push({ id, name, type: 'hat', createdBy: clientId, createdAt: Date.now() });
-  fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
-  res.json({ id });
-});
-
-app.get('/api/hats/image/:hatId', (req, res) => {
-  const hatId = req.params.hatId;
-  if (!/^hat_[a-f0-9]{16}$/.test(hatId)) return res.status(400).end();
-  const imgPath = path.join(SKIN_IMAGE_DIR, hatId + '.png');
-  if (!fs.existsSync(imgPath)) return res.status(404).end();
-  res.set('Content-Type', 'image/png');
-  res.set('Cache-Control', 'public, max-age=86400');
-  fs.createReadStream(imgPath).pipe(res);
-});
-
-// ─── HTTP: trails ─────────────────────────────────────────────────────────────
-// A third, independent cosmetic slot alongside skins and hats -- same
-// catalog.json (filtered by type), same client-drawn-and-uploaded model,
-// same mitigations. Like a hat, a trail is a single image (no rig parts);
-// unlike a hat it's not attached to the rig at all, just stamped repeatedly
-// behind a moving player (see player.gd).
-app.get('/api/trails/catalog', (req, res) => {
-  res.json(readCatalog().filter(e => e.type === 'trail'));
-});
-
-app.get('/api/trails/:clientId', (req, res) => {
-  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  res.json({ selected: trailSelections[req.params.clientId] || null });
-});
-
-app.post('/api/trails/:clientId/select', (req, res) => {
-  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  const trailId = req.body.trailId ? String(req.body.trailId) : null;
-  if (trailId) {
-    trailSelections[req.params.clientId] = trailId;
-  } else {
-    delete trailSelections[req.params.clientId]; // null/empty means "no trail"
-  }
-  saveTrailSelections();
-  res.json({ ok: true });
-});
-
-app.post('/api/trails/:clientId/upload', (req, res) => {
-  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
-
-  const clientId = req.params.clientId;
-  const existingCount = readCatalog().filter(e => e.createdBy === clientId && e.type === 'trail').length;
-  if (existingCount >= MAX_TRAILS_PER_CLIENT) {
-    return res.status(400).json({ error: `max ${MAX_TRAILS_PER_CLIENT} drawn trails per client` });
-  }
-
-  const name = sanitizeName(req.body.name);
-  let bytes;
-  try { bytes = Buffer.from(String(req.body.imageBase64 || ''), 'base64'); } catch { return res.status(400).json({ error: 'bad image data' }); }
-  if (bytes.length === 0 || bytes.length > MAX_UPLOAD_BYTES) return res.status(400).json({ error: 'image too large or empty' });
-  const dims = pngDimensions(bytes);
-  if (!dims || dims.width !== TRAIL_DIMENSIONS.width || dims.height !== TRAIL_DIMENSIONS.height) {
-    return res.status(400).json({ error: `trail image must be exactly ${TRAIL_DIMENSIONS.width}x${TRAIL_DIMENSIONS.height}` });
-  }
-
-  const id = 'trail_' + crypto.randomBytes(8).toString('hex');
-  fs.writeFileSync(path.join(SKIN_IMAGE_DIR, id + '.png'), bytes);
-  const catalog = readCatalog();
-  catalog.push({ id, name, type: 'trail', createdBy: clientId, createdAt: Date.now() });
-  fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
-  res.json({ id });
-});
-
-app.get('/api/trails/image/:trailId', (req, res) => {
-  const trailId = req.params.trailId;
-  if (!/^trail_[a-f0-9]{16}$/.test(trailId)) return res.status(400).end();
-  const imgPath = path.join(SKIN_IMAGE_DIR, trailId + '.png');
-  if (!fs.existsSync(imgPath)) return res.status(404).end();
-  res.set('Content-Type', 'image/png');
-  res.set('Cache-Control', 'public, max-age=86400');
-  fs.createReadStream(imgPath).pipe(res);
-});
+// Global JSON body parser -- every route from here on that reads req.body
+// (levels, friends, auth, game-assets publish) depends on this being
+// registered once, up front. 3mb headroom for full-screen background
+// publishes (see "HTTP: game assets" below), the biggest body any route
+// here ever receives.
+app.use(express.json({ limit: '3mb' }));
 
 // ─── HTTP: levels ─────────────────────────────────────────────────────────────
-// Live-published, no review step -- same trust model as drawn skins/hats.
-// Unlike skins/hats, a level's data is used by the dedicated server itself
-// to build real match collision (see game/net/server_match.gd), not just
-// rendered client-side -- but it's plain tile-index/coordinate JSON, so
-// there's nothing here a level could ever do beyond "place solid tiles in
-// weird places" no matter how it was crafted.
+// Live-published, no review step -- same low-friction trust model used
+// elsewhere in this file. A level's data is used by the dedicated server
+// itself to build real match collision (see game/net/server_match.gd), not
+// just rendered client-side -- but it's plain tile-index/coordinate JSON,
+// so there's nothing here a level could ever do beyond "place solid tiles
+// in weird places" no matter how it was crafted.
 function isValidLevelData(data) {
   if (!data || typeof data !== 'object') return false;
   const { tiles, spawn_points: spawns, platforms } = data;
@@ -1318,7 +995,7 @@ function handleHostControl(ws) {
         x: typeof p.x === 'number' ? p.x : 0,
         y: typeof p.y === 'number' ? p.y : 0,
         isIt: !!p.isIt,
-        skinId: typeof p.skinId === 'string' ? p.skinId.slice(0, 32) : 'red',
+        colorId: typeof p.colorId === 'string' ? p.colorId.slice(0, 32) : 'red',
         facing: p.facing === -1 ? -1 : 1,
       })) : [];
       s.matchState = {
