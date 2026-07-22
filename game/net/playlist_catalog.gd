@@ -62,3 +62,50 @@ static func assign_teams(ordered_peer_ids: Array, p_team_count: int) -> Dictiona
 	for i in ordered_peer_ids.size():
 		teams[ordered_peer_ids[i]] = i % maxi(p_team_count, 1)
 	return teams
+
+## Same contract and same caller shape as assign_teams() above (server at
+## match start, client for the live waiting-room preview -- see
+## team_lobby_view.gd's set_roster()), but keeps party members on one team
+## instead of splitting them by raw round robin. Peers sharing a non-empty
+## `peer_party_id` entry are one indivisible group (fits_party() already
+## guarantees a party never exceeds a team's own size before it's ever
+## allowed to queue here at all); everyone else is their own group of one.
+## Bin-packs groups largest-first onto whichever team has the fewest
+## players placed so far *and* still has room for the whole group (against
+## the playlist's own fixed `p_team_size`, not however many happen to have
+## joined so far -- stable during the live waiting-room preview, where that
+## headcount is still climbing). With every group size 1 (no party in this
+## lobby) this produces the exact same interleaved assignment assign_teams()
+## itself would, so it's a strict superset, not a behavior change, for the
+## no-party case.
+static func assign_teams_grouped(ordered_peer_ids: Array, peer_party_id: Dictionary, p_team_count: int, p_team_size: int) -> Dictionary:
+	var groups: Array = []
+	var group_index_for_party := {}
+	for peer_id in ordered_peer_ids:
+		var party_id: String = peer_party_id.get(peer_id, "")
+		if party_id.is_empty() or not group_index_for_party.has(party_id):
+			if not party_id.is_empty():
+				group_index_for_party[party_id] = groups.size()
+			groups.append([peer_id])
+		else:
+			groups[group_index_for_party[party_id]].append(peer_id)
+	groups.sort_custom(func(a, b): return a.size() > b.size())
+
+	var team_count_clamped := maxi(p_team_count, 1)
+	var fill := []
+	fill.resize(team_count_clamped)
+	fill.fill(0)
+	var teams := {}
+	for group in groups:
+		var best_team := 0
+		var best_fill := -1
+		for t in team_count_clamped:
+			if p_team_size > 0 and fill[t] + group.size() > p_team_size:
+				continue
+			if best_fill == -1 or fill[t] < best_fill:
+				best_fill = fill[t]
+				best_team = t
+		for peer_id in group:
+			teams[peer_id] = best_team
+		fill[best_team] += group.size()
+	return teams

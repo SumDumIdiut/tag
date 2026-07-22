@@ -187,7 +187,14 @@ func _fill_ranked_stats() -> void:
 			pending_peers.append(peer_id)
 	if pending_peers.is_empty():
 		return
-	var remaining := pending_peers.size()
+	# A 1-element Array, not a raw int -- GDScript lambdas capture outer LOCAL
+	# variables by value, so `remaining -= 1` inside the closure below would
+	# only ever decrement each lambda's own private copy, never a shared
+	# counter -- meaning with 2+ pending peers, no closure's copy would ever
+	# reach 0 and _ranked_stats_fetched would never emit. Array/Dictionary
+	# *contents* mutate through the captured reference fine; only a direct
+	# reassignment of the outer variable itself doesn't propagate.
+	var remaining := [pending_peers.size()]
 	for peer_id in pending_peers:
 		var req := HTTPRequest.new()
 		req.timeout = 3.0
@@ -199,8 +206,8 @@ func _fill_ranked_stats() -> void:
 				if typeof(parsed) == TYPE_DICTIONARY and parsed.has("elo") and roster.has(peer_id):
 					roster[peer_id]["elo"] = int(parsed.elo)
 					roster[peer_id]["tier"] = String(parsed.get("tier", "Bronze"))
-			remaining -= 1
-			if remaining <= 0:
+			remaining[0] -= 1
+			if remaining[0] <= 0:
 				_ranked_stats_fetched.emit()
 		)
 		req.request(RANKED_LOOKUP_URL % String(_client_ids[peer_id]) + "?playlist=" + playlist_id.uri_encode())
