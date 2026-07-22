@@ -3,10 +3,9 @@ extends Node
 # Anonymous player identity -- the one thing that ever lives locally
 # (there's no account/login system beyond an optional linked session, see
 # login_screen.gd). Friends (the friend code itself), Ranked reporting,
-# Progression, and Login all key off this id; it used to live inside
-# SkinCatalog (cosmetics selections are keyed by it too) but none of those
-# other systems have anything to do with cosmetics, so it's a standalone
-# autoload instead.
+# Progression, and Login all key off this id -- a standalone autoload since
+# none of those systems have anything to do with cosmetics or any other
+# single feature area.
 
 signal client_id_changed(new_id: String)
 

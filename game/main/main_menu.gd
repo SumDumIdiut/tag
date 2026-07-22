@@ -11,14 +11,12 @@ const GameAssetUpdatePromptScene := preload("res://ui/game_asset_update_prompt.g
 # Two top-level destinations, each fanning out to its own related
 # sub-screens instead of a flat list of unrelated modes: ONLINE covers
 # everything network-related (quick play, ranked, browse/host/direct
-# connect -- see online_menu.tscn), LOCAL is bot practice. Shop doesn't fit
-# "a mode to play" so it isn't one of the bars -- see the small corner
-# button built in _ready() instead. skin/hat pick which real in-game
-# character (see CharacterPreview) fronts each bar -- built-in skin colors
-# line up 1:1 with the bar accents.
+# connect -- see online_menu.tscn), LOCAL is bot practice. color_id picks
+# which PlayerColors color fronts each bar -- lines up with the bar's own
+# accent.
 const MODES := [
-	{"key": "online", "label": "ONLINE", "icon": "globe", "color": UIStyle.COLOR_ONLINE, "skin": "green", "hat": "", "scene": "res://main/online_menu.tscn"},
-	{"key": "local", "label": "LOCAL", "icon": "controller", "color": UIStyle.COLOR_LOCAL, "skin": "blue", "hat": "", "scene": "res://main/local_menu.tscn"},
+	{"key": "online", "label": "ONLINE", "icon": "globe", "color": UIStyle.COLOR_ONLINE, "color_id": "green", "scene": "res://main/online_menu.tscn"},
+	{"key": "local", "label": "LOCAL", "icon": "controller", "color": UIStyle.COLOR_LOCAL, "color_id": "blue", "scene": "res://main/local_menu.tscn"},
 ]
 
 const BAR_SIZE := Vector2(190, 360)
@@ -29,7 +27,6 @@ func _ready() -> void:
 	UIStyle.add_background(self, "main_menu")
 	for mode in MODES:
 		mode_bar.add_child(_build_bar(mode))
-	_build_shop_button()
 	_build_account_button()
 	_check_for_update()
 	_check_for_asset_update()
@@ -110,9 +107,7 @@ func _build_bar(mode: Dictionary) -> Button:
 	portrait_wrap.custom_minimum_size = Vector2(0, 160)
 	layout.add_child(portrait_wrap)
 	var portrait = CharacterPreviewScene.new()
-	portrait.skin_id = mode["skin"]
-	portrait.hat_id = mode["hat"]
-	portrait.zoom = 2.6
+	portrait.color_id = mode["color_id"]
 	portrait.custom_minimum_size = Vector2(120, 154)
 	portrait_wrap.add_child(portrait)
 
@@ -126,36 +121,7 @@ func _build_bar(mode: Dictionary) -> Button:
 
 	return btn
 
-## A small persistent button, not one of the three mode bars -- customizing
-## your character isn't itself "a mode to play," it's available no matter
-## which mode you're about to pick, so it lives in its own corner instead of
-## competing with the three real destinations for equal visual weight.
-func _build_shop_button() -> void:
-	var btn := Button.new()
-	btn.text = "  Customize"
-	btn.custom_minimum_size = Vector2(150, 44)
-	btn.focus_mode = Control.FOCUS_ALL
-	UIStyle.style_button(btn, UIStyle.COLOR_SHOP, 10)
-	btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	btn.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	btn.position = Vector2(-170, 24)
-	btn.pressed.connect(_on_mode_pressed.bind("res://main/shop.tscn"))
-
-	var icon_wrap := Control.new()
-	icon_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon_wrap.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	icon_wrap.position = Vector2(14, -10)
-	icon_wrap.custom_minimum_size = Vector2(20, 20)
-	btn.add_child(icon_wrap)
-	var icon := ModeIconScene.new()
-	icon.icon_type = "tag"
-	icon.icon_color = UIStyle.COLOR_SHOP
-	icon.custom_minimum_size = Vector2(18, 20)
-	icon_wrap.add_child(icon)
-
-	add_child(btn)
-
-## Mirrors _build_shop_button()'s corner-button treatment, opposite corner --
+## Mirrors the old Customize corner-button treatment, opposite corner --
 ## logging in is optional and never gates play (see login_screen.gd), so it
 ## gets the same "always available, doesn't compete with the three real
 ## mode bars" placement as Customize.

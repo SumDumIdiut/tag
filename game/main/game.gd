@@ -31,9 +31,10 @@ func _ready() -> void:
 	player.global_position = spawn_points[0].global_position
 	player.get_node("Camera2D").enabled = true
 	player.get_node("Camera2D").make_current()
-	player.set_skin(SkinCatalog.selected_skin_id)
-	player.set_hat(SkinCatalog.selected_hat_id)
-	player.set_trail(SkinCatalog.selected_trail_id)
+	# NPCs all keep Player's own default color (see player.gd's _ready()) --
+	# distinguishing the human player from them is the only thing that
+	# matters here, there's no other player to tell apart in local/bot play.
+	player.set_color("blue")
 	participants.append(player)
 
 	var npc_count: int = clampi(GameSettings.npc_count, 0, 7)

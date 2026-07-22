@@ -29,7 +29,7 @@ const SLOT_SEPARATION := 14.0
 @export var my_id: int = -1
 @export var accent_color: Color = UIStyle.COLOR_RANKED
 
-var _roster := {} # peer_id -> info dict (username, skin_id, hat_id, elo, tier, team)
+var _roster := {} # peer_id -> info dict (username, color_id, elo, tier, team)
 var _slot_nodes := [[], []] # per side: ordered list of Control currently occupying each slot (card or placeholder)
 var _side_boxes: Array = [null, null] # per side: the VBoxContainer stacking that side's slots
 var _vs_label: Label
@@ -200,9 +200,7 @@ func _build_card(peer_id: int, info: Dictionary) -> VBoxContainer:
 	portrait_wrap.custom_minimum_size = Vector2(0, CARD_PORTRAIT_SIZE.y * 0.7)
 	card.add_child(portrait_wrap)
 	var portrait := CharacterPreviewScene.new()
-	portrait.skin_id = info.get("skin_id", "red")
-	portrait.hat_id = info.get("hat_id", "")
-	portrait.zoom = 2.6
+	portrait.color_id = info.get("color_id", PlayerColors.DEFAULT_ID)
 	portrait.custom_minimum_size = CARD_PORTRAIT_SIZE * 0.7
 	portrait_wrap.add_child(portrait)
 

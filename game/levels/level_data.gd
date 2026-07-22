@@ -38,8 +38,8 @@ const MIN_PERIOD_SEC := 0.5 # anything faster starts feeling like a teleport, no
 const MAX_PERIOD_SEC := 60.0
 
 ## Structural/size validation only (correct types, sane counts) -- doesn't
-## guarantee the layout is fun or even fully enclosed, same trust level
-## already accepted for player-drawn skins/hats.
+## guarantee the layout is fun or even fully enclosed, same low-friction
+## trust level used elsewhere for player-published content.
 static func is_valid(data: Dictionary) -> bool:
 	if typeof(data) != TYPE_DICTIONARY:
 		return false

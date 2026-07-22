@@ -169,11 +169,7 @@ var is_climbing := false
 var climb_exhausted_timer := 0.0
 
 @onready var _visual: Node2D = $Visual
-@onready var _hat: Sprite2D = $Visual/Body/Hat
-@onready var _parts: Dictionary = {
-	"body": $Visual/Body,
-}
-var _trail_emitter: TrailEmitter
+@onready var _body: CharacterBodyRect = $Visual/Body
 
 var _was_on_floor_visual := false
 
@@ -202,56 +198,25 @@ func _trigger_action(action_name: String) -> void:
 
 func _ready() -> void:
 	if _visual:
-		# Sensible default until set_skin() overrides it with a specific
-		# choice -- NPCs never get a skin selection of their own and just
-		# keep this, and it covers the brief window before a real player's
-		# chosen skin is known too.
-		set_skin("red")
-	# Harmless on a headless dedicated server's authoritative Player
-	# instances too -- set_trail() is never called there, so trail_id stays
-	# "" and TrailEmitter.update() below is a cheap no-op every tick.
-	_trail_emitter = TrailEmitter.new()
-	add_child(_trail_emitter)
+		# Sensible default until set_color() overrides it with this
+		# instance's actual server-assigned color -- NPCs never get one of
+		# their own and just keep this, and it covers the brief window
+		# before a real player's assigned color is known too.
+		set_color(PlayerColors.DEFAULT_ID)
 
-## Sets which skin this player/NPC actually displays, by id -- called by
-## whoever knows which skin this instance should be (game.gd for the local
-## human player in AI mode, RemoteAvatar for a networked peer's own choice).
-## No-ops if that skin's per-part textures aren't ready yet (an unfetched
-## custom skin) -- the caller's own skin_received retry (see net_game.gd)
-## re-calls this once they land.
-func set_skin(skin_id: String) -> void:
-	var parts := SkinCatalog.get_part_textures(skin_id)
-	if parts.is_empty():
-		return
-	for part_name in parts:
-		if _parts.has(part_name):
-			_parts[part_name].texture = parts[part_name]
-
-## Sets the equipped hat, by id -- "" clears it. No-ops (keeps showing
-## nothing, not stale art) if a non-empty id's texture isn't ready yet; the
-## caller's own hat_received retry re-calls this once it lands.
-func set_hat(hat_id: String) -> void:
-	if not _hat:
-		return
-	if hat_id.is_empty():
-		_hat.texture = null
-		return
-	var tex := SkinCatalog.get_hat_texture(hat_id)
-	if tex:
-		_hat.texture = tex
-
-## Sets the equipped trail, by id -- "" clears it. See RemoteAvatar.set_trail
-## for the networked-peer equivalent; this is the local/singleplayer path
-## (game.gd) and the (always-empty, see _ready) dedicated-server path.
-func set_trail(trail_id: String) -> void:
-	if _trail_emitter:
-		_trail_emitter.trail_id = trail_id
+## Sets which color this player/NPC actually displays, by id -- called by
+## whoever knows which color this instance should be (game.gd for the local
+## human player in AI mode, RemoteAvatar for a networked peer's own
+## server-assigned choice).
+func set_color(color_id: String) -> void:
+	if _body:
+		_body.color = PlayerColors.color_for(color_id)
 
 ## Recolors this player/NPC to flag it as the current Tag "it", or back to
 ## its own normal look when it's no longer it -- lets TagMode mark whoever's
-## chasing without every participant needing to know its own skin. Tints via
-## modulate rather than replacing the texture outright so this works
-## uniformly for every skin, built-in or custom.
+## chasing without every participant needing to know its own color. Tints
+## via modulate rather than replacing the rect's own color so this works
+## uniformly regardless of which color this instance was assigned.
 func set_tagged_it(active: bool) -> void:
 	if not _visual:
 		return
@@ -292,8 +257,6 @@ func _process(delta: float) -> void:
 		elif velocity.y > 40.0:
 			target_scale = Vector2(1.1, 0.9)
 	_visual.scale = _visual.scale.lerp(target_scale, clampf(delta * 12.0, 0.0, 1.0))
-
-	_trail_emitter.update(delta, velocity.length())
 
 func apply_input(input: Dictionary, delta: float) -> void:
 	var move_dir: Vector2 = input.get("move_dir", Vector2.ZERO)

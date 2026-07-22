@@ -69,7 +69,7 @@
     border: 1.5px solid rgba(255,255,255,.09); background: rgba(255,255,255,.04);
     cursor: pointer; color: inherit; font-family: inherit;
   }
-  .roster-chip img { width: 20px; height: 20px; image-rendering: pixelated; }
+  .roster-chip .swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
   .roster-chip.following { border-color: #b6acf9; background: rgba(124,108,248,.18); }
   .roster-chip .it-badge { color: #ff4d4d; font-size: 10px; }
   footer { margin-top: 20px; color: #4e5578; font-size: 11.5px; text-align: center; }
@@ -122,12 +122,11 @@ const ctx = canvas.getContext('2d');
 const POLL_FALLBACK_MS = 1000;
 const STALE_AFTER_MS = 3000;
 const TILE_SIZE_PX = 10;
-// The actual body sprite's real size in world units (see
-// SkinCatalog.VISUAL_WIDTH/HEIGHT in game/cosmetics/skin_catalog.gd) --
-// drawn at exactly this many world units wide, scaled the same as
-// everything else, so a player's on-screen size is always geometrically
-// correct relative to the tiles around them instead of an arbitrary fixed
-// pixel radius.
+// The actual body rect's real size in world units (see
+// CharacterBodyRect.SIZE in game/player/character_body_rect.gd) -- drawn at
+// exactly this many world units wide, scaled the same as everything else,
+// so a player's on-screen size is always geometrically correct relative to
+// the tiles around them instead of an arbitrary fixed pixel radius.
 const PLAYER_WORLD_SIZE = 40;
 // project.godot's window/size/viewport_width -- the real game's Camera2D
 // has no zoom override (1 world unit = 1 screen pixel), so this is
@@ -145,13 +144,13 @@ const TILE_COLORS = [
   '#8f8f9c', '#9494a1', '#ad946b', '#babac7', '#a6d9f2', '#f2598c',
 ];
 
-const SKIN_COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'teal'];
-const sprites = {};
-SKIN_COLORS.forEach(c => {
-  const img = new Image();
-  img.src = `sprites/${c}.png`;
-  sprites[c] = img;
-});
+// Mirrors PlayerColors.COLORS in game/player/player_colors.gd exactly, so a
+// watched match's colors match the real client -- kept in sync by hand,
+// same tradeoff already accepted for TILE_COLORS above.
+const PLAYER_COLORS = {
+  red: '#d93333', blue: '#4073d9', green: '#40bf59', yellow: '#e6cc26',
+  purple: '#994dcc', teal: '#26bfb3', orange: '#e68026', pink: '#e673b3',
+};
 
 let latestState = { players: [], timeRemaining: 0, arenaWidth: 0, arenaHeight: 0, levelId: '', updatedAt: 0 };
 let arenaTiles = null; // Array of [x, y, tileType] in tile-grid coords, or null until loaded
@@ -293,37 +292,17 @@ function draw(state) {
   players.forEach((p, i) => {
     const pos = worldToScreen(p.x, p.y);
 
-    const sprite = sprites[p.skinId] || sprites.red;
-    // facing < 0 means the game's own remote_avatar.gd negates the
-    // sprite's scale.x to flip it -- mirrored here as a canvas transform
-    // so a player watched from the website actually turns to face the
-    // way they're moving, the same as in the real client, instead of
-    // always facing one fixed direction.
-    const flip = p.facing < 0;
-    if (sprite.complete && sprite.naturalWidth > 0) {
-      ctx.imageSmoothingEnabled = false;
-      ctx.save();
-      ctx.translate(pos.x, pos.y);
-      if (flip) ctx.scale(-1, 1);
-      ctx.drawImage(sprite, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize);
-      if (p.isIt) {
-        // The real game's own tagger indicator (Player.TAG_IT_COLOR,
-        // applied as visual.modulate in remote_avatar.gd) -- a color
-        // multiply over the whole sprite, not a ring or glow around it.
-        // source-atop constrains the fill to pixels the sprite itself
-        // just drew (its actual silhouette, not its bounding box), the
-        // same shape a true multiply would respect.
-        ctx.globalCompositeOperation = 'source-atop';
-        ctx.fillStyle = 'rgba(255, 217, 26, 0.65)';
-        ctx.fillRect(-spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize);
-        ctx.globalCompositeOperation = 'source-over';
-      }
-      ctx.restore();
-    } else {
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, spriteSize / 2, 0, Math.PI * 2);
-      ctx.fillStyle = p.isIt ? '#ffd91a' : '#5aa9ff';
-      ctx.fill();
+    // Flat rect, same shape the real client draws (see
+    // CharacterBodyRect._draw in game/player/character_body_rect.gd) --
+    // no facing-flip needed since a plain rect looks identical either way.
+    ctx.fillStyle = PLAYER_COLORS[p.colorId] || PLAYER_COLORS.red;
+    ctx.fillRect(pos.x - spriteSize / 2, pos.y - spriteSize / 2, spriteSize, spriteSize);
+    if (p.isIt) {
+      // The real game's own tagger indicator (Player.TAG_IT_COLOR, applied
+      // as visual.modulate in remote_avatar.gd) -- a color multiply over
+      // the whole rect here too.
+      ctx.fillStyle = 'rgba(255, 217, 26, 0.65)';
+      ctx.fillRect(pos.x - spriteSize / 2, pos.y - spriteSize / 2, spriteSize, spriteSize);
     }
 
     ctx.font = '600 13px -apple-system, sans-serif';
@@ -347,7 +326,7 @@ function updateRosterHighlight() {
 function renderRoster(players) {
   rosterEl.innerHTML = players.map((p, i) => {
     return '<button class="roster-chip" data-index="' + i + '">' +
-      '<img src="sprites/' + esc(p.skinId || 'red') + '.png" alt="">' +
+      '<span class="swatch" style="background:' + esc(PLAYER_COLORS[p.colorId] || PLAYER_COLORS.red) + '"></span>' +
       esc(p.username || 'Player') +
       (p.isIt ? ' <span class="it-badge">IT</span>' : '') +
     '</button>';
@@ -398,7 +377,7 @@ function applyState(state) {
 }
 
 // Interpolated player positions for right now, between the last two
-// received snapshots -- everything else (isIt, skinId, facing, username)
+// received snapshots -- everything else (isIt, colorId, facing, username)
 // comes straight from the newer snapshot since those aren't meaningfully
 // "in between" states the way a position is.
 function interpolatedPlayers() {

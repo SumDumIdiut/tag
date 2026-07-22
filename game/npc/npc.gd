@@ -18,10 +18,9 @@ class_name NPC
 var tag_mode: TagMode = null
 var waypoint_graph: WaypointGraph = null
 
-# -1 = no team, same meaning as Player.team -- NPCs never get a real team
-# (local bot play has no playlists), kept only for interface consistency
-# with the participants array tag_mode.gd iterates over.
-var team: int = -1
+# Inherits Player.team (-1 = no team) unchanged -- NPCs never get a real
+# team (local bot play has no playlists), the inherited default already
+# gives tag_mode.gd's participants array the interface consistency it needs.
 
 var _decision_timer := 0.0
 var _decision_move_dir := Vector2.ZERO
