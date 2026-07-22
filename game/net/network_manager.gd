@@ -327,18 +327,25 @@ func _server_join_lobby(lobby_id: int) -> void:
 ## exact same internal helpers _server_create_lobby/_server_join_lobby call,
 ## so quick-joined and manually-joined lobbies behave identically once in
 ## lobby_room.
+## `playlist_id` "" (default) keeps the original behavior exactly -- any open
+## lobby regardless of playlist, creating a plain "Quick Match" one if none
+## exists. A real playlist id restricts candidates to lobbies already
+## restricted to that same playlist (never matches a "" lobby or a
+## different playlist's), and the freshly-created fallback carries the
+## playlist forward too -- see casual_queue.gd, the one caller that passes
+## a real value today.
 @rpc("any_peer", "reliable")
-func _server_quick_join_lobby() -> void:
+func _server_quick_join_lobby(playlist_id: String = "") -> void:
 	if not is_server:
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	if _peer_lobby.has(sender):
 		return
 	for lobby in _lobbies.values():
-		if not lobby.in_match and lobby.members.size() < lobby.max_players:
+		if not lobby.in_match and lobby.members.size() < lobby.max_players and lobby.get("playlist", "") == playlist_id:
 			_join_lobby_internal(sender, lobby.id)
 			return
-	_create_lobby_internal(sender, "Quick Match", MAX_LOBBY_PLAYERS)
+	_create_lobby_internal(sender, "Quick Match", MAX_LOBBY_PLAYERS, playlist_id)
 
 ## color_id here (not just username/ready) so a live lobby-waiting view (see
 ## TeamLobbyView) can show real character portraits before the match even
@@ -863,8 +870,8 @@ func create_lobby(lobby_name: String, max_players: int, playlist_id: String = ""
 func join_lobby(lobby_id: int) -> void:
 	rpc_id(1, "_server_join_lobby", lobby_id)
 
-func quick_join_lobby() -> void:
-	rpc_id(1, "_server_quick_join_lobby")
+func quick_join_lobby(playlist_id: String = "") -> void:
+	rpc_id(1, "_server_quick_join_lobby", playlist_id)
 
 func leave_lobby() -> void:
 	rpc_id(1, "_server_leave_lobby")
