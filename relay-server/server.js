@@ -590,6 +590,25 @@ function withinRateLimit(ip) {
   return hits.length <= RATE_LIMIT_MAX;
 }
 
+// In production every request arrives via the portal's own loopback proxy
+// (see webdev/portal/server.js's proxyTagWebSocket/tagRelayProxy), so
+// req.socket.remoteAddress is always 127.0.0.1 -- every real player would
+// otherwise share one rate-limit bucket. Cloudflare (including through a
+// Tunnel) always sets cf-connecting-ip to the real visitor IP, and the
+// portal forwards headers through unmodified, so trust it -- but only when
+// the immediate hop is our own loopback proxy, never from an arbitrary
+// direct connection (this port is bound on all interfaces, not just
+// localhost), which would otherwise let anyone spoof the header to dodge
+// or target another IP's rate limit.
+function clientIpFor(req) {
+  const direct = (req.socket.remoteAddress || '').toString();
+  if (direct === '127.0.0.1' || direct === '::1' || direct === '::ffff:127.0.0.1') {
+    const forwarded = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'];
+    if (forwarded) return String(forwarded).split(',')[0].trim();
+  }
+  return direct;
+}
+
 function sanitizeName(raw) {
   const trimmed = String(raw || '').trim();
   return (trimmed || 'Unnamed Server').slice(0, MAX_NAME_LEN);
@@ -678,7 +697,7 @@ app.get('/api/levels/catalog', (req, res) => {
 
 app.post('/api/levels/:clientId/upload', (req, res) => {
   if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+  if (!withinRateLimit(clientIpFor(req))) return res.status(429).json({ error: 'slow down' });
 
   const clientId = req.params.clientId;
   const existingCount = readCatalog().filter(e => e.createdBy === clientId && e.type === 'level').length;
@@ -751,7 +770,7 @@ app.post('/api/game-assets/:category/publish', (req, res) => {
   const category = req.params.category;
   if (!GAME_ASSET_CATEGORIES.includes(category)) return res.status(404).json({ error: 'unknown category' });
   if (!verifyAssetKey(req.body.key)) return res.status(401).json({ error: 'bad or missing publish key' });
-  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+  if (!withinRateLimit(clientIpFor(req))) return res.status(429).json({ error: 'slow down' });
 
   if (MULTI_KEY_CATEGORIES[category]) {
     const err = publishMultiKeyImages(category, MULTI_KEY_CATEGORIES[category], req.body.images);
@@ -818,7 +837,7 @@ const ROUND_DURATION_SEC = 180.0;
 // report. This doesn't address a fully malicious host lying about placement
 // itself -- an accepted, known limitation of this hosted-authority model.
 app.post('/api/ranked/report-result', (req, res) => {
-  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+  if (!withinRateLimit(clientIpFor(req))) return res.status(429).json({ error: 'slow down' });
   const results = req.body.results;
   if (!Array.isArray(results) || results.length === 0) return res.status(400).json({ error: 'results required' });
   const playlist = String(req.body.playlist || '');
@@ -850,7 +869,7 @@ app.get('/api/progression/:clientId', (req, res) => {
 // This is purely "make progress follow you across devices," not a gate on
 // playing at all.
 app.post('/api/auth/register', (req, res) => {
-  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+  if (!withinRateLimit(clientIpFor(req))) return res.status(429).json({ error: 'slow down' });
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
   const clientId = String(req.body.clientId || '');
@@ -873,7 +892,7 @@ app.post('/api/auth/register', (req, res) => {
 });
 
 app.post('/api/auth/login', (req, res) => {
-  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+  if (!withinRateLimit(clientIpFor(req))) return res.status(429).json({ error: 'slow down' });
   const usernameLower = String(req.body.username || '').trim().toLowerCase();
   const password = String(req.body.password || '');
   const found = findAccountByUsername(usernameLower);
@@ -896,7 +915,7 @@ app.get('/api/auth/me', (req, res) => {
 // ─── HTTP: friends ────────────────────────────────────────────────────────────
 app.post('/api/friends/:clientId/add', (req, res) => {
   if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  if (!withinRateLimit((req.socket.remoteAddress || '').toString())) return res.status(429).json({ error: 'slow down' });
+  if (!withinRateLimit(clientIpFor(req))) return res.status(429).json({ error: 'slow down' });
   const clientId = req.params.clientId;
   const friendCode = String(req.body.friendCode || '');
   if (!CLIENT_ID_RE.test(friendCode)) return res.status(400).json({ error: 'bad friend code' });
@@ -1010,7 +1029,7 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES,
 //   {BASE_PATH}/relay/data/:token   - the host dials this per player, on request
 //   {BASE_PATH}/relay/join/:serverId - a player's client dials this to connect
 server.on('upgrade', (req, socket, head) => {
-  const ip = (req.socket.remoteAddress || '').toString();
+  const ip = clientIpFor(req);
   let pathname;
   try {
     pathname = new URL(req.url, 'http://relay').pathname;
