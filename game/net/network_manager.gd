@@ -35,6 +35,7 @@ signal map_vote_phase_started(duration: float)
 signal map_vote_phase_ended(chosen_level_id: String, countdown: float)
 
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
+const RankTiers := preload("res://cosmetics/rank_tiers.gd")
 
 const DEFAULT_PORT := 9000
 const MAX_LOBBY_PLAYERS := 8
@@ -48,6 +49,12 @@ const MAX_CHAT_MESSAGE_LEN := 200
 ## not a passive panel players could ignore indefinitely.
 const MAP_VOTE_DURATION_SEC := 8.0
 const MAP_VOTE_COUNTDOWN_SEC := 3.0
+## How long a ranked playlist lobby waits for real players before topping
+## the remaining slots up with bots (see _on_bot_fill_timeout()) rather than
+## leaving whoever's already queued waiting indefinitely for a full lobby
+## that may never arrive on a small player base.
+const BOT_FILL_WAIT_SEC := 20.0
+const BOT_NAMES := ["Nova", "Byte", "Ghost", "Volt", "Rex", "Echo", "Pixel", "Dash"]
 
 var is_server := false
 var is_ranked_server := false # set by server_main.gd from --ranked; auto-lobbies/starts ranked rounds instead of waiting for manual create/join/Start
@@ -545,6 +552,100 @@ func _join_ranked_lobby(sender: int) -> void:
 	_send_lobby_state(_ranked_lobby_id)
 	if lobby.members.size() >= start_threshold:
 		_begin_match_sequence(_ranked_lobby_id, true)
+	elif not playlist_id.is_empty() and not lobby.get("bot_fill_scheduled", false):
+		# The legacy undifferentiated pool (empty playlist_id) keeps its
+		# original wait-for-MIN_RANKED_PLAYERS-forever behavior -- bot-fill
+		# only applies to a real playlist queue, where "how many bots" has an
+		# unambiguous answer (PlaylistCatalog.total_players()).
+		lobby["bot_fill_scheduled"] = true
+		get_tree().create_timer(BOT_FILL_WAIT_SEC).timeout.connect(_on_bot_fill_timeout.bind(_ranked_lobby_id))
+
+## Fires BOT_FILL_WAIT_SEC after a real player joins a ranked playlist lobby
+## that didn't immediately reach full headcount -- tops the remaining slots
+## up with bots (see ServerMatch/npc.gd) scaled to whoever's actually
+## queued's own elo, then starts the match through the exact same
+## _begin_match_sequence() path a naturally-full lobby uses. Bots are never
+## added to `lobby.members` itself (that dict's keys double as "who to RPC
+## to" everywhere else in this file) -- they ride along separately via
+## `lobby["bots"]`, merged into the roster only once _start_match_for_lobby
+## builds ServerMatch's member dict.
+func _on_bot_fill_timeout(lobby_id: int) -> void:
+	if not _lobbies.has(lobby_id):
+		return
+	var lobby: Dictionary = _lobbies[lobby_id]
+	if lobby.in_match or lobby.members.is_empty():
+		return
+	if lobby.max_players - lobby.members.size() <= 0:
+		return
+	var skill_level: int = await _compute_bot_skill_level(lobby)
+	# Re-check after the await -- the elo lookup can take a couple seconds,
+	# during which the lobby could have filled naturally, emptied entirely,
+	# or already started.
+	if not _lobbies.has(lobby_id):
+		return
+	lobby = _lobbies[lobby_id]
+	if lobby.in_match or lobby.members.is_empty():
+		return
+	var needed: int = lobby.max_players - lobby.members.size()
+	if needed <= 0:
+		return
+	var bots := {}
+	for i in needed:
+		var bot_id := -(i + 1)
+		bots[bot_id] = {
+			"username": _bot_name(i), "color_id": PlayerColors.id_for_peer(bot_id),
+			"is_bot": true, "skill_level": skill_level,
+		}
+	lobby["bots"] = bots
+	_begin_match_sequence(lobby_id, true)
+
+## Bots get harder as the real players queueing for them are better --
+## averages every real member's own elo for this lobby's playlist (same
+## per-client lookup ServerMatch._fill_ranked_stats does post-match, just
+## earlier and averaged across whoever's actually waiting) and maps that
+## onto NPC's existing 1-5 skill_level via the same Bronze..Diamond tier
+## boundaries rank badges already use, so "Diamond bots" and "a Diamond
+## player" mean the same thing intuitively. A brand-new/unresolvable player
+## (no client_id, or a lookup that fails) defaults to the easiest bots
+## rather than guessing high.
+func _compute_bot_skill_level(lobby: Dictionary) -> int:
+	var lobby_playlist: String = lobby.get("playlist", "")
+	var total := 0
+	var resolved := 0
+	for peer_id in lobby.members.keys():
+		var client_id: String = _peer_client_id.get(peer_id, "")
+		if client_id.is_empty():
+			continue
+		var elo := await _fetch_elo(client_id, lobby_playlist)
+		if elo > 0:
+			total += elo
+			resolved += 1
+	var avg_elo: int = int(float(total) / resolved) if resolved > 0 else RankTiers.TIERS[0].min_elo
+	for i in range(RankTiers.TIERS.size() - 1, -1, -1):
+		if avg_elo >= int(RankTiers.TIERS[i].min_elo):
+			return i + 1
+	return 1
+
+## GET-only lookup, same endpoint/shape ServerMatch.RANKED_LOOKUP_URL already
+## fetches per-match -- reused directly (one URL, no second copy to keep in
+## sync) rather than duplicating the string here.
+func _fetch_elo(client_id: String, playlist: String) -> int:
+	var req := HTTPRequest.new()
+	req.timeout = 3.0
+	add_child(req)
+	req.request(ServerMatch.RANKED_LOOKUP_URL % client_id + "?playlist=" + playlist.uri_encode())
+	var result: Array = await req.request_completed
+	req.queue_free()
+	var response_code: int = result[1]
+	var body: PackedByteArray = result[3]
+	if response_code == 200:
+		var parsed = JSON.parse_string(body.get_string_from_utf8())
+		if typeof(parsed) == TYPE_DICTIONARY and parsed.has("elo"):
+			return int(parsed.elo)
+	return -1
+
+func _bot_name(index: int) -> String:
+	return "Bot " + BOT_NAMES[index % BOT_NAMES.size()]
 
 ## The moment a lobby is ready to start (fill/host-start/ranked-threshold
 ## reached), map selection becomes a timed pop-up vote instead of the match
@@ -585,11 +686,20 @@ func _start_match_for_lobby(lobby_id: int, ranked: bool, chosen_level_id: String
 	var lobby: Dictionary = _lobbies[lobby_id]
 	var lobby_playlist: String = lobby.get("playlist", "")
 	var members_with_extras: Dictionary = lobby.members.duplicate(true)
+	# Bots (see _on_bot_fill_timeout) never live in lobby.members itself --
+	# that dict's keys double as "who to RPC to" everywhere else in this
+	# file, and a bot's negative synthetic id has no real connection behind
+	# it. They only join the roster here, right at match construction.
+	var bots: Dictionary = lobby.get("bots", {})
+	for bot_id in bots.keys():
+		members_with_extras[bot_id] = bots[bot_id]
 	if PlaylistCatalog.is_team_mode(lobby_playlist):
-		var teams := PlaylistCatalog.assign_teams(lobby.members.keys(), PlaylistCatalog.team_count(lobby_playlist))
+		var teams := PlaylistCatalog.assign_teams(members_with_extras.keys(), PlaylistCatalog.team_count(lobby_playlist))
 		for peer_id in teams.keys():
 			members_with_extras[peer_id]["team"] = teams[peer_id]
 	for peer_id in members_with_extras.keys():
+		if members_with_extras[peer_id].get("is_bot", false):
+			continue # a bot's color_id/client_id were already set when it was created -- _peer_color_id/_peer_client_id only ever track real connections
 		members_with_extras[peer_id]["color_id"] = _peer_color_id.get(peer_id, PlayerColors.DEFAULT_ID)
 		members_with_extras[peer_id]["client_id"] = _peer_client_id.get(peer_id, "")
 	var match_instance := ServerMatch.new(self, lobby_id, members_with_extras, ranked, chosen_level_id)
