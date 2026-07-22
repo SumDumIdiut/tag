@@ -1,7 +1,6 @@
 extends Control
 
 const ModeIconScene := preload("res://ui/mode_icon.gd")
-const CharacterPreviewScene := preload("res://ui/character_preview.gd")
 const UIStyle := preload("res://ui/ui_style.gd")
 const UpdateCheckerScript := preload("res://net/update_checker.gd")
 const UpdatePromptScene := preload("res://ui/update_prompt.gd")
@@ -11,12 +10,10 @@ const GameAssetUpdatePromptScene := preload("res://ui/game_asset_update_prompt.g
 # Two top-level destinations, each fanning out to its own related
 # sub-screens instead of a flat list of unrelated modes: ONLINE covers
 # everything network-related (quick play, ranked, browse/host/direct
-# connect -- see online_menu.tscn), LOCAL is bot practice. color_id picks
-# which PlayerColors color fronts each bar -- lines up with the bar's own
-# accent.
+# connect -- see online_menu.tscn), LOCAL is bot practice.
 const MODES := [
-	{"key": "online", "label": "ONLINE", "icon": "globe", "color": UIStyle.COLOR_ONLINE, "color_id": "green", "scene": "res://main/online_menu.tscn"},
-	{"key": "local", "label": "LOCAL", "icon": "controller", "color": UIStyle.COLOR_LOCAL, "color_id": "blue", "scene": "res://main/local_menu.tscn"},
+	{"key": "online", "label": "ONLINE", "color": UIStyle.COLOR_ONLINE, "scene": "res://main/online_menu.tscn"},
+	{"key": "local", "label": "LOCAL", "color": UIStyle.COLOR_LOCAL, "scene": "res://main/local_menu.tscn"},
 ]
 
 const BAR_SIZE := Vector2(190, 360)
@@ -74,51 +71,13 @@ func _rebuild_mode_bar() -> void:
 func _build_bar(mode: Dictionary) -> Button:
 	var color: Color = mode["color"]
 	var btn := Button.new()
-	btn.text = ""
+	btn.text = mode["label"]
 	btn.custom_minimum_size = BAR_SIZE
 	btn.focus_mode = Control.FOCUS_ALL
 	btn.clip_contents = true
 	UIStyle.style_button(btn, color, 18)
+	btn.add_theme_font_size_override("font_size", 20)
 	btn.pressed.connect(_on_mode_pressed.bind(mode["scene"]))
-
-	# A soft radial glow behind the character, in the bar's own color --
-	# gives the portrait a bit of depth/stage-lighting instead of sitting
-	# flat against the panel, and reads as "this button is alive" even
-	# before the hover animation kicks in.
-	var glow := TextureRect.new()
-	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	glow.texture = UIStyle.glow_texture(color)
-	glow.stretch_mode = TextureRect.STRETCH_SCALE
-	glow.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	glow.position = Vector2(-85, -10)
-	glow.custom_minimum_size = Vector2(170, 170)
-	glow.size = Vector2(170, 170)
-	btn.add_child(glow)
-
-	var layout := VBoxContainer.new()
-	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layout.set_anchors_preset(Control.PRESET_FULL_RECT)
-	layout.alignment = BoxContainer.ALIGNMENT_CENTER
-	layout.add_theme_constant_override("separation", 18)
-	btn.add_child(layout)
-
-	var portrait_wrap := CenterContainer.new()
-	portrait_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	portrait_wrap.custom_minimum_size = Vector2(0, 160)
-	layout.add_child(portrait_wrap)
-	var portrait = CharacterPreviewScene.new()
-	portrait.color_id = mode["color_id"]
-	portrait.custom_minimum_size = Vector2(120, 154)
-	portrait_wrap.add_child(portrait)
-
-	var label := Label.new()
-	label.text = mode["label"]
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 20)
-	label.add_theme_color_override("font_color", Color.WHITE)
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layout.add_child(label)
-
 	return btn
 
 ## Mirrors the old Customize corner-button treatment, opposite corner --
