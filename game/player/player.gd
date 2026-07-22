@@ -172,6 +172,14 @@ var climb_exhausted_timer := 0.0
 @onready var _body: CharacterBodyRect = $Visual/Body
 
 var _was_on_floor_visual := false
+# Where the character's feet actually are, in Visual's local space -- not 0.
+# Visual's own origin sits well above the drawn rect's bottom edge (Body is
+# offset up, and the rect itself extends further down from there), so
+# scaling Visual around its origin pulls the *bottom* up along with the top
+# during a squash. Anchoring the squash at this line instead (see _process)
+# keeps the feet planted and only pulls the top down -- otherwise a floor
+# dash's squash visibly opens a gap between the sprite and the ground.
+var _ground_line_y := 0.0
 
 const TAG_IT_COLOR := Color(1.0, 0.85, 0.1, 1.0)
 
@@ -203,6 +211,8 @@ func _ready() -> void:
 		# their own and just keep this, and it covers the brief window
 		# before a real player's assigned color is known too.
 		set_color(PlayerColors.DEFAULT_ID)
+	if _body:
+		_ground_line_y = _body.position.y + CharacterBodyRect.TOP_LEFT.y + CharacterBodyRect.SIZE.y
 
 ## Sets which color this player/NPC actually displays, by id -- called by
 ## whoever knows which color this instance should be (game.gd for the local
@@ -257,6 +267,12 @@ func _process(delta: float) -> void:
 		elif velocity.y > 40.0:
 			target_scale = Vector2(1.1, 0.9)
 	_visual.scale = _visual.scale.lerp(target_scale, clampf(delta * 12.0, 0.0, 1.0))
+	# While grounded (landing bounce, dashing along the floor), shift Visual
+	# down to compensate for its scale origin sitting above the feet -- see
+	# _ground_line_y -- so the feet stay planted and only the top compresses.
+	# Airborne squash/stretch has no ground to stay anchored to, so it's left
+	# scaling around Visual's own origin as before.
+	_visual.position.y = _ground_line_y * (1.0 - _visual.scale.y) if on_floor_now else 0.0
 
 func apply_input(input: Dictionary, delta: float) -> void:
 	var move_dir: Vector2 = input.get("move_dir", Vector2.ZERO)

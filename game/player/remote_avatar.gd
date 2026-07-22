@@ -36,6 +36,11 @@ var target_position: Vector2 = Vector2.ZERO
 var target_velocity: Vector2 = Vector2.ZERO
 var target_facing: int = 1
 var _time_since_update := 0.0
+# Where the feet actually are in Visual's local space -- see player.gd's
+# identical field/comment. Same rig offsets here (remote_avatar.tscn mirrors
+# player.tscn's Visual/Body layout exactly), same fix for the same "dash
+# squash on the ground opens a gap under the sprite" bug.
+var _ground_line_y := 0.0
 
 func _ready() -> void:
 	if name_label:
@@ -45,6 +50,8 @@ func _ready() -> void:
 		# actual server-assigned color -- covers the brief window before it's
 		# known.
 		set_color(PlayerColors.DEFAULT_ID)
+	if _body:
+		_ground_line_y = _body.position.y + CharacterBodyRect.TOP_LEFT.y + CharacterBodyRect.SIZE.y
 	if is_local and camera:
 		camera.enabled = true
 		camera.make_current()
@@ -67,11 +74,12 @@ func set_color(color_id: String) -> void:
 	if _body:
 		_body.color = PlayerColors.color_for(color_id)
 
-## `on_floor`/`action`/`action_id` are still part of the state dict shape
+## `action`/`action_id` are still part of the state dict shape
 ## server_match.gd sends (see player.gd's current_action/current_action_id
 ## comment) but have no visual consumer here anymore -- the square isn't
 ## animated by physics, so there's no rig left to feed or kick with them.
-func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, _is_climbing: bool, _on_floor: bool, _action: String, _action_id: int, is_it: bool) -> void:
+## `on_floor` IS used, for the squash-anchoring below.
+func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, _is_climbing: bool, on_floor: bool, _action: String, _action_id: int, is_it: bool) -> void:
 	target_position = pos
 	target_velocity = vel
 	target_facing = facing
@@ -83,3 +91,8 @@ func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, _is_cl
 		visual.scale = Vector2(1.5, 0.6) if is_dashing else Vector2.ONE
 		var flip := absf(visual.scale.x) * (1.0 if facing >= 0 else -1.0)
 		visual.scale.x = flip
+		# While grounded, shift Visual down to compensate for its scale
+		# origin sitting above the feet -- see _ground_line_y -- so a floor
+		# dash's squash keeps the feet planted and only compresses the top,
+		# instead of visibly opening a gap under the sprite.
+		visual.position.y = _ground_line_y * (1.0 - visual.scale.y) if on_floor else 0.0
