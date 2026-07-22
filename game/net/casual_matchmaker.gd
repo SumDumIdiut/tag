@@ -109,6 +109,12 @@ func _on_connected_to_own_host() -> void:
 		return
 	if _private:
 		NetworkManager.hosted_private_address = "%s:%d" % [LocalServerSpawner.get_lan_ip(), _spawner.get_port()]
+		# See ranked_queue.gd's identical call for what this does and why
+		# it's a no-op for anyone but the party leader -- private is a real
+		# address (never listed in the directory), unlike ranked/casual's
+		# server-name lookup.
+		if PartyManager.is_leader():
+			PartyManager.queue_party(NetworkManager.hosted_private_address, "private", "")
 	status_changed.emit("Waiting for players...")
 	NetworkManager.lobby_state_updated.connect(_on_in_lobby, CONNECT_ONE_SHOT)
 	NetworkManager.quick_join_lobby()
