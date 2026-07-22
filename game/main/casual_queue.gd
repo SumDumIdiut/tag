@@ -25,6 +25,7 @@ var _http: HTTPRequest
 var _spawner: LocalServerSpawner
 var _username := ""
 var _playlist_id := ""
+var _server_name := "" # whichever server we ended up on (found or spawned) -- see PartyManager.queue_party()
 var _team_view: TeamLobbyView
 var _map_vote_popup: MapVotePopup
 # See ranked_queue.gd's identical field for why every async callback below
@@ -121,6 +122,7 @@ func _on_directory_response(result: int, response_code: int, _headers: PackedStr
 	if best == null:
 		_host_new_casual_server()
 		return
+	_server_name = str(best.name)
 	status_label.text = "Joining a %s match..." % PlaylistCatalog.display_name(_playlist_id)
 	NetworkManager.set_username(_username)
 	NetworkManager.start_client(RELAY_JOIN_BASE + str(best.id), _username)
@@ -135,7 +137,8 @@ func _host_new_casual_server() -> void:
 	if _cancelled:
 		return
 	status_label.text = "No open %s matches -- starting one..." % PlaylistCatalog.display_name(_playlist_id)
-	_spawner.spawn("%s's Match" % _username, _username, ["--playlist=%s" % _playlist_id])
+	_server_name = "%s's Match" % _username
+	_spawner.spawn(_server_name, _username, ["--playlist=%s" % _playlist_id])
 
 func _on_spawn_failed(reason: String) -> void:
 	if _cancelled:
@@ -147,6 +150,10 @@ func _on_connected() -> void:
 		return
 	status_label.text = "Waiting for more players..."
 	NetworkManager.quick_join_lobby(_playlist_id)
+	# See ranked_queue.gd's identical call for what this does and why it's
+	# a no-op for anyone but the party leader.
+	if PartyManager.is_leader():
+		PartyManager.queue_party(_server_name, "casual", _playlist_id)
 
 func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary, level_id: String, playlist_id: String = "") -> void:
 	if _cancelled:

@@ -24,6 +24,7 @@ var _http: HTTPRequest
 var _spawner: LocalServerSpawner
 var _username := ""
 var _playlist_id := ""
+var _server_name := "" # whichever server we ended up on (found or spawned) -- see PartyManager.queue_party()
 var _team_view: TeamLobbyView
 var _map_vote_popup: MapVotePopup
 # NetworkManager is an autoload -- its signals outlive this screen, so a
@@ -136,6 +137,7 @@ func _on_directory_response(result: int, response_code: int, _headers: PackedStr
 	if best == null:
 		_host_new_ranked_server()
 		return
+	_server_name = str(best.name)
 	status_label.text = "Joining a %s match..." % PlaylistCatalog.display_name(_playlist_id)
 	NetworkManager.set_username(_username)
 	NetworkManager.start_client(RELAY_JOIN_BASE + str(best.id), _username)
@@ -150,7 +152,8 @@ func _host_new_ranked_server() -> void:
 	if _cancelled:
 		return
 	status_label.text = "No open %s matches -- starting one..." % PlaylistCatalog.display_name(_playlist_id)
-	_spawner.spawn("%s's Ranked Match" % _username, _username, ["--ranked", "--playlist=%s" % _playlist_id])
+	_server_name = "%s's Ranked Match" % _username
+	_spawner.spawn(_server_name, _username, ["--ranked", "--playlist=%s" % _playlist_id])
 
 func _on_spawn_failed(reason: String) -> void:
 	if _cancelled:
@@ -161,6 +164,12 @@ func _on_connected() -> void:
 	if _cancelled:
 		return
 	status_label.text = "Waiting for more players..."
+	# Whichever of us actually found/hosted the server tells the rest of the
+	# party to come along too -- see PartyManager.queue_party(). A solo
+	# player or a non-leader party member is_leader() == false, so this is a
+	# no-op for everyone except whoever's actually driving the party's queue.
+	if PartyManager.is_leader():
+		PartyManager.queue_party(_server_name, "ranked", _playlist_id)
 
 func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary, level_id: String, playlist_id: String = "") -> void:
 	if _cancelled:

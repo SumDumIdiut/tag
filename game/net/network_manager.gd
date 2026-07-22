@@ -81,6 +81,7 @@ var _ranked_lobby_id := -1 # the single reserved lobby a ranked server auto-fill
 var _peer_username := {} # peer_id -> String
 var _peer_color_id := {} # peer_id -> String, auto-assigned (see PlayerColors.id_for_peer)
 var _peer_client_id := {} # peer_id -> String, the anonymous ranked/friends identity -- server-side only, never broadcast to other clients
+var _peer_party_id := {} # peer_id -> String, "" if not in a party -- see PartyManager, purely a grouping key for team assignment below
 var _peer_lobby := {}    # peer_id -> lobby_id
 var _matches := {}       # lobby_id -> ServerMatch
 var _spectators := {}    # lobby_id -> Array[peer_id], read-only observers of an in-progress match
@@ -222,7 +223,7 @@ func _on_connected_to_server() -> void:
 		_pending_as_spectator = false
 		rpc_id(1, "_server_register_spectator")
 	else:
-		rpc_id(1, "_server_register_player", username, PlayerIdentity.client_id)
+		rpc_id(1, "_server_register_player", username, PlayerIdentity.client_id, PartyManager.current_party.get("id", ""))
 	connected_to_server.emit()
 
 func _on_connection_failed() -> void:
@@ -237,6 +238,7 @@ func _on_peer_disconnected(id: int) -> void:
 	_peer_username.erase(id)
 	_peer_color_id.erase(id)
 	_peer_client_id.erase(id)
+	_peer_party_id.erase(id)
 	var lobby_id: int = _peer_lobby.get(id, -1)
 	if lobby_id != -1:
 		_remove_peer_from_lobby(id, lobby_id)
@@ -249,7 +251,7 @@ func _on_peer_disconnected(id: int) -> void:
 # ==================== Server-side RPC endpoints (client -> server) ====================
 
 @rpc("any_peer", "reliable")
-func _server_register_player(display_name: String, client_id: String = "") -> void:
+func _server_register_player(display_name: String, client_id: String = "", party_id: String = "") -> void:
 	if not is_server:
 		return
 	var sender := multiplayer.get_remote_sender_id()
@@ -258,6 +260,7 @@ func _server_register_player(display_name: String, client_id: String = "") -> vo
 	# function of peer_id (see PlayerColors.id_for_peer).
 	_peer_color_id[sender] = PlayerColors.id_for_peer(sender)
 	_peer_client_id[sender] = client_id
+	_peer_party_id[sender] = party_id
 	if is_ranked_server:
 		_join_ranked_lobby(sender)
 	else:
@@ -355,6 +358,10 @@ func _member_entry(peer_id: int, ready: bool) -> Dictionary:
 	return {
 		"username": _peer_username.get(peer_id, "Player"), "ready": ready,
 		"color_id": _peer_color_id.get(peer_id, PlayerColors.DEFAULT_ID),
+		# Broadcast, not secret -- lets a client's own live waiting-room
+		# preview (team_lobby_view.gd) group party members the same way
+		# _start_match_for_lobby's real assignment below will.
+		"party_id": _peer_party_id.get(peer_id, ""),
 	}
 
 func _create_lobby_internal(sender: int, lobby_name: String, max_players: int, p_playlist_id: String = "") -> void:
@@ -701,7 +708,10 @@ func _start_match_for_lobby(lobby_id: int, ranked: bool, chosen_level_id: String
 	for bot_id in bots.keys():
 		members_with_extras[bot_id] = bots[bot_id]
 	if PlaylistCatalog.is_team_mode(lobby_playlist):
-		var teams := PlaylistCatalog.assign_teams(members_with_extras.keys(), PlaylistCatalog.team_count(lobby_playlist))
+		var peer_party_id := {}
+		for peer_id in members_with_extras.keys():
+			peer_party_id[peer_id] = members_with_extras[peer_id].get("party_id", "")
+		var teams := PlaylistCatalog.assign_teams_grouped(members_with_extras.keys(), peer_party_id, PlaylistCatalog.team_count(lobby_playlist), PlaylistCatalog.team_size(lobby_playlist))
 		for peer_id in teams.keys():
 			members_with_extras[peer_id]["team"] = teams[peer_id]
 	for peer_id in members_with_extras.keys():

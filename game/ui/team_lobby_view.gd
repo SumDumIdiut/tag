@@ -112,7 +112,7 @@ func _build_static_shell() -> void:
 ## filled/emptied slots animate; already-settled cards are left alone.
 func set_roster(new_roster: Dictionary) -> void:
 	var team_count := PlaylistCatalog.team_count(playlist_id)
-	var teams := PlaylistCatalog.assign_teams(new_roster.keys(), team_count)
+	var teams := _resolve_teams(new_roster, team_count)
 	# 2-sided view: side 0 is my own team (or team 0 if I'm not in the
 	# roster yet, e.g. previewing before joining), side 1 is the other.
 	var my_team: int = teams.get(my_id, 0)
@@ -149,6 +149,37 @@ func set_roster(new_roster: Dictionary) -> void:
 			if peer_id != null:
 				_pop_in(fresh)
 	_roster = new_roster
+
+## Prefers whatever team assignment the server already actually made
+## (present once a match has started -- see ServerMatch.roster, built from
+## network_manager.gd's own assign_teams_grouped() before ServerMatch even
+## exists) over recomputing one independently, so a party shown together in
+## the live waiting-room preview below can never end up split apart in the
+## post-match VS reveal just because this view re-derived teams from
+## different, staler-or-differently-shaped data than the server used. Only
+## meaningful for a real team playlist -- a 2-sided FFA playlist (1v1) has
+## no server-assigned "team" at all (nothing to tag-protect), so it always
+## falls through to the plain round robin, same as before.
+func _resolve_teams(roster: Dictionary, team_count: int) -> Dictionary:
+	if not PlaylistCatalog.is_team_mode(playlist_id):
+		return PlaylistCatalog.assign_teams(roster.keys(), team_count)
+	if _roster_has_real_teams(roster):
+		var teams := {}
+		for peer_id in roster.keys():
+			teams[peer_id] = int(roster[peer_id].get("team", 0))
+		return teams
+	var peer_party_id := {}
+	for peer_id in roster.keys():
+		peer_party_id[peer_id] = roster[peer_id].get("party_id", "")
+	return PlaylistCatalog.assign_teams_grouped(roster.keys(), peer_party_id, team_count, PlaylistCatalog.team_size(playlist_id))
+
+func _roster_has_real_teams(roster: Dictionary) -> bool:
+	if roster.is_empty():
+		return false
+	for peer_id in roster.keys():
+		if int(roster[peer_id].get("team", -1)) < 0:
+			return false
+	return true
 
 ## The "match found" beat -- call once every slot is filled. Just the VS
 ## label's punch-in flourish; per-slot pop-ins already happened as each
