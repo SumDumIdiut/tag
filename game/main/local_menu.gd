@@ -1,20 +1,16 @@
 extends Control
 
 const UIStyle := preload("res://ui/ui_style.gd")
-const ModeIconScene := preload("res://ui/mode_icon.gd")
 const LocalMapIconScene := preload("res://ui/local_map_icon.gd")
 const LocalMapCatalog := preload("res://levels/local_maps/catalog.gd")
 
 const MAP_THUMB_SIZE := Vector2(80, 64)
 
 @onready var settings_box: VBoxContainer = $VBox/SettingsPanel/SettingsBox
-@onready var npc_count_row: HBoxContainer = $VBox/SettingsPanel/SettingsBox/NpcCountRow
 @onready var npc_count_slider: HSlider = $VBox/SettingsPanel/SettingsBox/NpcCountRow/NpcCountSlider
 @onready var npc_count_value: Label = $VBox/SettingsPanel/SettingsBox/NpcCountRow/NpcCountValue
-@onready var skill_row: HBoxContainer = $VBox/SettingsPanel/SettingsBox/SkillRow
 @onready var skill_slider: HSlider = $VBox/SettingsPanel/SettingsBox/SkillRow/SkillSlider
 @onready var skill_value: Label = $VBox/SettingsPanel/SettingsBox/SkillRow/SkillValue
-@onready var round_duration_row: HBoxContainer = $VBox/SettingsPanel/SettingsBox/RoundDurationRow
 @onready var round_duration_slider: HSlider = $VBox/SettingsPanel/SettingsBox/RoundDurationRow/RoundDurationSlider
 @onready var round_duration_value: Label = $VBox/SettingsPanel/SettingsBox/RoundDurationRow/RoundDurationValue
 @onready var start_button: Button = $VBox/StartButton
@@ -33,9 +29,6 @@ func _ready() -> void:
 	UIStyle.style_slider(npc_count_slider, UIStyle.COLOR_LOCAL)
 	UIStyle.style_slider(skill_slider, UIStyle.COLOR_LOCAL)
 	UIStyle.style_slider(round_duration_slider, UIStyle.COLOR_LOCAL)
-	_add_row_icon(npc_count_row, "controller")
-	_add_row_icon(skill_row, "bolt")
-	_add_row_icon(round_duration_row, "clock")
 	_build_map_row()
 
 	npc_count_slider.value = GameSettings.npc_count
@@ -50,21 +43,6 @@ func _ready() -> void:
 	round_duration_slider.value_changed.connect(_update_round_duration_label)
 	start_button.pressed.connect(_on_start_pressed)
 	back_button.pressed.connect(_on_back_pressed)
-
-## Prepends a small colored glyph to a settings row, matching the corner-
-## button icon treatment main_menu.gd already uses (icon_wrap Control sized
-## to just the glyph, inserted before the row's existing children).
-func _add_row_icon(row: HBoxContainer, icon_type: String) -> void:
-	var icon_wrap := Control.new()
-	icon_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon_wrap.custom_minimum_size = Vector2(22, 22)
-	var icon := ModeIconScene.new()
-	icon.icon_type = icon_type
-	icon.icon_color = UIStyle.COLOR_LOCAL
-	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
-	icon_wrap.add_child(icon)
-	row.add_child(icon_wrap)
-	row.move_child(icon_wrap, 0)
 
 func _update_npc_count_label(value: float) -> void:
 	npc_count_value.text = str(int(value))
@@ -86,7 +64,6 @@ func _update_round_duration_label(value: float) -> void:
 func _build_map_row() -> void:
 	var header := HBoxContainer.new()
 	settings_box.add_child(header)
-	_add_row_icon(header, "box")
 	var label := Label.new()
 	label.text = "Map"
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
