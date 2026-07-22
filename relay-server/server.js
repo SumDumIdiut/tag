@@ -445,6 +445,139 @@ function addFriendPair(a, b) {
   if (!friends[b].includes(a)) friends[b].push(a);
 }
 
+// ─── Party (live group queueing) ───────────────────────────────────────────
+// A player-client's own persistent WebSocket to the relay (see the
+// /relay/party/:clientId endpoint below) -- unlike every other connection in
+// this file, this is one a plain player's client keeps open just for being
+// in the online menus, not for hosting or joining a match. All state here is
+// in-memory only and inherently ephemeral -- a relay restart just means
+// everyone's party quietly resets, same as it already does for `servers`.
+const parties = new Map();       // partyId -> { id, leaderId, members: Set<clientId>, pendingInvites: Set<clientId> }
+const clientParty = new Map();   // clientId -> partyId
+const playerSockets = new Map(); // clientId -> { ws, username }
+const MAX_PARTY_SIZE = 16;
+
+function partySnapshot(party) {
+  return {
+    id: party.id,
+    leaderId: party.leaderId,
+    members: [...party.members].map(id => ({
+      clientId: id, username: (playerSockets.get(id) || {}).username || 'Player',
+    })),
+  };
+}
+
+function sendToPlayer(clientId, payload) {
+  const entry = playerSockets.get(clientId);
+  if (entry && entry.ws.readyState === entry.ws.OPEN) entry.ws.send(JSON.stringify(payload));
+}
+
+function broadcastPartyUpdate(party) {
+  const snapshot = partySnapshot(party);
+  for (const memberId of party.members) sendToPlayer(memberId, { type: 'party_updated', party: snapshot });
+}
+
+function sendPartyError(clientId, reason) {
+  sendToPlayer(clientId, { type: 'party_error', reason });
+}
+
+// Any current member (not just the leader) can invite -- kicking and
+// queue-start are leader-only (see below), but pulling in another friend is
+// deliberately not gated, same low-friction trust level as everything else
+// in this file.
+function handlePartyInvite(fromId, targetId) {
+  if (!CLIENT_ID_RE.test(targetId) || targetId === fromId) return;
+  if (!(friends[fromId] || []).includes(targetId)) { sendPartyError(fromId, 'not_friend'); return; }
+  if (!playerSockets.has(targetId)) { sendPartyError(fromId, 'offline'); return; }
+
+  let partyId = clientParty.get(fromId);
+  let party = partyId ? parties.get(partyId) : null;
+  if (!party) {
+    partyId = crypto.randomBytes(8).toString('hex');
+    party = { id: partyId, leaderId: fromId, members: new Set([fromId]), pendingInvites: new Set() };
+    parties.set(partyId, party);
+    clientParty.set(fromId, partyId);
+  }
+  if (clientParty.get(targetId) === partyId) return; // already in this party
+  if (party.members.size + party.pendingInvites.size >= MAX_PARTY_SIZE) { sendPartyError(fromId, 'party_full'); return; }
+
+  party.pendingInvites.add(targetId);
+  sendToPlayer(targetId, {
+    type: 'party_invite_received', partyId,
+    fromClientId: fromId, fromUsername: (playerSockets.get(fromId) || {}).username || 'Player',
+  });
+}
+
+function handlePartyInviteAccept(clientId, partyId) {
+  const party = parties.get(partyId);
+  if (!party || !party.pendingInvites.has(clientId)) return;
+  party.pendingInvites.delete(clientId);
+  if (party.members.size >= MAX_PARTY_SIZE) { sendPartyError(clientId, 'party_full'); return; }
+  // Only ever in one party at a time -- accepting a new invite implicitly
+  // leaves whatever party this client was already in.
+  handlePartyLeave(clientId);
+  party.members.add(clientId);
+  clientParty.set(clientId, partyId);
+  broadcastPartyUpdate(party);
+}
+
+function handlePartyInviteDecline(clientId, partyId) {
+  const party = parties.get(partyId);
+  if (!party || !party.pendingInvites.has(clientId)) return;
+  party.pendingInvites.delete(clientId);
+  sendToPlayer(party.leaderId, {
+    type: 'party_invite_declined',
+    targetUsername: (playerSockets.get(clientId) || {}).username || 'Player',
+  });
+}
+
+function handlePartyLeave(clientId) {
+  const partyId = clientParty.get(clientId);
+  if (!partyId) return;
+  const party = parties.get(partyId);
+  clientParty.delete(clientId);
+  if (!party) return;
+  party.members.delete(clientId);
+  sendToPlayer(clientId, { type: 'party_updated', party: null });
+  if (party.members.size === 0) {
+    parties.delete(partyId);
+    return;
+  }
+  if (party.leaderId === clientId) party.leaderId = [...party.members][0];
+  broadcastPartyUpdate(party);
+}
+
+function handlePartyKick(fromId, targetId) {
+  const partyId = clientParty.get(fromId);
+  const party = partyId ? parties.get(partyId) : null;
+  if (!party || party.leaderId !== fromId || targetId === fromId || !party.members.has(targetId)) return;
+  party.members.delete(targetId);
+  clientParty.delete(targetId);
+  sendToPlayer(targetId, { type: 'party_kicked' });
+  broadcastPartyUpdate(party);
+}
+
+// Pure forward -- the leader has already resolved/hosted the actual game
+// server exactly like a solo player would (see PartyManager.queue_party on
+// the client); this just tells every other member's client to connect+join
+// the same place. No party state changes here, and a follower who isn't
+// currently connected simply misses it -- party-synced queueing is a
+// live-session feature, not an offline queue.
+function handlePartyQueueStart(fromId, msg) {
+  const partyId = clientParty.get(fromId);
+  const party = partyId ? parties.get(partyId) : null;
+  if (!party || party.leaderId !== fromId) return;
+  const payload = {
+    type: 'party_connect_now',
+    serverAddress: String(msg.serverAddress || '').slice(0, 256),
+    mode: String(msg.mode || '').slice(0, 16),
+    playlist: String(msg.playlist || '').slice(0, 16),
+  };
+  for (const memberId of party.members) {
+    if (memberId !== fromId) sendToPlayer(memberId, payload);
+  }
+}
+
 const servers = new Map();       // serverId -> { id, name, maxPlayers, playerCount, createdAt, lastHeartbeat, controlSocket }
 const pendingTokens = new Map(); // token -> { playerSocket, timer }
 const rateLimitHits = new Map(); // ip -> [timestamps]
@@ -906,6 +1039,18 @@ server.on('upgrade', (req, socket, head) => {
     wss.handleUpgrade(req, socket, head, ws => handlePlayerJoin(ws, joinMatch[1]));
     return;
   }
+  // A player's own client, held open for as long as it's in the online
+  // menus -- distinct from /relay/join above (that's the actual gameplay
+  // tunnel to a specific server; this is party invite/roster/queue-together
+  // traffic, unrelated to any one match). clientId lives in the URL, same
+  // pattern as /relay/data/:token above, so there's no separate identify
+  // round-trip needed before the relay knows who's on the other end.
+  const partyMatch = pathname.match(/^\/relay\/party\/([a-f0-9-]{8,64})$/i);
+  if (partyMatch) {
+    if (!withinRateLimit(ip)) { socket.destroy(); return; }
+    wss.handleUpgrade(req, socket, head, ws => handlePlayerParty(ws, partyMatch[1]));
+    return;
+  }
   // The website's live match viewer (watch.html) -- read-only, no rate
   // limit beyond the connection itself (a spectator can't affect anything,
   // same trust level as the native client's own spectate path).
@@ -1042,6 +1187,45 @@ function handlePlayerJoin(ws, serverId) {
     }
   });
   s.controlSocket.send(JSON.stringify({ type: 'connect_request', token }));
+}
+
+function handlePlayerParty(ws, clientId) {
+  playerSockets.set(clientId, { ws, username: 'Player' });
+  // A client re-connecting (brief drop, page refresh-equivalent) picks its
+  // current party state back up immediately rather than starting blank.
+  const existingPartyId = clientParty.get(clientId);
+  if (existingPartyId && parties.has(existingPartyId)) {
+    sendToPlayer(clientId, { type: 'party_updated', party: partySnapshot(parties.get(existingPartyId)) });
+  }
+
+  ws.on('message', raw => {
+    let msg;
+    try { msg = JSON.parse(raw.toString()); } catch { return; }
+    if (msg.type === 'player_identify') {
+      const entry = playerSockets.get(clientId);
+      if (entry) entry.username = sanitizeName(msg.username);
+    } else if (msg.type === 'party_invite') {
+      handlePartyInvite(clientId, String(msg.targetClientId || ''));
+    } else if (msg.type === 'party_invite_accept') {
+      handlePartyInviteAccept(clientId, String(msg.partyId || ''));
+    } else if (msg.type === 'party_invite_decline') {
+      handlePartyInviteDecline(clientId, String(msg.partyId || ''));
+    } else if (msg.type === 'party_leave') {
+      handlePartyLeave(clientId);
+    } else if (msg.type === 'party_kick') {
+      handlePartyKick(clientId, String(msg.targetClientId || ''));
+    } else if (msg.type === 'party_queue_start') {
+      handlePartyQueueStart(clientId, msg);
+    }
+  });
+
+  ws.on('close', () => {
+    const entry = playerSockets.get(clientId);
+    if (entry && entry.ws === ws) {
+      playerSockets.delete(clientId);
+      handlePartyLeave(clientId);
+    }
+  });
 }
 
 function handleHostData(ws, token) {
