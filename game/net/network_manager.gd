@@ -424,6 +424,11 @@ func _join_lobby_internal(sender: int, lobby_id: int) -> void:
 ## exact headcount, mirroring how _join_ranked_lobby already auto-starts
 ## ranked. A "Free-for-all" casual lobby (empty playlist, today's default)
 ## is untouched -- still manual Start, any headcount, via _server_start_match.
+##
+## Same bot-fill as ranked below (_on_bot_fill_timeout is playlist-agnostic
+## already -- it just reads whatever lobby it's given) -- without this, a
+## casual queue for anything but the single busiest playlist would just
+## wait forever for real players who never show up.
 func _maybe_autostart_playlist_lobby(lobby_id: int) -> void:
 	if not _lobbies.has(lobby_id):
 		return
@@ -433,6 +438,9 @@ func _maybe_autostart_playlist_lobby(lobby_id: int) -> void:
 		return
 	if lobby.members.size() >= PlaylistCatalog.total_players(lobby_playlist):
 		_begin_match_sequence(lobby_id, false)
+	elif not lobby.get("bot_fill_scheduled", false):
+		lobby["bot_fill_scheduled"] = true
+		get_tree().create_timer(BOT_FILL_WAIT_SEC).timeout.connect(_on_bot_fill_timeout.bind(lobby_id))
 
 @rpc("any_peer", "reliable")
 func _server_leave_lobby() -> void:
@@ -589,11 +597,13 @@ func _join_ranked_lobby(sender: int) -> void:
 		lobby["bot_fill_scheduled"] = true
 		get_tree().create_timer(BOT_FILL_WAIT_SEC).timeout.connect(_on_bot_fill_timeout.bind(_ranked_lobby_id))
 
-## Fires BOT_FILL_WAIT_SEC after a real player joins a ranked playlist lobby
-## that didn't immediately reach full headcount -- tops the remaining slots
-## up with bots (see ServerMatch/npc.gd) scaled to whoever's actually
-## queued's own elo, then starts the match through the exact same
-## _begin_match_sequence() path a naturally-full lobby uses. Bots are never
+## Fires BOT_FILL_WAIT_SEC after a real player joins a playlist lobby
+## (ranked or casual) that didn't immediately reach full headcount -- tops
+## the remaining slots up with bots (see ServerMatch/npc.gd) scaled to
+## whoever's actually queued's own elo, then starts the match through the
+## exact same _begin_match_sequence() path a naturally-full lobby uses
+## (ranked/casual determined by the lobby's own "ranked" flag, so this one
+## function serves both callers unchanged). Bots are never
 ## added to `lobby.members` itself (that dict's keys double as "who to RPC
 ## to" everywhere else in this file) -- they ride along separately via
 ## `lobby["bots"]`, merged into the roster only once _start_match_for_lobby
@@ -626,7 +636,7 @@ func _on_bot_fill_timeout(lobby_id: int) -> void:
 			"is_bot": true, "skill_level": skill_level,
 		}
 	lobby["bots"] = bots
-	_begin_match_sequence(lobby_id, true)
+	_begin_match_sequence(lobby_id, lobby.get("ranked", false))
 
 ## Bots get harder as the real players queueing for them are better --
 ## averages every real member's own elo for this lobby's playlist (same
