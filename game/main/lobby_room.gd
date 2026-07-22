@@ -48,6 +48,11 @@ func _ready() -> void:
 func _build_share_address_panel() -> void:
 	if NetworkManager.hosted_private_address.is_empty():
 		return
+	# A party's private match brings its members in automatically (see
+	# PartyManager.queue_party()/casual_matchmaker.gd) -- nothing to
+	# manually share, matching "no settings at all" for that case.
+	if NetworkManager.current_lobby.get("is_party_private", false):
+		return
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_ONLINE))
 	var box := VBoxContainer.new()
@@ -143,14 +148,25 @@ func _on_lobby_state_updated(lobby: Dictionary) -> void:
 		return
 	lobby_name_label.text = lobby.name
 	var lobby_playlist: String = lobby.get("playlist", "")
+	var is_party_private: bool = lobby.get("is_party_private", false)
 	# Any playlist lobby (team or FFA-headcount) auto-starts on fill server-
 	# side (see network_manager.gd's _maybe_autostart_playlist_lobby) -- no
 	# manual Start for either. Ready is purely cosmetic even for the
 	# unrestricted "Free-for-all" case (server never gates Start on it), but
 	# hiding it too for playlist lobbies avoids a toggle that does nothing.
-	start_button.visible = lobby.host_peer == NetworkManager.my_peer_id and lobby_playlist.is_empty()
-	ready_button.visible = lobby_playlist.is_empty()
+	# A party's private match (is_party_private) auto-starts below the same
+	# way -- "no settings at all" means no manual Start/Ready for it either.
+	start_button.visible = lobby.host_peer == NetworkManager.my_peer_id and lobby_playlist.is_empty() and not is_party_private
+	ready_button.visible = lobby_playlist.is_empty() and not is_party_private
 	_map_vote_popup.set_votes(lobby.get("map_votes", {}))
+
+	# The leader's own client drives this -- same _server_start_match RPC
+	# and host-only check a manual Start press uses, just triggered the
+	# instant the whole party (not just this one connection) has arrived
+	# rather than waiting on a button. Safe to call more than once as more
+	# members trickle in: _server_start_match no-ops once lobby.in_match.
+	if is_party_private and lobby.host_peer == NetworkManager.my_peer_id and lobby.members.size() >= PartyManager.party_size():
+		NetworkManager.start_match()
 
 	if PlaylistCatalog.is_team_mode(lobby_playlist):
 		_ensure_team_view(lobby_playlist)

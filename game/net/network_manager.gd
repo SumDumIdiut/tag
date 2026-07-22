@@ -82,6 +82,7 @@ var _peer_username := {} # peer_id -> String
 var _peer_color_id := {} # peer_id -> String, auto-assigned (see PlayerColors.id_for_peer)
 var _peer_client_id := {} # peer_id -> String, the anonymous ranked/friends identity -- server-side only, never broadcast to other clients
 var _peer_party_id := {} # peer_id -> String, "" if not in a party -- see PartyManager, purely a grouping key for team assignment below
+var _peer_party_size := {} # peer_id -> int, 1 if not in a party -- see _create_lobby_internal's is_party_private sizing
 var _peer_lobby := {}    # peer_id -> lobby_id
 var _matches := {}       # lobby_id -> ServerMatch
 var _spectators := {}    # lobby_id -> Array[peer_id], read-only observers of an in-progress match
@@ -223,7 +224,7 @@ func _on_connected_to_server() -> void:
 		_pending_as_spectator = false
 		rpc_id(1, "_server_register_spectator")
 	else:
-		rpc_id(1, "_server_register_player", username, PlayerIdentity.client_id, PartyManager.current_party.get("id", ""))
+		rpc_id(1, "_server_register_player", username, PlayerIdentity.client_id, PartyManager.current_party.get("id", ""), PartyManager.party_size())
 	connected_to_server.emit()
 
 func _on_connection_failed() -> void:
@@ -239,6 +240,7 @@ func _on_peer_disconnected(id: int) -> void:
 	_peer_color_id.erase(id)
 	_peer_client_id.erase(id)
 	_peer_party_id.erase(id)
+	_peer_party_size.erase(id)
 	var lobby_id: int = _peer_lobby.get(id, -1)
 	if lobby_id != -1:
 		_remove_peer_from_lobby(id, lobby_id)
@@ -251,7 +253,7 @@ func _on_peer_disconnected(id: int) -> void:
 # ==================== Server-side RPC endpoints (client -> server) ====================
 
 @rpc("any_peer", "reliable")
-func _server_register_player(display_name: String, client_id: String = "", party_id: String = "") -> void:
+func _server_register_player(display_name: String, client_id: String = "", party_id: String = "", party_size: int = 1) -> void:
 	if not is_server:
 		return
 	var sender := multiplayer.get_remote_sender_id()
@@ -261,6 +263,7 @@ func _server_register_player(display_name: String, client_id: String = "", party
 	_peer_color_id[sender] = PlayerColors.id_for_peer(sender)
 	_peer_client_id[sender] = client_id
 	_peer_party_id[sender] = party_id
+	_peer_party_size[sender] = party_size
 	if is_ranked_server:
 		_join_ranked_lobby(sender)
 	else:
@@ -376,6 +379,16 @@ func _create_lobby_internal(sender: int, lobby_name: String, max_players: int, p
 	var effective_max := clampi(max_players, 2, MAX_LOBBY_PLAYERS)
 	if not p_playlist_id.is_empty():
 		effective_max = PlaylistCatalog.total_players(p_playlist_id)
+	# A party leader going Private skips setup entirely (see lobby_room.gd/
+	# _server_start_match) -- solo/non-party private hosts keep today's
+	# manual Start + address-share flow unchanged.
+	var is_party_private: bool = p_playlist_id.is_empty() and not String(_peer_party_id.get(sender, "")).is_empty()
+	if is_party_private:
+		# A private lobby otherwise caps at MAX_LOBBY_PLAYERS like any other
+		# quick-joined one, but a party can be bigger than that (up to
+		# PartyManager's own 16-member cap) -- size to fit the whole party
+		# rather than splitting it across two lobbies on the same server.
+		effective_max = maxi(effective_max, _peer_party_size.get(sender, 1))
 	_lobbies[id] = {
 		"id": id,
 		"name": clean_name,
@@ -386,6 +399,7 @@ func _create_lobby_internal(sender: int, lobby_name: String, max_players: int, p
 		"playlist": p_playlist_id,
 		"map_votes": {},
 		"voting_open": false,
+		"is_party_private": is_party_private,
 	}
 	_peer_lobby[sender] = id
 	_broadcast_lobby_list()
@@ -536,7 +550,7 @@ func _server_start_match() -> void:
 	# server-side too rather than trusting the client didn't send it anyway.
 	if lobby.host_peer != sender or lobby.in_match or lobby.members.is_empty() or not lobby.get("playlist", "").is_empty():
 		return
-	_begin_match_sequence(lobby_id, false)
+	_begin_match_sequence(lobby_id, false, lobby.get("is_party_private", false))
 
 ## A ranked server has no manual lobby-naming/browsing/Ready/Start step --
 ## everyone who connects is auto-added to the one reserved ranked lobby
@@ -669,11 +683,20 @@ func _bot_name(index: int) -> String:
 ## _join_ranked_lobby's existing in_match checks) and broadcasts a
 ## vote-start to every member, then waits MAP_VOTE_DURATION_SEC before
 ## resolving the winner and starting a short countdown.
-func _begin_match_sequence(lobby_id: int, ranked: bool) -> void:
+##
+## `skip_setup` bypasses all of that -- a party going Private wants "no
+## settings at all," so this goes straight to the built-in arena with no map
+## vote and no countdown (see _server_start_match/_create_lobby_internal's
+## is_party_private).
+func _begin_match_sequence(lobby_id: int, ranked: bool, skip_setup: bool = false) -> void:
 	if not _lobbies.has(lobby_id):
 		return
 	var lobby: Dictionary = _lobbies[lobby_id]
 	lobby.in_match = true
+	if skip_setup:
+		_broadcast_lobby_list()
+		_start_match_for_lobby(lobby_id, ranked, "")
+		return
 	lobby["voting_open"] = true
 	_broadcast_lobby_list()
 	for peer_id in lobby.members.keys():
