@@ -16,9 +16,11 @@ const NET_GAME_SCENE := preload("res://main/net_game.tscn")
 const UIStyle := preload("res://ui/ui_style.gd")
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 const TeamLobbyViewScene := preload("res://ui/team_lobby_view.gd")
+const CircleRevealViewScene := preload("res://ui/circle_reveal_view.gd")
 const CharacterPreviewScene := preload("res://ui/character_preview.gd")
 const INTRO_DURATION_SEC := 2.5
 const VS_INTRO_DURATION_SEC := 4.0 # longer -- there's an entrance animation to let play out
+const CIRCLE_REVEAL_DURATION_SEC := 4.0
 
 @onready var roster_box: VBoxContainer = $VBox/RosterPanel/RosterBox
 @onready var countdown_label: Label = $VBox/CountdownLabel
@@ -32,6 +34,7 @@ var _playlist_id := ""
 var _time_left := INTRO_DURATION_SEC
 var _proceeded := false
 var _vs_mode := false
+var _circle_mode := false
 
 func setup(my_id: int, roster: Dictionary, level_id: String = "", ranked: bool = false, playlist_id: String = "") -> void:
 	_my_id = my_id
@@ -48,12 +51,21 @@ func _ready() -> void:
 		_vs_mode = PlaylistCatalog.team_count(_playlist_id) == 2
 	else:
 		_vs_mode = _ranked and _roster.size() == 2
+	# Private matches are never ranked, and every casual/ranked playlist
+	# caps at 4 total players -- so ">4 and not ranked" can only ever be a
+	# private match, no separate "is this a party match" flag needed.
+	_circle_mode = not _ranked and _roster.size() > 4
 
 	if _vs_mode:
 		_time_left = VS_INTRO_DURATION_SEC
 		UIStyle.add_background(self, "match_intro_ranked" if _ranked else "match_intro")
 		$VBox.visible = false
 		_build_vs_layout()
+	elif _circle_mode:
+		_time_left = CIRCLE_REVEAL_DURATION_SEC
+		UIStyle.add_background(self, "match_intro")
+		$VBox.visible = false
+		_build_circle_layout()
 	else:
 		UIStyle.add_background(self, "match_intro")
 		$VBox/RosterPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_NEUTRAL))
@@ -95,6 +107,16 @@ func _proceed() -> void:
 	get_tree().root.add_child(scene)
 	get_tree().current_scene.queue_free()
 	get_tree().current_scene = scene
+
+# ─── Circle reveal (private match, >4 players) ─────────────────────────────
+
+func _build_circle_layout() -> void:
+	var circle := CircleRevealViewScene.new()
+	circle.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	circle.my_id = _my_id
+	add_child(circle)
+	circle.set_roster(_roster)
+	countdown_label = circle.countdown_label
 
 # ─── 2-sided VS reveal (1v1 / 2v2, ranked or casual) ───────────────────────
 
