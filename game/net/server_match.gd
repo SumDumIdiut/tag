@@ -11,6 +11,7 @@ class_name ServerMatch
 # time, in exchange for the render never needing a correction/snap.
 
 const PLAYER_SCENE := preload("res://player/player.tscn")
+const NPC_SCENE := preload("res://npc/npc.tscn")
 const ARENA_SCENE := preload("res://levels/tag_arena.tscn")
 const LevelData := preload("res://levels/level_data.gd")
 const LEVEL_DATA_URL := "https://codecade.co.za/tag/api/levels/data/%s"
@@ -38,6 +39,14 @@ var _usernames := {} # peer_id -> String
 var _color_ids := {} # peer_id -> String
 var _client_ids := {} # peer_id -> String, server-side only -- never sent to clients
 var _teams := {} # peer_id -> int, -1 if no team-mode playlist is active for this match
+## Backfilled participants (see NetworkManager._on_bot_fill_timeout) --
+## always a negative synthetic id, never a real connected peer. Keyed the
+## same as every other peer_id -> X dict here so bots flow through the
+## exact same roster/ranking/state-summary code real players do; only the
+## couple of places that talk to an actual network connection (input
+## application, the per-tick state-push RPC) need to check this and skip.
+var _is_bot := {} # peer_id -> bool
+var _skill_levels := {} # peer_id -> int, bots only (see npc.gd's skill_level)
 var _players := {}   # peer_id -> Player
 var _coalesced_input := {} # peer_id -> Dictionary, merged since the last tick
 var _tag_mode: TagMode
@@ -73,6 +82,8 @@ func _init(network_manager: Node, p_lobby_id: int, members: Dictionary, p_ranked
 		_color_ids[peer_id] = members[peer_id].get("color_id", PlayerColors.DEFAULT_ID)
 		_client_ids[peer_id] = members[peer_id].get("client_id", "")
 		_teams[peer_id] = members[peer_id].get("team", -1)
+		_is_bot[peer_id] = members[peer_id].get("is_bot", false)
+		_skill_levels[peer_id] = members[peer_id].get("skill_level", 3)
 
 func _ready() -> void:
 	var level_id: String = _level_id_override if not _level_id_override.is_empty() else _network_manager.level_id
@@ -110,10 +121,23 @@ func _finish_setup() -> void:
 	var spawn_points := _arena.get_node("SpawnPoints").get_children()
 	spawn_points.shuffle()
 
+	# Built once per match regardless of whether any bots actually joined --
+	# cheap, and degrades gracefully to direct steering on a level with no
+	# ai_waypoint markers (see WaypointGraph.next_hop), same as local play.
+	var waypoint_graph := WaypointGraph.new()
+	waypoint_graph.build(get_tree().get_nodes_in_group("ai_waypoint"))
+
 	var participants: Array = []
 	var i := 0
 	for peer_id in _usernames.keys():
-		var p: Player = PLAYER_SCENE.instantiate()
+		var p: Player
+		if _is_bot.get(peer_id, false):
+			var npc: NPC = NPC_SCENE.instantiate()
+			npc.skill_level = _skill_levels.get(peer_id, 3)
+			npc.waypoint_graph = waypoint_graph
+			p = npc
+		else:
+			p = PLAYER_SCENE.instantiate()
 		add_child(p)
 		p.global_position = spawn_points[i % spawn_points.size()].global_position
 		p.team = _teams.get(peer_id, -1)
@@ -126,11 +150,18 @@ func _finish_setup() -> void:
 	_tag_mode.setup(participants, randi() % participants.size(), ranked, ROUND_DURATION_SEC)
 	if ranked:
 		_tag_mode.round_ended.connect(_on_round_ended)
+	# NPC needs tag_mode to actually act (see npc.gd's _physics_process) --
+	# only settable now that _tag_mode exists, which needs `participants`
+	# fully built first, hence the separate pass instead of setting it in
+	# the spawn loop above.
+	for peer_id in _usernames.keys():
+		if _is_bot.get(peer_id, false):
+			(_players[peer_id] as NPC).tag_mode = _tag_mode
 
 	for peer_id in _usernames.keys():
 		roster[peer_id] = {
 			"username": _usernames[peer_id], "color_id": _color_ids[peer_id],
-			"team": _teams.get(peer_id, -1),
+			"team": _teams.get(peer_id, -1), "is_bot": _is_bot.get(peer_id, false),
 		}
 	# Simulation is already ticking (players spawned, TagMode running) by this
 	# point -- only the client-facing "match started" notice waits on this, so
@@ -295,6 +326,13 @@ func _physics_process(delta: float) -> void:
 		return
 	_tick += 1
 	for peer_id in _players.keys():
+		if _is_bot.get(peer_id, false):
+			# NPC drives its own movement via its own inherited
+			# _physics_process (see npc.gd) -- it's a real node in this
+			# scene tree, so Godot already calls that automatically every
+			# physics frame. Calling apply_input() again here too would
+			# double-apply input on top of what the NPC just fed itself.
+			continue
 		var input: Dictionary = _coalesced_input.get(peer_id, {})
 		_players[peer_id].apply_input(input, delta)
 		# Edge-triggered flags mean "this was just pressed" and must fire
@@ -330,6 +368,8 @@ func _physics_process(delta: float) -> void:
 			"is_it": _tag_mode.is_it(p),
 		}
 	for peer_id in _players.keys():
+		if _is_bot.get(peer_id, false):
+			continue # no real connection behind a bot's synthetic id to push an RPC to
 		_network_manager.push_match_state(peer_id, _tick, states)
 	# Read-only watchers (see NetworkManager._server_register_spectator) get
 	# the exact same states dict, unmodified -- there's no receive_input path
