@@ -31,6 +31,19 @@ func _ready() -> void:
 	back_button.pressed.connect(_on_back_pressed)
 	_build_friends_bar()
 
+	PartyManager.party_updated.connect(_update_party_restrictions)
+	_update_party_restrictions(PartyManager.current_party)
+
+## No playlist supports a party bigger than 2 (only 2v2 has a real team to
+## share, and that caps at 2 per side) -- a party of 3+ has nowhere to go in
+## Casual/Ranked at all, only Private. See PlaylistCatalog/ranked_playlist_
+## select.gd's own matching restriction for the finer-grained per-playlist
+## version of this same rule.
+func _update_party_restrictions(_party: Dictionary) -> void:
+	var blocked := PartyManager.party_size() > 2
+	UIStyle.set_disabled_overlay(casual_button, blocked)
+	UIStyle.set_disabled_overlay(ranked_button, blocked)
+
 func _style_bar(btn: Button, color: Color, label_text: String) -> void:
 	btn.text = label_text
 	UIStyle.style_button(btn, color, 18)

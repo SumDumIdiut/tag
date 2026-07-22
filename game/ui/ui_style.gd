@@ -157,6 +157,38 @@ static func _on_hover(btn: Button, entered: bool) -> void:
 	tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tween.tween_property(btn, "scale", target, 0.15)
 
+## A grey scrim + plain "X" over an existing button, blocking clicks through
+## to it -- style_button()'s chrome look has no disabled variant of its own
+## to fall back on (Godot's default disabled stylebox would look completely
+## out of place next to it), so this is a small standalone overlay instead.
+## Idempotent and toggleable: safe to call every frame/refresh with whatever
+## the current disabled state should be.
+static func set_disabled_overlay(btn: Button, is_disabled: bool) -> void:
+	var overlay: Control = btn.get_node_or_null("_DisabledOverlay")
+	if is_disabled and overlay == null:
+		overlay = Control.new()
+		overlay.name = "_DisabledOverlay"
+		overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+		overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		btn.add_child(overlay)
+		var scrim := ColorRect.new()
+		scrim.color = Color(0.05, 0.05, 0.07, 0.75)
+		scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		overlay.add_child(scrim)
+		var x_label := Label.new()
+		x_label.text = "X"
+		x_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		x_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		x_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		x_label.add_theme_font_size_override("font_size", 28)
+		x_label.add_theme_color_override("font_color", Color(0.75, 0.78, 0.85))
+		x_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		overlay.add_child(x_label)
+	elif not is_disabled and overlay != null:
+		overlay.queue_free()
+	btn.disabled = is_disabled
+
 ## Recolors an HSlider's default light-gray/white track and grabber (jarring
 ## against the dark theme) to match the rest of the UI -- a dark groove, a
 ## colored fill up to the current value, and a small grabber dot instead of

@@ -6,13 +6,25 @@ const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 @onready var playlist_grid: GridContainer = $VBox/PlaylistGrid
 @onready var back_button: Button = $VBox/BackButton
 
+var _cards := {} # playlist_id -> Button
+
 func _ready() -> void:
 	UIStyle.add_background(self, "ranked_queue")
 	UIStyle.style_back_button(back_button)
 	back_button.pressed.connect(_on_back_pressed)
 
 	for id in PlaylistCatalog.PLAYLIST_ORDER:
-		playlist_grid.add_child(_build_card(id))
+		var card := _build_card(id)
+		_cards[id] = card
+		playlist_grid.add_child(card)
+
+	PartyManager.party_updated.connect(_update_restrictions)
+	_update_restrictions(PartyManager.current_party)
+
+func _update_restrictions(_party: Dictionary) -> void:
+	var size := PartyManager.party_size()
+	for id in _cards.keys():
+		UIStyle.set_disabled_overlay(_cards[id], not PlaylistCatalog.fits_party(id, size))
 
 func _build_card(playlist_id: String) -> Button:
 	var btn := Button.new()

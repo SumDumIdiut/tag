@@ -33,6 +33,19 @@ static func total_players(playlist_id: String) -> int:
 static func is_team_mode(playlist_id: String) -> bool:
 	return team_size(playlist_id) > 1
 
+## Whether a party of `size` people could actually queue this playlist
+## *together* -- a free-for-all playlist (team_size 1) has no team to share
+## at all, so any real party (2+) would just end up fighting each other, not
+## playing together; a team playlist only fits a party up to its own
+## team_size. Used by both Ranked's and Casual's playlist pickers (and the
+## top-level Casual/Ranked bars, which use the size-2 case as their own
+## coarser "any party this big has nowhere at all to go" check) to grey out
+## whichever cards a given party doesn't fit.
+static func fits_party(playlist_id: String, size: int) -> bool:
+	if size <= 1:
+		return true
+	return size <= team_size(playlist_id) and is_team_mode(playlist_id)
+
 static func display_name(playlist_id: String) -> String:
 	return String(PLAYLISTS.get(playlist_id, {}).get("name", playlist_id))
 
