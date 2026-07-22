@@ -155,7 +155,8 @@ func _on_lobby_state_updated(lobby: Dictionary) -> void:
 	# unrestricted "Free-for-all" case (server never gates Start on it), but
 	# hiding it too for playlist lobbies avoids a toggle that does nothing.
 	# A party's private match (is_party_private) auto-starts below the same
-	# way -- "no settings at all" means no manual Start/Ready for it either.
+	# way -- no manual Start/Ready for it either, though it still gets the
+	# same map-vote pop-up (below) as any other match before the reveal.
 	start_button.visible = lobby.host_peer == NetworkManager.my_peer_id and lobby_playlist.is_empty() and not is_party_private
 	ready_button.visible = lobby_playlist.is_empty() and not is_party_private
 	_map_vote_popup.set_votes(lobby.get("map_votes", {}))

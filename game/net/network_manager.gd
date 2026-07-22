@@ -379,9 +379,10 @@ func _create_lobby_internal(sender: int, lobby_name: String, max_players: int, p
 	var effective_max := clampi(max_players, 2, MAX_LOBBY_PLAYERS)
 	if not p_playlist_id.is_empty():
 		effective_max = PlaylistCatalog.total_players(p_playlist_id)
-	# A party leader going Private skips setup entirely (see lobby_room.gd/
-	# _server_start_match) -- solo/non-party private hosts keep today's
-	# manual Start + address-share flow unchanged.
+	# A party leader going Private auto-starts once the party's fully in and
+	# skips the manual Start button/address-share panel (see lobby_room.gd)
+	# -- solo/non-party private hosts keep today's manual Start flow
+	# unchanged. Both still get the same map-vote pop-up as any other match.
 	var is_party_private: bool = p_playlist_id.is_empty() and not String(_peer_party_id.get(sender, "")).is_empty()
 	if is_party_private:
 		# A private lobby otherwise caps at MAX_LOBBY_PLAYERS like any other
@@ -550,7 +551,7 @@ func _server_start_match() -> void:
 	# server-side too rather than trusting the client didn't send it anyway.
 	if lobby.host_peer != sender or lobby.in_match or lobby.members.is_empty() or not lobby.get("playlist", "").is_empty():
 		return
-	_begin_match_sequence(lobby_id, false, lobby.get("is_party_private", false))
+	_begin_match_sequence(lobby_id, false)
 
 ## A ranked server has no manual lobby-naming/browsing/Ready/Start step --
 ## everyone who connects is auto-added to the one reserved ranked lobby
@@ -682,21 +683,16 @@ func _bot_name(index: int) -> String:
 ## _lobby_summaries() and blocks new joins via _join_lobby_internal/
 ## _join_ranked_lobby's existing in_match checks) and broadcasts a
 ## vote-start to every member, then waits MAP_VOTE_DURATION_SEC before
-## resolving the winner and starting a short countdown.
-##
-## `skip_setup` bypasses all of that -- a party going Private wants "no
-## settings at all," so this goes straight to the built-in arena with no map
-## vote and no countdown (see _server_start_match/_create_lobby_internal's
-## is_party_private).
-func _begin_match_sequence(lobby_id: int, ranked: bool, skip_setup: bool = false) -> void:
+## resolving the winner and starting a short countdown. Every match gets
+## this, including a party's auto-started Private match (is_party_private
+## still skips the manual Start button/share-address panel -- see
+## lobby_room.gd -- just not the map picker itself, which runs before the
+## circle reveal like any other match's map vote runs before its own intro).
+func _begin_match_sequence(lobby_id: int, ranked: bool) -> void:
 	if not _lobbies.has(lobby_id):
 		return
 	var lobby: Dictionary = _lobbies[lobby_id]
 	lobby.in_match = true
-	if skip_setup:
-		_broadcast_lobby_list()
-		_start_match_for_lobby(lobby_id, ranked, "")
-		return
 	lobby["voting_open"] = true
 	_broadcast_lobby_list()
 	for peer_id in lobby.members.keys():
