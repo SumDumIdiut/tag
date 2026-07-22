@@ -14,6 +14,10 @@ var selected_local_map: String = LocalMapCatalog.CLASSIC_ID
 # Set by ranked_playlist_select.gd right before change_scene_to_file to
 # ranked_queue.tscn -- see PlaylistCatalog for what this id resolves to.
 var selected_ranked_playlist: String = PlaylistCatalog.PLAYLIST_ORDER[0]
+# Same as selected_ranked_playlist above, just for casual_playlist_select.gd
+# -> casual_queue.tscn -- kept as a separate var since picking a casual
+# playlist shouldn't silently change what Ranked queues for next, or vice versa.
+var selected_casual_playlist: String = PlaylistCatalog.PLAYLIST_ORDER[0]
 
 const USERNAME_PATH := "user://username.txt"
 const DEFAULT_USERNAME := "Player"

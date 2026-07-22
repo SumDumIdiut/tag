@@ -71,7 +71,7 @@ func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")
 
 func _on_casual_pressed() -> void:
-	_start_matchmaking(false)
+	get_tree().change_scene_to_file("res://main/casual_playlist_select.tscn")
 
 ## Private always hosts a fresh, unlisted server rather than offering a
 ## host-or-join choice -- joining someone else's private match happens via
