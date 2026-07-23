@@ -8,19 +8,26 @@ extends Control
 # Any 2-sided playlist (1v1, 2v2 -- ranked or casual) gets the animated
 # "VS" reveal via the shared TeamLobbyView (see ui/team_lobby_view.gd,
 # reused from lobby_room.gd's live waiting-room view -- this is the same
-# component just already-full and playing its reveal animation once).
-# 3+-way FFA playlists (1v1v1, 1v1v1v1) and anything with no playlist info
-# keep the plain roster list below.
+# component just already-full and playing its reveal animation once). 1v1v1
+# gets a 3-column reveal (see ui/columns_reveal_view.gd), 1v1v1v1 a 4-corner
+# one (see ui/corners_reveal_view.gd). A private match with no playlist info
+# and >4 players gets the circular reveal (ui/circle_reveal_view.gd);
+# anything else (an older/undifferentiated ranked match, or a small private
+# party) keeps the plain roster list below.
 
 const NET_GAME_SCENE := preload("res://main/net_game.tscn")
 const UIStyle := preload("res://ui/ui_style.gd")
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 const TeamLobbyViewScene := preload("res://ui/team_lobby_view.gd")
 const CircleRevealViewScene := preload("res://ui/circle_reveal_view.gd")
+const ColumnsRevealViewScene := preload("res://ui/columns_reveal_view.gd")
+const CornersRevealViewScene := preload("res://ui/corners_reveal_view.gd")
 const CharacterPreviewScene := preload("res://ui/character_preview.gd")
 const INTRO_DURATION_SEC := 2.5
 const VS_INTRO_DURATION_SEC := 4.0 # longer -- there's an entrance animation to let play out
 const CIRCLE_REVEAL_DURATION_SEC := 4.0
+const COLUMNS_REVEAL_DURATION_SEC := 4.0
+const CORNERS_REVEAL_DURATION_SEC := 4.0
 
 @onready var roster_box: VBoxContainer = $VBox/RosterPanel/RosterBox
 @onready var countdown_label: Label = $VBox/CountdownLabel
@@ -35,6 +42,8 @@ var _time_left := INTRO_DURATION_SEC
 var _proceeded := false
 var _vs_mode := false
 var _circle_mode := false
+var _columns_mode := false
+var _corners_mode := false
 
 func setup(my_id: int, roster: Dictionary, level_id: String = "", ranked: bool = false, playlist_id: String = "") -> void:
 	_my_id = my_id
@@ -45,10 +54,13 @@ func setup(my_id: int, roster: Dictionary, level_id: String = "", ranked: bool =
 
 func _ready() -> void:
 	# A playlist id tells us exactly how many sides there are (team_count);
-	# without one (an older/undifferentiated ranked match), fall back to
-	# the original heuristic -- ranked and exactly 2 in the roster.
+	# without one (an older/undifferentiated ranked match, or a private
+	# party match, which never carries one), fall back to the original
+	# heuristic -- ranked and exactly 2 in the roster.
 	if not _playlist_id.is_empty():
 		_vs_mode = PlaylistCatalog.team_count(_playlist_id) == 2
+		_columns_mode = PlaylistCatalog.team_count(_playlist_id) == 3
+		_corners_mode = PlaylistCatalog.team_count(_playlist_id) == 4
 	else:
 		_vs_mode = _ranked and _roster.size() == 2
 	# Private matches are never ranked, and every casual/ranked playlist
@@ -61,6 +73,16 @@ func _ready() -> void:
 		UIStyle.add_background(self, "match_intro_ranked" if _ranked else "match_intro")
 		$VBox.visible = false
 		_build_vs_layout()
+	elif _columns_mode:
+		_time_left = COLUMNS_REVEAL_DURATION_SEC
+		UIStyle.add_background(self, "match_intro_ranked" if _ranked else "match_intro")
+		$VBox.visible = false
+		_build_columns_layout()
+	elif _corners_mode:
+		_time_left = CORNERS_REVEAL_DURATION_SEC
+		UIStyle.add_background(self, "match_intro_ranked" if _ranked else "match_intro")
+		$VBox.visible = false
+		_build_corners_layout()
 	elif _circle_mode:
 		_time_left = CIRCLE_REVEAL_DURATION_SEC
 		UIStyle.add_background(self, "match_intro")
@@ -117,6 +139,26 @@ func _build_circle_layout() -> void:
 	add_child(circle)
 	circle.set_roster(_roster)
 	countdown_label = circle.countdown_label
+
+# ─── 3-column reveal (1v1v1, ranked or casual) ─────────────────────────────
+
+func _build_columns_layout() -> void:
+	var columns := ColumnsRevealViewScene.new()
+	columns.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	columns.my_id = _my_id
+	add_child(columns)
+	columns.set_roster(_roster)
+	countdown_label = columns.countdown_label
+
+# ─── 4-corner reveal (1v1v1v1, ranked or casual) ───────────────────────────
+
+func _build_corners_layout() -> void:
+	var corners := CornersRevealViewScene.new()
+	corners.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	corners.my_id = _my_id
+	add_child(corners)
+	corners.set_roster(_roster)
+	countdown_label = corners.countdown_label
 
 # ─── 2-sided VS reveal (1v1 / 2v2, ranked or casual) ───────────────────────
 

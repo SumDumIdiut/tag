@@ -49,6 +49,37 @@ static func fits_party(playlist_id: String, size: int) -> bool:
 static func display_name(playlist_id: String) -> String:
 	return String(PLAYLISTS.get(playlist_id, {}).get("name", playlist_id))
 
+## Fixed slot colors for the 4 official playlists -- 1v1 is red vs. blue,
+## 2v2 is red team vs. blue team, 1v1v1 adds yellow for the third side,
+## 1v1v1v1 adds green for the fourth. Index is a "side" index: for a
+## team-mode playlist (2v2) that's the actual assigned team (so a whole side
+## shares one color); for FFA (team_size 1, where "team" is never assigned
+## at all -- see network_manager.gd's _start_match_for_lobby, since tag_mode
+## treats team=-1 as "never matches itself" and every FFA player needs that)
+## it's just queue order instead.
+const SLOT_COLORS := ["red", "blue", "yellow", "green"]
+
+## peer_id -> color_id for every entry in `members`, for one of the 4
+## official playlists (see PLAYLISTS) -- empty for anything else (the legacy
+## undifferentiated ranked pool, or a private match with no playlist_id at
+## all), since a fixed 4-slot scheme has no sensible extension to those and
+## callers should keep whatever per-connection color a peer already had
+## instead.
+static func slot_colors_for(playlist_id: String, members: Dictionary) -> Dictionary:
+	var result := {}
+	if not PLAYLISTS.has(playlist_id):
+		return result
+	if is_team_mode(playlist_id):
+		for peer_id in members.keys():
+			var team: int = int(members[peer_id].get("team", 0))
+			result[peer_id] = SLOT_COLORS[team % SLOT_COLORS.size()]
+	else:
+		var i := 0
+		for peer_id in members.keys():
+			result[peer_id] = SLOT_COLORS[i % SLOT_COLORS.size()]
+			i += 1
+	return result
+
 ## Round-robin by join order -- a pure, deterministic function of already-
 ## synced data (the lobby's `members` dict, which every client already
 ## receives in full via _send_lobby_state and which GDScript keeps in
