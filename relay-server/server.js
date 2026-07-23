@@ -644,6 +644,25 @@ app.get('/api/servers/:id/state', (req, res) => {
   res.json(s.matchState || { players: [], timeRemaining: 0, arenaWidth: 0, arenaHeight: 0, levelId: '', updatedAt: 0 });
 });
 
+// Small live-activity summary for the landing page (relay-server/public/
+// index.html) -- everything here already lives in memory for other
+// purposes (the server list, the party system), this just tallies it.
+// partiesOnline only counts parties with 2+ members -- a lone leader who
+// hasn't been joined by anyone yet isn't really "a party" from a visitor's
+// perspective, same reasoning watch.html's own party-badge grouping uses.
+app.get('/api/stats', (req, res) => {
+  let playersOnline = 0;
+  for (const s of servers.values()) playersOnline += s.playerCount;
+  let partiesOnline = 0;
+  for (const p of parties.values()) if (p.members.size >= 2) partiesOnline++;
+  res.json({
+    serversOnline: servers.size,
+    playersOnline,
+    partiesOnline,
+    rankedPlayersTracked: Object.keys(progression).length,
+  });
+});
+
 // Global JSON body parser -- every route from here on that reads req.body
 // (levels, friends, auth, game-assets publish) depends on this being
 // registered once, up front. 3mb headroom for full-screen background
@@ -1161,6 +1180,10 @@ function handleHostControl(ws) {
         isIt: !!p.isIt,
         colorId: typeof p.colorId === 'string' ? p.colorId.slice(0, 32) : 'red',
         facing: p.facing === -1 ? -1 : 1,
+        // -1 = no team-mode playlist active for this match (see
+        // server_match.gd's identical default) -- only ever 0/1 otherwise.
+        team: (p.team === 0 || p.team === 1) ? p.team : -1,
+        partyId: typeof p.partyId === 'string' ? p.partyId.slice(0, 64) : '',
       })) : [];
       s.matchState = {
         players,

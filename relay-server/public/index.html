@@ -44,17 +44,64 @@
   .connect-link:hover, .connect-link:active { background: rgba(124,108,248,.28); }
   .empty { color: #4e5578; font-size: 13.5px; padding: 40px 0; text-align: center; }
   footer { margin-top: 32px; color: #4e5578; font-size: 11.5px; text-align: center; }
+
+  /* ── Features ── */
+  .features { display: flex; flex-direction: column; gap: 8px; margin: 20px 0 28px; }
+  .feature {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 14px 16px; border-radius: 14px;
+    border: 1.5px solid rgba(255,255,255,.09); background: rgba(255,255,255,.03);
+  }
+  .feature-icon { font-size: 20px; line-height: 1.3; flex-shrink: 0; }
+  .feature-title { font-weight: 700; font-size: 14px; }
+  .feature-desc { color: #8890b5; font-size: 12.5px; margin-top: 2px; line-height: 1.45; }
+
+  /* ── Live stats ── */
+  .stats-bar { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+  .stat-pill {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    flex: 1 1 80px; padding: 10px 8px; border-radius: 12px;
+    border: 1.5px solid rgba(255,255,255,.09); background: rgba(255,255,255,.04);
+  }
+  .stat-pill-val { font-weight: 800; font-size: 18px; }
+  .stat-pill-lbl { color: #7b82a8; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; }
 </style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <h1>Tag — Server Browser</h1>
-      <p class="sub">Live servers hosted by players, updated every few seconds.</p>
-      <div class="count-pill"><span class="dot"></span><span id="count-text">Loading…</span></div>
-      <nav style="margin-top:12px"><a href="leaderboard.html" style="color:#b6acf9;font-size:12.5px;text-decoration:none">Leaderboard &rarr;</a></nav>
+      <h1>Tag</h1>
+      <p class="sub">A pixel-perfect multiplayer chase game — dash, wall-jump, and don't be It when time runs out.</p>
+      <div class="stats-bar" id="stats-bar"></div>
+      <nav style="margin-top:14px"><a href="leaderboard.html" style="color:#b6acf9;font-size:12.5px;text-decoration:none">Leaderboard &rarr;</a></nav>
     </header>
-    <div class="list" id="list"></div>
+
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">🏆</div>
+        <div>
+          <div class="feature-title">Ranked, with real ELO</div>
+          <div class="feature-desc">Every playlist (1v1, 2v2, 1v1v1, 1v1v1v1) tracks its own ELO and tier — Bronze through Diamond — separately, so your 1v1 rank and your 2v2 rank are their own thing. See the <a href="leaderboard.html" style="color:#b6acf9">leaderboard</a>.</div>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">👥</div>
+        <div>
+          <div class="feature-title">Party up with friends</div>
+          <div class="feature-desc">Invite up to 16 friends into a party. A party of exactly 2 can queue Ranked/Casual 2v2 together and always lands on the same team — bigger parties go straight into a Private match instead, with the whole party auto-joining, no setup.</div>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🎮</div>
+        <div>
+          <div class="feature-title">Casual, Ranked, or Private</div>
+          <div class="feature-desc">Casual and Ranked both bot-fill after a short wait so a queue is never stuck empty — bots scale to the lobby's own average ELO. Private skips all of that: press it, and the match starts the moment everyone's in.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="count-pill"><span class="dot"></span><span id="count-text">Loading…</span></div>
+    <div class="list" id="list" style="margin-top:14px"></div>
     <footer>codecade.co.za/tag</footer>
   </div>
 
@@ -113,8 +160,26 @@ function refresh() {
     .catch(() => { countEl.textContent = 'Could not reach the relay server.'; });
 }
 
+const statsBarEl = document.getElementById('stats-bar');
+function renderStats(s) {
+  const pills = [
+    [s.playersOnline, 'Players'],
+    [s.serversOnline, 'Servers'],
+    [s.partiesOnline, 'Parties'],
+    [s.rankedPlayersTracked, 'Ranked'],
+  ];
+  statsBarEl.innerHTML = pills.map(([val, lbl]) =>
+    '<div class="stat-pill"><div class="stat-pill-val">' + val + '</div><div class="stat-pill-lbl">' + lbl + '</div></div>'
+  ).join('');
+}
+function refreshStats() {
+  fetch(BASE_PATH + '/api/stats').then(r => r.json()).then(renderStats).catch(() => {});
+}
+
 refresh();
+refreshStats();
 setInterval(refresh, 3000);
+setInterval(refreshStats, 5000);
 </script>
 </body>
 </html>

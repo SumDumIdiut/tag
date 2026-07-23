@@ -70,8 +70,14 @@
     cursor: pointer; color: inherit; font-family: inherit;
   }
   .roster-chip .swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+  /* Team-mode grouping (2v2's own two sides) -- before .following on
+     purpose, so following a team-mode player still shows the purple
+     "currently followed" treatment rather than its own team tint. */
+  .roster-chip.team-a { border-color: rgba(96,165,250,.4); background: rgba(96,165,250,.09); }
+  .roster-chip.team-b { border-color: rgba(248,124,196,.4); background: rgba(248,124,196,.09); }
   .roster-chip.following { border-color: #b6acf9; background: rgba(124,108,248,.18); }
   .roster-chip .it-badge { color: #ff4d4d; font-size: 10px; }
+  .roster-chip .party-badge { font-size: 11px; opacity: .85; }
   footer { margin-top: 20px; color: #4e5578; font-size: 11.5px; text-align: center; }
 </style>
 </head>
@@ -324,11 +330,22 @@ function updateRosterHighlight() {
 }
 
 function renderRoster(players) {
+  // partyId is only ever non-empty for a real multi-member party (a solo
+  // player always reports ""), but tallying occurrences is still the
+  // correct check, not just "non-empty" -- a private match can have more
+  // than one party in it at once, each grouped with itself, not everyone
+  // who happens to have *a* partyId.
+  const partyCounts = {};
+  players.forEach(p => { if (p.partyId) partyCounts[p.partyId] = (partyCounts[p.partyId] || 0) + 1; });
+
   rosterEl.innerHTML = players.map((p, i) => {
-    return '<button class="roster-chip" data-index="' + i + '">' +
+    const teamClass = p.team === 0 ? ' team-a' : p.team === 1 ? ' team-b' : '';
+    const inParty = p.partyId && partyCounts[p.partyId] > 1;
+    return '<button class="roster-chip' + teamClass + '" data-index="' + i + '">' +
       '<span class="swatch" style="background:' + esc(PLAYER_COLORS[p.colorId] || PLAYER_COLORS.red) + '"></span>' +
       esc(p.username || 'Player') +
       (p.isIt ? ' <span class="it-badge">IT</span>' : '') +
+      (inParty ? ' <span class="party-badge" title="Queued together in a party">\u{1F465}</span>' : '') +
     '</button>';
   }).join('');
   rosterEl.querySelectorAll('.roster-chip').forEach(chip => {
