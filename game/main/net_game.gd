@@ -11,6 +11,12 @@ var my_peer_id := -1
 var roster := {} # peer_id -> {username, color_id}
 var level_id := ""
 var hud: Label
+# hud/the leaderboard live here, not directly under this Node2D -- a plain
+# Control child of a Node2D still renders through that Node2D's own 2D
+# canvas transform, so without this isolation the local avatar's active
+# Camera2D would drag both around the screen along with it instead of
+# leaving them pinned to fixed screen corners.
+var _ui_layer: CanvasLayer
 var _leaderboard_box: VBoxContainer
 # 0 is never a real peer_id (server is 1, real clients unique positive,
 # bots negative synthetic ids -- see server_match.gd) or a bot id, so it's
@@ -30,15 +36,25 @@ func _ready() -> void:
 	arena = load(OnlineMapCatalog.scene_path_for(level_id)).instantiate()
 	add_child(arena)
 
+	_ui_layer = CanvasLayer.new()
+	add_child(_ui_layer)
+
+	var hud_panel := PanelContainer.new()
+	hud_panel.anchor_left = 0.0
+	hud_panel.anchor_right = 0.0
+	hud_panel.offset_left = 16.0
+	hud_panel.offset_right = 220.0
+	hud_panel.offset_top = 16.0
+	hud_panel.offset_bottom = 52.0
+	hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_NEUTRAL))
+	_ui_layer.add_child(hud_panel)
+
 	hud = Label.new()
-	hud.offset_left = 16.0
-	hud.offset_top = 16.0
-	hud.offset_right = 400.0
-	hud.offset_bottom = 60.0
 	hud.add_theme_color_override("font_color", Color.WHITE)
-	hud.add_theme_font_size_override("font_size", 20)
+	hud.add_theme_font_size_override("font_size", 18)
 	hud.text = "Connecting..."
-	add_child(hud)
+	hud_panel.add_child(hud)
 
 	_build_leaderboard()
 
@@ -90,7 +106,7 @@ func _build_leaderboard() -> void:
 	panel.offset_bottom = 420.0
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_NEUTRAL))
-	add_child(panel)
+	_ui_layer.add_child(panel)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
@@ -192,8 +208,13 @@ func _physics_process(_delta: float) -> void:
 	NetworkManager.submit_input(input)
 
 func _on_match_state(_tick: int, states: Dictionary) -> void:
-	if states.has(my_peer_id):
-		hud.text = "IT: %s" % ("you" if states[my_peer_id].is_it else "someone else")
+	# time_remaining is the same for every entry (it's the round's own
+	# timer, not per-player) -- read it off whichever one happens to be
+	# first rather than requiring my_peer_id specifically, so this still
+	# updates for a spectator (my_peer_id == -1, never a real key here).
+	if not states.is_empty():
+		var tr: float = float((states.values()[0] as Dictionary).get("time_remaining", 0.0))
+		hud.text = "Time left: %d:%02d" % [int(tr) / 60, int(tr) % 60]
 
 	var currently_it := 0
 	for peer_id in states.keys():
