@@ -188,7 +188,7 @@ var _it_pulse_tween: Tween
 # dash's squash visibly opens a gap between the sprite and the ground.
 var _ground_line_y := 0.0
 
-const TAG_IT_COLOR := Color(1.0, 0.85, 0.1, 1.0)
+const TAG_IT_COLOR := Color(1.0, 1.0, 1.0, 1.0)
 
 # One-shot move-tech events (a wall jump, a dash-jump cancel, ...). The
 # square isn't animated by physics (no more per-limb/per-body pendulum
@@ -234,13 +234,13 @@ func set_color(color_id: String) -> void:
 ## its own normal look when it's no longer it -- lets TagMode mark whoever's
 ## chasing without every participant needing to know its own color.
 ## Overwrites the rect's own color outright rather than tinting via
-## modulate: modulate multiplies against the base color, so e.g. a blue
-## player (0.25, 0.45, 0.85) * TAG_IT_COLOR (1, 0.85, 0.1) came out a muddy
-## dark olive instead of the intended bright yellow -- unreadable, and
-## different (and equally unreadable) for almost every other color too. A
-## direct override always reads as the same clear yellow regardless of
-## whose it is. Also shows/pulses a floating "IT" label above them, since a
-## body recolor alone can still be easy to miss in the middle of a chase.
+## modulate: modulate multiplies against the base color, which muddied
+## every player color differently (and unreadably) instead of reading as
+## one consistent color. A direct override to plain white always reads the
+## same regardless of whose it is -- and white is the one shade none of
+## PlayerColors' own palette is anywhere close to, so it never blends in.
+## Also shows/pulses a floating "IT" label above them, since a body recolor
+## alone can still be easy to miss in the middle of a chase.
 func set_tagged_it(active: bool) -> void:
 	_is_it = active
 	if _body:

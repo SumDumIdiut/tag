@@ -316,10 +316,12 @@ function draw(state) {
     ctx.fillStyle = PLAYER_COLORS[p.colorId] || PLAYER_COLORS.red;
     ctx.fillRect(pos.x - spriteSize / 2, pos.y - spriteSize / 2, spriteSize, spriteSize);
     if (p.isIt) {
-      // The real game's own tagger indicator (Player.TAG_IT_COLOR, applied
-      // as visual.modulate in remote_avatar.gd) -- a color multiply over
-      // the whole rect here too.
-      ctx.fillStyle = 'rgba(255, 217, 26, 0.65)';
+      // The real game's own tagger indicator (Player.TAG_IT_COLOR, set
+      // directly on the body's color in remote_avatar.gd) -- white reads
+      // the same regardless of the player's own assigned color, unlike
+      // every other color, which nothing in PlayerColors' own palette is
+      // anywhere close to.
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
       ctx.fillRect(pos.x - spriteSize / 2, pos.y - spriteSize / 2, spriteSize, spriteSize);
 
       // The tint alone reads too subtly against some player colors (and is
