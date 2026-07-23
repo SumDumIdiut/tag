@@ -209,12 +209,22 @@ func _on_match_state(_tick: int, states: Dictionary) -> void:
 		_render_leaderboard(states)
 
 func _on_disconnected() -> void:
+	# Only pause_menu.gd's own explicit "Menu" button reset this -- getting
+	# here any other way (disconnect while paused) left get_tree().paused
+	# stuck true for the rest of the session, silently breaking every
+	# pause-sensitive thing project-wide (NetworkManager included -- see its
+	# own process_mode comment).
+	get_tree().paused = false
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")
 
 ## Fires once this round's timer runs out -- ranked and casual alike now
 ## (see TagMode.round_ended). Swaps straight to the results screen without
 ## waiting for a disconnect.
 func _on_match_ended(ranking: Array) -> void:
+	# Same reasoning as _on_disconnected() above -- a round can end from
+	# its own timer while the pause menu happens to be open, which never
+	# routed through pause_menu.gd's explicit unpause at all.
+	get_tree().paused = false
 	var scene := MATCH_RESULTS_SCENE.instantiate()
 	scene.setup(ranking, my_peer_id)
 	get_tree().root.add_child(scene)
