@@ -37,6 +37,7 @@ var _usernames := {} # peer_id -> String
 var _color_ids := {} # peer_id -> String
 var _client_ids := {} # peer_id -> String, server-side only -- never sent to clients
 var _teams := {} # peer_id -> int, -1 if no team-mode playlist is active for this match
+var _party_ids := {} # peer_id -> String, "" if not in a party -- carried through to the state summary so watch.html can show party grouping
 ## Backfilled participants (see NetworkManager._on_bot_fill_timeout) --
 ## always a negative synthetic id, never a real connected peer. Keyed the
 ## same as every other peer_id -> X dict here so bots flow through the
@@ -80,6 +81,7 @@ func _init(network_manager: Node, p_lobby_id: int, members: Dictionary, p_ranked
 		_color_ids[peer_id] = members[peer_id].get("color_id", PlayerColors.DEFAULT_ID)
 		_client_ids[peer_id] = members[peer_id].get("client_id", "")
 		_teams[peer_id] = members[peer_id].get("team", -1)
+		_party_ids[peer_id] = members[peer_id].get("party_id", "")
 		_is_bot[peer_id] = members[peer_id].get("is_bot", false)
 		_skill_levels[peer_id] = members[peer_id].get("skill_level", 3)
 
@@ -384,6 +386,11 @@ func _report_state_summary() -> void:
 			"isIt": _tag_mode.is_it(p),
 			"colorId": _color_ids.get(peer_id, PlayerColors.DEFAULT_ID),
 			"facing": p.facing,
+			"team": _teams.get(peer_id, -1),
+			# Grouping only -- the party's own id has no meaning to a viewer,
+			# it's just a shared key two roster rows can match on to show
+			# they queued together. "" (not in a party) is never a match.
+			"partyId": _party_ids.get(peer_id, ""),
 		})
 	_network_manager.report_match_state_summary(lobby_id, {
 		"players": players,
