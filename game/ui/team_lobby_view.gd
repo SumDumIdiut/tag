@@ -141,7 +141,16 @@ func set_roster(new_roster: Dictionary) -> void:
 			if peer_id == null:
 				fresh = _build_placeholder_slot()
 			else:
-				fresh = _build_card(peer_id, new_roster[peer_id])
+				# The peer's own color_id can be stale here -- it's whatever
+				# per-connection color the server assigned before team/side
+				# was even known, not the fixed by-team color the real match
+				# will actually use (see PlaylistCatalog.slot_colors_for()).
+				# Pass the real resolved team (not `side`, which is
+				# viewer-relative -- "my own team" always renders on the
+				# left) so the card shows the same color you'll actually see
+				# in the match, not a mismatched preview.
+				var actual_team: int = teams.get(peer_id, 0)
+				fresh = _build_card(peer_id, new_roster[peer_id], actual_team)
 				fresh.set_meta("peer_id", peer_id)
 			side_box.add_child(fresh)
 			side_box.move_child(fresh, slot)
@@ -221,7 +230,7 @@ func _build_placeholder_slot() -> Control:
 	box.add_child(label)
 	return box
 
-func _build_card(peer_id: int, info: Dictionary) -> VBoxContainer:
+func _build_card(peer_id: int, info: Dictionary, team: int) -> VBoxContainer:
 	var card := VBoxContainer.new()
 	card.custom_minimum_size = Vector2(CARD_WIDTH, 320)
 	card.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -231,7 +240,11 @@ func _build_card(peer_id: int, info: Dictionary) -> VBoxContainer:
 	portrait_wrap.custom_minimum_size = Vector2(0, CARD_PORTRAIT_SIZE.y * 0.7)
 	card.add_child(portrait_wrap)
 	var portrait := CharacterPreviewScene.new()
-	portrait.color_id = info.get("color_id", PlayerColors.DEFAULT_ID)
+	# By-team color (see PlaylistCatalog.SLOT_COLORS/slot_colors_for), not
+	# info's own color_id -- this view is only ever used for 1v1/2v2 (both
+	# among the 4 playlists that get the fixed by-team scheme at real match
+	# start), so team directly determines the color you'll actually have.
+	portrait.color_id = PlaylistCatalog.SLOT_COLORS[team % PlaylistCatalog.SLOT_COLORS.size()]
 	portrait.custom_minimum_size = CARD_PORTRAIT_SIZE * 0.7
 	portrait_wrap.add_child(portrait)
 
