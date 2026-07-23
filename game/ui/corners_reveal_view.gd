@@ -12,14 +12,14 @@ const CharacterPreviewScene := preload("res://ui/character_preview.gd")
 const PORTRAIT_SIZE := Vector2(90, 110)
 const EDGE_MARGIN := 70.0
 # Corner order matches a natural reading order (top-left, top-right,
-# bottom-left, bottom-right); each card slides in from further out along its
-# own corner's diagonal while punching to full scale, so all 4 visibly
-# converge in from their corners rather than just popping in place -- the
-# "custom" part of this reveal, distinct from the plain center-scale pop
-# every other reveal uses.
+# bottom-left, bottom-right). Each card slides in from off-screen along its
+# own corner's diagonal while punching to full scale -- strictly one at a
+# time (each card's slide finishes before the next one starts), not an
+# overlapping stagger, so all 4 visibly converge in from their corners in
+# sequence.
 const CORNERS := [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]
-const SLIDE_DISTANCE := 90.0
-const STAGGER_SEC := 0.1
+const SLIDE_DURATION_SEC := 0.34
+const SLIDE_GAP_SEC := 0.12 # a clean beat between each corner's turn
 
 @export var my_id: int = -1
 
@@ -92,14 +92,25 @@ func _build_corner(peer_id: int, info: Dictionary, corner_index: int) -> void:
 	)
 	# Diagonal unit vector pointing further into that same corner, to slide
 	# in FROM (e.g. top-left's card starts up and to the left of its own
-	# resting spot).
+	# resting spot) -- far enough out (half the viewport's diagonal extent)
+	# that it starts fully off-screen, no separate visibility toggle needed
+	# to hide it before its turn.
 	var diagonal := (Vector2(corner.x, corner.y) * 2.0 - Vector2.ONE).normalized()
-	card.position = final_pos + diagonal * SLIDE_DISTANCE
+	var travel: float = viewport_size.length() * 0.5
+	card.position = final_pos + diagonal * travel
 
 	card.scale = Vector2.ZERO
 	card.pivot_offset = card.custom_minimum_size * 0.5
+	# set_delay() on each Tweener directly, not tween_interval() + set_parallel()
+	# -- set_parallel(true) makes every tweener appended after it run alongside
+	# the one immediately before, which here would have been the interval
+	# itself, not the other property tween. That raced the delay away
+	# entirely (confirmed live: every corner animated from frame 0 instead of
+	# waiting its turn). Explicit per-tweener delays sidestep the ordering
+	# ambiguity -- both properties start at exactly the same time, independent
+	# of how many tweeners came before them.
+	var delay: float = corner_index * (SLIDE_DURATION_SEC + SLIDE_GAP_SEC)
 	var tween := create_tween()
-	tween.tween_interval(corner_index * STAGGER_SEC)
 	tween.set_parallel(true)
-	tween.tween_property(card, "position", final_pos, 0.34).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(card, "scale", Vector2.ONE, 0.34).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(card, "position", final_pos, SLIDE_DURATION_SEC).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(delay)
+	tween.tween_property(card, "scale", Vector2.ONE, SLIDE_DURATION_SEC).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(delay)

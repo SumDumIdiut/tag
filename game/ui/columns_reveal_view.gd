@@ -13,11 +13,12 @@ const UIStyle := preload("res://ui/ui_style.gd")
 
 const PORTRAIT_SIZE := Vector2(110, 140)
 const COLUMN_COUNT := 3
-# Each column's card starts scaled to zero and punches in TRANS_BACK/EASE_OUT
-# (same vocabulary as every other reveal's pop-in) -- staggered left-to-right
-# rather than simultaneous so the 3 sides read as a distinct cascading
-# reveal, not just a static roster appearing all at once.
-const STAGGER_SEC := 0.15
+# Columns slide in strictly one at a time (each card's own slide finishes
+# before the next one starts, not just an overlapping stagger) alternating
+# vertical direction per column -- 1st drops in from above, 2nd rises from
+# below, 3rd drops again -- rather than every card doing the same motion.
+const SLIDE_DURATION_SEC := 0.4
+const SLIDE_GAP_SEC := 0.15 # a clean beat between each column's turn
 
 @export var my_id: int = -1
 
@@ -86,13 +87,19 @@ func _build_column(peer_id: int, info: Dictionary, column_index: int) -> void:
 	var viewport_size := get_viewport_rect().size
 	var lane_width := viewport_size.x / float(COLUMN_COUNT)
 	var lane_center_x := lane_width * (column_index + 0.5)
-	card.position = Vector2(lane_center_x, viewport_size.y * 0.5) - card.custom_minimum_size * 0.5
+	var final_pos := Vector2(lane_center_x, viewport_size.y * 0.5) - card.custom_minimum_size * 0.5
 
-	card.scale = Vector2.ZERO
-	card.pivot_offset = card.custom_minimum_size * 0.5
+	# Even columns (1st, 3rd) drop in from above; odd columns (2nd) rise in
+	# from below -- far enough off (half the viewport plus the card's own
+	# height) that it starts fully off-screen, no separate visibility toggle
+	# needed to hide it before its turn.
+	var dropping := column_index % 2 == 0
+	var travel := viewport_size.y * 0.5 + card.custom_minimum_size.y
+	card.position = final_pos + Vector2(0, -travel if dropping else travel)
+
 	var tween := create_tween()
-	tween.tween_interval(column_index * STAGGER_SEC)
-	tween.tween_property(card, "scale", Vector2.ONE, 0.32).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_interval(column_index * (SLIDE_DURATION_SEC + SLIDE_GAP_SEC))
+	tween.tween_property(card, "position", final_pos, SLIDE_DURATION_SEC).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _anchor_bottom_center(control: Control) -> void:
 	var viewport_size := get_viewport_rect().size
