@@ -15,7 +15,17 @@ class_name RemoteAvatar
 @onready var _body: CharacterBodyRect = $Visual/Body
 @onready var _it_label: Label = $ItLabel
 
-const LERP_WEIGHT := 0.35
+# How fast the rendered position catches up to the dead-reckoned target
+# each tick -- not prediction (this only ever reacts to already-confirmed
+# server state, never simulates ahead of it), just how tightly it tracks
+# that state. Raised from 0.35: steady-motion phase lag is dt*(1-w)/w
+# (~31ms at 0.35, ~17ms at 0.5); a velocity discontinuity (dash start/end,
+# landing) settles in ln(0.05)/ln(1-w) ticks (~117ms at 0.35, ~66ms at
+# 0.5). Started conservative rather than higher (0.6-0.7 would settle
+# faster still) since the risk concentrates exactly at those
+# discontinuities -- too high and the position visibly pops toward the
+# new target instead of settling.
+const LERP_WEIGHT := 0.5
 # Dead-reckoning cap -- how far past the last known update we'll still trust
 # its velocity to extrapolate forward. Past this, a stale/no-longer-accurate
 # velocity (e.g. the real player just hit a wall) could badly overshoot, so
