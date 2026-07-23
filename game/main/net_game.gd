@@ -18,11 +18,11 @@ var hud: Label
 # leaving them pinned to fixed screen corners.
 var _ui_layer: CanvasLayer
 var _leaderboard_box: VBoxContainer
-# 0 is never a real peer_id (server is 1, real clients unique positive,
-# bots negative synthetic ids -- see server_match.gd) or a bot id, so it's
-# safe as an "nothing rendered yet" sentinel distinct from every possible
-# real "who's it" value, including a bot being it.
-var _last_it_peer_id := 0
+# Whichever peer_ids are currently "it" -- a team playlist (2v2) can have
+# two simultaneously (one per side, see tag_mode.gd), so this has to track
+# the whole set, not just one, or a change to whichever peer isn't currently
+# occupying a single tracked slot would silently never trigger a re-render.
+var _last_it_peer_ids: Array = []
 
 func setup(p_my_peer_id: int, p_roster: Dictionary, p_level_id: String = "") -> void:
 	my_peer_id = p_my_peer_id
@@ -143,11 +143,13 @@ func _render_leaderboard(states: Dictionary) -> void:
 		return a.it_time < b.it_time
 	)
 
-	var currently_it := 0
+	# A team playlist (2v2) can have two peers "it" at once -- one per side,
+	# see tag_mode.gd -- so this has to be a set to highlight both, not just
+	# whichever one a single-slot check happened to find last.
+	var currently_it: Array = []
 	for peer_id in states.keys():
 		if states[peer_id].get("is_it", false):
-			currently_it = peer_id
-			break
+			currently_it.append(peer_id)
 
 	for i in entries.size():
 		var entry: Dictionary = entries[i]
@@ -168,7 +170,7 @@ func _render_leaderboard(states: Dictionary) -> void:
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_label.clip_text = true
 		name_label.add_theme_font_size_override("font_size", 13)
-		if peer_id == currently_it:
+		if peer_id in currently_it:
 			name_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
 		elif peer_id == my_peer_id:
 			name_label.add_theme_color_override("font_color", Color(0.5, 0.85, 1.0))
@@ -216,17 +218,23 @@ func _on_match_state(_tick: int, states: Dictionary) -> void:
 		var tr: float = float((states.values()[0] as Dictionary).get("time_remaining", 0.0))
 		hud.text = "Time left: %d:%02d" % [int(tr) / 60, int(tr) % 60]
 
-	var currently_it := 0
+	var currently_it: Array = []
 	for peer_id in states.keys():
 		if not avatars.has(peer_id):
 			continue
 		var s: Dictionary = states[peer_id]
 		avatars[peer_id].set_state(s.pos, s.vel, s.facing, s.is_dashing, s.get("is_climbing", false), s.get("on_floor", true), s.get("action", ""), s.get("action_id", 0), s.is_it)
 		if s.is_it:
-			currently_it = peer_id
+			currently_it.append(peer_id)
 
-	if currently_it != _last_it_peer_id:
-		_last_it_peer_id = currently_it
+	# A team playlist (2v2) can have two peers "it" at once (one per side,
+	# see tag_mode.gd) -- compare the whole set, not just one slot, so a
+	# change to either still triggers a re-render. Sorted first since
+	# Dictionary/states iteration order isn't guaranteed to be stable
+	# between ticks.
+	currently_it.sort()
+	if currently_it != _last_it_peer_ids:
+		_last_it_peer_ids = currently_it
 		_render_leaderboard(states)
 
 func _on_disconnected() -> void:

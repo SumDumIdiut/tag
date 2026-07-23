@@ -48,10 +48,12 @@ func _ready() -> void:
 		participants.append(npc)
 
 	tag_mode.setup(participants, randi() % participants.size(), false, GameSettings.round_duration)
+	# Local/bot play is always FFA (no team playlist here) -- every
+	# participant shares team -1, so that's the one bucket to watch.
 	tag_mode.it_changed.connect(_on_it_changed)
-	_on_it_changed(tag_mode.get_it())
+	_on_it_changed(tag_mode.get_it_for_team(-1), -1)
 
-func _on_it_changed(new_it: Node) -> void:
+func _on_it_changed(new_it: Node, _team: int) -> void:
 	if not hud:
 		return
 	var label: String = "you" if new_it == player else str(new_it.name)
