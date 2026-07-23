@@ -93,10 +93,24 @@ var _peer_spectating_lobby := {} # peer_id -> lobby_id, for disconnect cleanup
 var _pending_as_spectator := false # set by start_spectator(), consumed by _on_connected_to_server()
 
 func _ready() -> void:
+	# By default Godot only dispatches received RPCs from the idle/render-
+	# frame callback, not the physics tick -- fine for occasional lobby/chat
+	# traffic, but it decouples receiving this project's tight 60Hz gameplay
+	# RPCs (_server_submit_input, _client_receive_match_state) from the
+	# physics tick they're actually paced to. Sending is unaffected (an RPC
+	# called from _physics_process writes to the socket immediately); this
+	# only closes the gap on the receiving end. Must be set before any peer
+	# exists, so before start_server()/start_client()/start_spectator() can
+	# ever run -- _ready() on this autoload always runs at boot, well before
+	# any of those (user-triggered) calls.
+	get_tree().set_multiplayer_poll_enabled(false)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
+
+func _physics_process(_delta: float) -> void:
+	multiplayer.poll()
 
 func is_online() -> bool:
 	return multiplayer.multiplayer_peer != null \

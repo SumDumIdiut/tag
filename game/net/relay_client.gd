@@ -11,8 +11,17 @@ class_name RelayClient
 # the matching /relay/data/<token> endpoint, plus a plain loopback
 # WebSocketPeer into the server's own already-listening WebSocketMultiplayerPeer
 # on 127.0.0.1 -- then just forwards raw packets between those two, in both
-# directions, every frame. The relay and this bridge have no idea they're
-# carrying Godot multiplayer traffic; it's a pure byte pipe.
+# directions, every physics tick. The relay and this bridge have no idea
+# they're carrying Godot multiplayer traffic; it's a pure byte pipe.
+#
+# Polls from _physics_process, not _process -- this bridge carries every
+# relay-routed match's real gameplay bytes (the production path for anyone
+# found via the server browser, not just direct-IP connections), and those
+# are paced to the 60Hz physics tick on both ends. Polling from the idle/
+# render-frame callback instead would leave this hop riding whatever frame
+# rate this process happens to render at, same issue NetworkManager's own
+# RPC dispatch was decoupled from -- see its _ready()'s
+# set_multiplayer_poll_enabled(false) for the other half of this fix.
 
 const HEARTBEAT_INTERVAL_SEC := 5.0
 const RECONNECT_DELAY_SEC := 5.0
@@ -92,7 +101,7 @@ func _connect_control() -> void:
 		return
 	print("RelayClient: connecting to relay at %s" % relay_url)
 
-func _process(_delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	_poll_control()
 	_poll_pairs()
 
