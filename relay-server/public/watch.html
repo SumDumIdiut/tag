@@ -76,7 +76,19 @@
   .roster-chip.team-a { border-color: rgba(96,165,250,.4); background: rgba(96,165,250,.09); }
   .roster-chip.team-b { border-color: rgba(248,124,196,.4); background: rgba(248,124,196,.09); }
   .roster-chip.following { border-color: #b6acf9; background: rgba(124,108,248,.18); }
-  .roster-chip .it-badge { color: #ff4d4d; font-size: 10px; }
+  /* box-shadow rather than border/background so it layers on top of a
+     team tint or the following treatment instead of fighting them for
+     the same properties -- IT should stay visible no matter what else
+     is going on with that chip. */
+  .roster-chip.is-it { animation: it-pulse 1.3s ease-in-out infinite; }
+  @keyframes it-pulse {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(255,64,64,.55), 0 0 10px rgba(255,64,64,.4); }
+    50% { box-shadow: 0 0 0 2px rgba(255,64,64,.9), 0 0 18px rgba(255,64,64,.8); }
+  }
+  .roster-chip .it-badge {
+    background: #ff4040; color: #fff; font-size: 10.5px; font-weight: 800;
+    padding: 2px 7px; border-radius: 999px; letter-spacing: .03em;
+  }
   .roster-chip .party-badge { font-size: 11px; opacity: .85; }
   footer { margin-top: 20px; color: #4e5578; font-size: 11.5px; text-align: center; }
 </style>
@@ -309,6 +321,30 @@ function draw(state) {
       // the whole rect here too.
       ctx.fillStyle = 'rgba(255, 217, 26, 0.65)';
       ctx.fillRect(pos.x - spriteSize / 2, pos.y - spriteSize / 2, spriteSize, spriteSize);
+
+      // The tint alone reads too subtly against some player colors (and is
+      // invisible at a glance on a small/zoomed-out view) -- a pulsing red
+      // ring plus a bold "IT" pill make the tagger identifiable regardless
+      // of their own color or how far the camera is zoomed out.
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 220);
+      const ringPad = 5 + pulse * 3;
+      ctx.strokeStyle = `rgba(255, 48, 48, ${0.55 + 0.35 * pulse})`;
+      ctx.lineWidth = 3 + pulse * 1.5;
+      ctx.strokeRect(
+        pos.x - spriteSize / 2 - ringPad, pos.y - spriteSize / 2 - ringPad,
+        spriteSize + ringPad * 2, spriteSize + ringPad * 2
+      );
+
+      ctx.font = '800 11px -apple-system, sans-serif';
+      const label = 'IT';
+      const pillW = ctx.measureText(label).width + 14, pillH = 16;
+      const pillX = pos.x - pillW / 2, pillY = pos.y - spriteSize / 2 - 30;
+      ctx.fillStyle = '#ff3030';
+      ctx.fillRect(pillX, pillY, pillW, pillH);
+      ctx.fillStyle = '#fff';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, pos.x, pillY + pillH / 2 + 1);
+      ctx.textBaseline = 'alphabetic';
     }
 
     ctx.font = '600 13px -apple-system, sans-serif';
@@ -340,8 +376,9 @@ function renderRoster(players) {
 
   rosterEl.innerHTML = players.map((p, i) => {
     const teamClass = p.team === 0 ? ' team-a' : p.team === 1 ? ' team-b' : '';
+    const itClass = p.isIt ? ' is-it' : '';
     const inParty = p.partyId && partyCounts[p.partyId] > 1;
-    return '<button class="roster-chip' + teamClass + '" data-index="' + i + '">' +
+    return '<button class="roster-chip' + teamClass + itClass + '" data-index="' + i + '">' +
       '<span class="swatch" style="background:' + esc(PLAYER_COLORS[p.colorId] || PLAYER_COLORS.red) + '"></span>' +
       esc(p.username || 'Player') +
       (p.isIt ? ' <span class="it-badge">IT</span>' : '') +
