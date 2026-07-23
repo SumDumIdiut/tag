@@ -44,7 +44,14 @@ const MAPS := {
 	},
 }
 
-const MAP_ORDER := ["square_arena", "floating_platforms"]
+## Explicitly typed (not just := inferring from the literal) -- an untyped
+## Array here silently failed to assign into map_vote_view.gd's
+## Array[String]-typed _level_ids (Godot's static typing doesn't coerce a
+## plain Array into a typed one just because its contents happen to match,
+## even for an all-string literal), leaving it permanently empty with no
+## error surfaced anywhere -- confirmed live as the actual cause of the
+## vote popup never showing any map choices at all.
+const MAP_ORDER: Array[String] = ["square_arena", "floating_platforms"]
 
 ## Resolves a map id (including "" -- the "no vote yet"/legacy default) to
 ## its scene path, falling back to the default map for anything unknown.
