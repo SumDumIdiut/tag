@@ -198,11 +198,11 @@ func _make_decision() -> void:
 func _nearest_crowding_participant() -> Node:
 	if not tag_mode:
 		return null
-	var it := tag_mode.get_it()
+	var its := tag_mode.get_its()
 	var nearest: Node = null
 	var nearest_dist := SEPARATION_RADIUS
 	for p in tag_mode.participants:
-		if p == self or p == it:
+		if p == self or p in its:
 			continue
 		var d: float = global_position.distance_to(p.global_position)
 		if d < nearest_dist:
