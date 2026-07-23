@@ -20,7 +20,10 @@ const TICK_RATE := 1.0 / 60.0
 ## failed) -- see _fill_ranked_stats().
 signal _ranked_stats_fetched
 
-const ROUND_DURATION_SEC := 180.0
+const RANKED_ROUND_DURATION_SEC := 180.0
+# Casual has no ELO/placement pressure riding on it, so a longer round suits
+# it better than ranked's tighter, competitive-length one.
+const CASUAL_ROUND_DURATION_SEC := 300.0
 
 var lobby_id: int
 var ranked := false
@@ -128,9 +131,9 @@ func _finish_setup() -> void:
 
 	_tag_mode = TagMode.new()
 	add_child(_tag_mode)
-	_tag_mode.setup(participants, randi() % participants.size(), ranked, ROUND_DURATION_SEC)
-	if ranked:
-		_tag_mode.round_ended.connect(_on_round_ended)
+	var round_duration := RANKED_ROUND_DURATION_SEC if ranked else CASUAL_ROUND_DURATION_SEC
+	_tag_mode.setup(participants, randi() % participants.size(), ranked, round_duration)
+	_tag_mode.round_ended.connect(_on_round_ended)
 	# NPC needs tag_mode to actually act (see npc.gd's _physics_process) --
 	# only settable now that _tag_mode exists, which needs `participants`
 	# fully built first, hence the separate pass instead of setting it in
@@ -194,10 +197,11 @@ func _fill_ranked_stats() -> void:
 		req.request(RANKED_LOOKUP_URL % String(_client_ids[peer_id]) + "?playlist=" + playlist_id.uri_encode())
 	await _ranked_stats_fetched
 
-## Fires once when a ranked round's timer runs out. Ranks every participant
-## still in the match by least time spent as "it" (ascending -- lowest is
-## best) and hands the result to NetworkManager, which reports it to the
-## relay for ELO and tells every client the match is over.
+## Fires once when this round's timer runs out, ranked or casual alike (see
+## tag_mode.gd's round_ended). Ranks every participant still in the match by
+## least time spent as "it" (ascending -- lowest is best) and hands the
+## result to NetworkManager, which tells every client the match is over and
+## -- only for a ranked match -- reports it to the relay for ELO.
 func _on_round_ended() -> void:
 	var has_teams := false
 	for t in _teams.values():
@@ -209,7 +213,7 @@ func _on_round_ended() -> void:
 		_rank_by_team(ranking)
 	else:
 		_rank_individually(ranking)
-	_network_manager.notify_match_ended(lobby_id, ranking)
+	_network_manager.notify_match_ended(lobby_id, ranking, ranked)
 
 ## FFA path (no team-mode playlist active) -- ascending by it_time (least =
 ## best), peer_id as a deterministic tiebreak for the vanishingly rare
@@ -354,6 +358,11 @@ func _physics_process(delta: float) -> void:
 			"action": p.current_action,
 			"action_id": p.current_action_id,
 			"is_it": _tag_mode.is_it(p),
+			# Cheap to include every tick (already computed for the round-end
+			# ranking below) -- net_game.gd's leaderboard only actually
+			# re-renders when it detects the "it" holder changed, not on
+			# every tick this arrives.
+			"it_time": _tag_mode.get_it_time(p),
 		}
 	for peer_id in _players.keys():
 		if _is_bot.get(peer_id, false):
