@@ -170,8 +170,15 @@ var climb_exhausted_timer := 0.0
 
 @onready var _visual: Node2D = $Visual
 @onready var _body: CharacterBodyRect = $Visual/Body
+@onready var _it_label: Label = $ItLabel
 
 var _was_on_floor_visual := false
+# The actual assigned player color, tracked separately from _body.color so
+# set_tagged_it() can restore it exactly when untagged, and so a late
+# set_color() call while already tagged doesn't stomp the tag's own color.
+var _own_color: Color = PlayerColors.color_for(PlayerColors.DEFAULT_ID)
+var _is_it := false
+var _it_pulse_tween: Tween
 # Where the character's feet actually are, in Visual's local space -- not 0.
 # Visual's own origin sits well above the drawn rect's bottom edge (Body is
 # offset up, and the rect itself extends further down from there), so
@@ -219,18 +226,39 @@ func _ready() -> void:
 ## human player in AI mode, RemoteAvatar for a networked peer's own
 ## server-assigned choice).
 func set_color(color_id: String) -> void:
-	if _body:
-		_body.color = PlayerColors.color_for(color_id)
+	_own_color = PlayerColors.color_for(color_id)
+	if _body and not _is_it:
+		_body.color = _own_color
 
 ## Recolors this player/NPC to flag it as the current Tag "it", or back to
 ## its own normal look when it's no longer it -- lets TagMode mark whoever's
-## chasing without every participant needing to know its own color. Tints
-## via modulate rather than replacing the rect's own color so this works
-## uniformly regardless of which color this instance was assigned.
+## chasing without every participant needing to know its own color.
+## Overwrites the rect's own color outright rather than tinting via
+## modulate: modulate multiplies against the base color, so e.g. a blue
+## player (0.25, 0.45, 0.85) * TAG_IT_COLOR (1, 0.85, 0.1) came out a muddy
+## dark olive instead of the intended bright yellow -- unreadable, and
+## different (and equally unreadable) for almost every other color too. A
+## direct override always reads as the same clear yellow regardless of
+## whose it is. Also shows/pulses a floating "IT" label above them, since a
+## body recolor alone can still be easy to miss in the middle of a chase.
 func set_tagged_it(active: bool) -> void:
-	if not _visual:
+	_is_it = active
+	if _body:
+		_body.color = TAG_IT_COLOR if active else _own_color
+	_update_it_label(active)
+
+func _update_it_label(active: bool) -> void:
+	if not _it_label:
 		return
-	_visual.modulate = TAG_IT_COLOR if active else Color.WHITE
+	if _it_pulse_tween:
+		_it_pulse_tween.kill()
+		_it_pulse_tween = null
+	_it_label.visible = active
+	if active:
+		_it_label.modulate.a = 1.0
+		_it_pulse_tween = create_tween().set_loops()
+		_it_pulse_tween.tween_property(_it_label, "modulate:a", 0.35, 0.5).set_trans(Tween.TRANS_SINE)
+		_it_pulse_tween.tween_property(_it_label, "modulate:a", 1.0, 0.5).set_trans(Tween.TRANS_SINE)
 
 ## Called by TagMode when this player's been in sustained physical contact
 ## with another participant for too long. Sets velocity straight away from
