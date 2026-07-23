@@ -93,6 +93,20 @@ var _peer_spectating_lobby := {} # peer_id -> lobby_id, for disconnect cleanup
 var _pending_as_spectator := false # set by start_spectator(), consumed by _on_connected_to_server()
 
 func _ready() -> void:
+	# Godot's default automatic RPC dispatch happens at the SceneTree/engine
+	# level, entirely outside the pausable node tree -- pausing a match has
+	# never stopped multiplayer traffic from being received. Polling by hand
+	# below moves that into an ordinary node callback, which by default DOES
+	# respect get_tree().paused (PROCESS_MODE_INHERIT). Without this, pausing
+	# during a match would silently stop ALL RPC dispatch -- not just
+	# gameplay state, but lobby updates, chat, bot-fill results, everything
+	# -- for as long as the tree stayed paused. And it can stay paused far
+	# longer than "while the pause menu is open": nothing resets
+	# get_tree().paused on a match ending naturally or a disconnect while
+	# paused (see net_game.gd's _on_match_ended/_on_disconnected), so this
+	# would otherwise silently break multiplayer for the rest of the session
+	# after a single pause, not just during it.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	# By default Godot only dispatches received RPCs from the idle/render-
 	# frame callback, not the physics tick -- fine for occasional lobby/chat
 	# traffic, but it decouples receiving this project's tight 60Hz gameplay
