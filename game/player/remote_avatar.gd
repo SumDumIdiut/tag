@@ -13,6 +13,7 @@ class_name RemoteAvatar
 @onready var name_label: Label = $NameLabel
 @onready var camera: Camera2D = $Camera2D
 @onready var _body: CharacterBodyRect = $Visual/Body
+@onready var _it_label: Label = $ItLabel
 
 const LERP_WEIGHT := 0.35
 # Dead-reckoning cap -- how far past the last known update we'll still trust
@@ -41,6 +42,12 @@ var _time_since_update := 0.0
 # player.tscn's Visual/Body layout exactly), same fix for the same "dash
 # squash on the ground opens a gap under the sprite" bug.
 var _ground_line_y := 0.0
+# See player.gd's identical fields for why the assigned color is tracked
+# separately from _body.color, and why the tag uses an outright override
+# instead of a modulate tint.
+var _own_color: Color = PlayerColors.color_for(PlayerColors.DEFAULT_ID)
+var _last_is_it := false
+var _it_pulse_tween: Tween
 
 func _ready() -> void:
 	if name_label:
@@ -71,8 +78,22 @@ func _physics_process(delta: float) -> void:
 ## peer's server-assigned color becomes known, not on every state update
 ## below (it never changes mid-match).
 func set_color(color_id: String) -> void:
-	if _body:
-		_body.color = PlayerColors.color_for(color_id)
+	_own_color = PlayerColors.color_for(color_id)
+	if _body and not _last_is_it:
+		_body.color = _own_color
+
+func _update_it_label(active: bool) -> void:
+	if not _it_label:
+		return
+	if _it_pulse_tween:
+		_it_pulse_tween.kill()
+		_it_pulse_tween = null
+	_it_label.visible = active
+	if active:
+		_it_label.modulate.a = 1.0
+		_it_pulse_tween = create_tween().set_loops()
+		_it_pulse_tween.tween_property(_it_label, "modulate:a", 0.35, 0.5).set_trans(Tween.TRANS_SINE)
+		_it_pulse_tween.tween_property(_it_label, "modulate:a", 1.0, 0.5).set_trans(Tween.TRANS_SINE)
 
 ## `action`/`action_id` are still part of the state dict shape
 ## server_match.gd sends (see player.gd's current_action/current_action_id
@@ -84,10 +105,12 @@ func set_state(pos: Vector2, vel: Vector2, facing: int, is_dashing: bool, _is_cl
 	target_velocity = vel
 	target_facing = facing
 	_time_since_update = 0.0
+	if _body:
+		_body.color = Player.TAG_IT_COLOR if is_it else _own_color
+	if is_it != _last_is_it:
+		_last_is_it = is_it
+		_update_it_label(is_it)
 	if visual:
-		# Tints via modulate rather than swapping the color, so this works the
-		# same for every player regardless of their assigned color.
-		visual.modulate = Player.TAG_IT_COLOR if is_it else Color.WHITE
 		visual.scale = Vector2(1.5, 0.6) if is_dashing else Vector2.ONE
 		var flip := absf(visual.scale.x) * (1.0 if facing >= 0 else -1.0)
 		visual.scale.x = flip

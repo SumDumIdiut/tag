@@ -1,10 +1,21 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://npc/npc.gd" id="1"]
 [ext_resource type="Script" path="res://player/character_body_rect.gd" id="2"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 size = Vector2(26, 47)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_it"]
+bg_color = Color(1, 0.19, 0.19, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_left = 8
+corner_radius_bottom_right = 8
+content_margin_left = 6.0
+content_margin_top = 1.0
+content_margin_right = 6.0
+content_margin_bottom = 1.0
 
 [node name="NPC" type="CharacterBody2D"]
 collision_layer = 2
@@ -20,6 +31,19 @@ shape = SubResource("RectangleShape2D_body")
 [node name="Body" type="Node2D" parent="Visual"]
 position = Vector2(0, -15)
 script = ExtResource("2")
+
+[node name="ItLabel" type="Label" parent="."]
+visible = false
+offset_left = -30.0
+offset_top = -62.0
+offset_right = 30.0
+offset_bottom = -42.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_it")
+text = "IT"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="Camera2D" type="Camera2D" parent="."]
 enabled = false
