@@ -772,11 +772,22 @@ func _start_match_for_lobby(lobby_id: int, ranked: bool, chosen_level_id: String
 		var teams := PlaylistCatalog.assign_teams_grouped(members_with_extras.keys(), peer_party_id, PlaylistCatalog.team_count(lobby_playlist), PlaylistCatalog.team_size(lobby_playlist))
 		for peer_id in teams.keys():
 			members_with_extras[peer_id]["team"] = teams[peer_id]
+	# Fixed slot colors (red/blue/yellow/green) for the 4 official playlists,
+	# overriding each peer's (and each bot's) own otherwise-stable per-
+	# connection color -- see PlaylistCatalog.slot_colors_for(). Empty for
+	# anything else (legacy undifferentiated pool, a private match), so
+	# those fall through to today's per-peer color unchanged.
+	var slot_colors := PlaylistCatalog.slot_colors_for(lobby_playlist, members_with_extras)
 	for peer_id in members_with_extras.keys():
-		if members_with_extras[peer_id].get("is_bot", false):
-			continue # a bot's color_id/client_id were already set when it was created -- _peer_color_id/_peer_client_id only ever track real connections
-		members_with_extras[peer_id]["color_id"] = _peer_color_id.get(peer_id, PlayerColors.DEFAULT_ID)
-		members_with_extras[peer_id]["client_id"] = _peer_client_id.get(peer_id, "")
+		if slot_colors.has(peer_id):
+			members_with_extras[peer_id]["color_id"] = slot_colors[peer_id]
+		elif not members_with_extras[peer_id].get("is_bot", false):
+			# A bot outside the 4 known playlists keeps the color_id already
+			# set when it was created (_on_bot_fill_timeout) -- _peer_color_id
+			# only ever tracks real connections, it has nothing for a bot.
+			members_with_extras[peer_id]["color_id"] = _peer_color_id.get(peer_id, PlayerColors.DEFAULT_ID)
+		if not members_with_extras[peer_id].get("is_bot", false):
+			members_with_extras[peer_id]["client_id"] = _peer_client_id.get(peer_id, "")
 	var match_instance := ServerMatch.new(self, lobby_id, members_with_extras, ranked, chosen_level_id)
 	match_instance.playlist_id = lobby_playlist
 	add_child(match_instance)
