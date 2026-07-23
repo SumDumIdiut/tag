@@ -585,9 +585,21 @@ const rateLimitHits = new Map(); // ip -> [timestamps]
 function withinRateLimit(ip) {
   const now = Date.now();
   const hits = (rateLimitHits.get(ip) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  // Only record a hit for an attempt actually being let through -- recording
+  // rejected attempts too meant a client that retries on failure (every
+  // caller of this does: PartyManager.gd/RelayClient.gd's reconnect timers,
+  // any client-side fetch retry) could never recover once over the limit,
+  // since each rejected retry re-armed its own rejection for the next
+  // RATE_LIMIT_WINDOW_MS -- a permanent lockout from one brief burst
+  // (confirmed live: a handful of reconnects in a short window kept a real
+  // client 502'd on /relay/party well past when the original burst aged out).
+  if (hits.length >= RATE_LIMIT_MAX) {
+    rateLimitHits.set(ip, hits);
+    return false;
+  }
   hits.push(now);
   rateLimitHits.set(ip, hits);
-  return hits.length <= RATE_LIMIT_MAX;
+  return true;
 }
 
 // In production every request arrives via the portal's own loopback proxy
