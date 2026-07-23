@@ -135,28 +135,8 @@ func _build_vs_layout() -> void:
 	vs_root.add_child(team_view)
 	team_view.set_roster(_roster)
 	team_view.play_full_reveal()
-
-	var bottom_strip := CenterContainer.new()
-	bottom_strip.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	bottom_strip.offset_top = -130
-	bottom_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vs_root.add_child(bottom_strip)
-	var bottom_box := VBoxContainer.new()
-	bottom_box.add_theme_constant_override("separation", 10)
-	bottom_strip.add_child(bottom_box)
-
-	var countdown := Label.new()
-	countdown.name = "VsCountdown"
-	countdown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	countdown.add_theme_font_size_override("font_size", 18)
-	bottom_box.add_child(countdown)
-	countdown_label = countdown
-
-	var ready_btn := Button.new()
-	ready_btn.text = "Ready!"
-	ready_btn.custom_minimum_size = Vector2(320, 64)
-	var accent: Color = UIStyle.COLOR_RANKED if _ranked else UIStyle.COLOR_ONLINE
-	UIStyle.style_button(ready_btn, accent, 18)
-	ready_btn.pressed.connect(_proceed)
-	bottom_box.add_child(ready_btn)
-	skip_button = ready_btn
+	# No countdown text or Ready button here -- the reveal plays and
+	# _process()'s existing _time_left timer (still ticking against the
+	# original, now-invisible $VBox/CountdownLabel) auto-proceeds once
+	# VS_INTRO_DURATION_SEC elapses, same as the circle reveal already does
+	# with no manual skip.

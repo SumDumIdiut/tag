@@ -363,6 +363,12 @@ func _physics_process(delta: float) -> void:
 			# re-renders when it detects the "it" holder changed, not on
 			# every tick this arrives.
 			"it_time": _tag_mode.get_it_time(p),
+			# Same value in every entry (the round's own timer, not
+			# per-player) -- net_game.gd's HUD just reads it off whichever
+			# peer's entry it looks at first. Cheap to duplicate per player
+			# rather than restructuring `states`' shape to carry one shared
+			# top-level field.
+			"time_remaining": _tag_mode.round_timer,
 		}
 	for peer_id in _players.keys():
 		if _is_bot.get(peer_id, false):
