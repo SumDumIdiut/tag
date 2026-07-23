@@ -14,10 +14,12 @@ const REPEL_CONTACT_THRESHOLD_SEC := 3.0
 const DEFAULT_ROUND_DURATION_SEC := 180.0
 
 signal it_changed(new_it: Node)
-## Fires once, when a ranked round's timer runs out -- never fires for a
-## casual (non-ranked) match, which stays the endless hot-potato it's always
-## been. server_match.gd uses this as the hook to rank participants and
-## report a result.
+## Fires once, when this round's timer runs out -- every online match gets a
+## real duration now (see server_match.gd's RANKED_ROUND_DURATION_SEC /
+## CASUAL_ROUND_DURATION_SEC), ranked and casual alike, just with casual
+## running longer. server_match.gd uses this as the hook to rank participants
+## and report a result; `ranked` (see setup()) only gates whether that result
+## actually gets reported to the relay for ELO.
 signal round_ended
 
 var participants: Array = []
@@ -42,7 +44,8 @@ func setup(all_participants: Array, initial_it_index: int, p_ranked: bool = fals
 	it_changed.emit(get_it())
 
 ## Total time this participant has spent as "it" so far this round -- what a
-## ranked round's end-of-match placement is sorted by (least = best).
+## round's end-of-match placement is sorted by (least = best), and what the
+## live in-match leaderboard (see net_game.gd) tracks too.
 func get_it_time(p: Node) -> float:
 	return it_time.get(p.get_instance_id(), 0.0)
 
@@ -101,7 +104,7 @@ func _physics_process(delta: float) -> void:
 	var it := get_it()
 	if it:
 		it_time[it.get_instance_id()] = it_time.get(it.get_instance_id(), 0.0) + delta
-	if ranked and not _round_over:
+	if not _round_over:
 		round_timer = maxf(round_timer - delta, 0.0)
 		if round_timer <= 0.0:
 			_round_over = true

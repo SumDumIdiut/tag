@@ -11,8 +11,9 @@ signal lobby_list_updated(lobbies: Array)
 signal lobby_state_updated(lobby: Dictionary)
 signal match_started(lobby_id: int, my_peer_id: int, roster: Dictionary, level_id: String, playlist_id: String)
 signal match_state_received(tick: int, states: Dictionary)
-## Fires once on every peer when a ranked round's timer runs out. `ranking`
-## is [{peer_id, username, it_time, place}], sorted best (place 1) first.
+## Fires once on every peer when a round's timer runs out (ranked or
+## casual). `ranking` is [{peer_id, username, it_time, place}], sorted best
+## (place 1) first.
 signal match_ended(ranking: Array)
 signal connected_to_server
 signal connection_failed
@@ -819,16 +820,18 @@ func notify_match_started(lobby_id: int, roster: Dictionary, match_level_id: Str
 func push_match_state(peer_id: int, tick: int, states: Dictionary) -> void:
 	rpc_id(peer_id, "_client_receive_match_state", tick, states)
 
-## Called by ServerMatch once a ranked round's timer runs out. A ranked
-## round is a one-shot -- there's no "return to the same lobby for another
-## round" the way casual play works, so this tears the match/lobby down
-## the same way a fully-emptied one would, after fanning the result out and
-## reporting it to the relay for ELO.
-func notify_match_ended(lobby_id: int, ranking: Array) -> void:
+## Called by ServerMatch once a round's timer runs out (ranked or casual --
+## both are now a one-shot with a real duration, see server_match.gd's
+## RANKED_ROUND_DURATION_SEC/CASUAL_ROUND_DURATION_SEC). There's no "return
+## to the same lobby for another round," so this tears the match/lobby down
+## the same way a fully-emptied one would, after fanning the result out and,
+## only for a ranked match, reporting it to the relay for ELO.
+func notify_match_ended(lobby_id: int, ranking: Array, ranked: bool) -> void:
 	for entry in ranking:
 		rpc_id(entry.peer_id, "_client_match_ended", ranking)
 		_peer_lobby.erase(entry.peer_id)
-	_report_ranked_result(ranking)
+	if ranked:
+		_report_ranked_result(ranking)
 	_end_spectating_for_lobby(lobby_id, ranking)
 	if _matches.has(lobby_id):
 		_matches[lobby_id].teardown()
@@ -851,10 +854,10 @@ func _report_ranked_result(ranking: Array) -> void:
 	var req := HTTPRequest.new()
 	add_child(req)
 	req.request_completed.connect(func(_r, _c, _h, _b): req.queue_free())
-	# notify_match_ended (this function's only caller) is only ever reached
-	# via a ranked round ending (see tag_mode.gd's round_ended, only emitted
-	# `if ranked`) -- so this process's own playlist_id always is the
-	# match's playlist, one-playlist-per-process (see the field's own doc).
+	# notify_match_ended's only caller now fires this for ranked matches only
+	# (round_ended itself emits for casual too, see tag_mode.gd) -- so this
+	# process's own playlist_id always is the match's playlist,
+	# one-playlist-per-process (see the field's own doc).
 	var body := JSON.stringify({"results": results, "playlist": playlist_id})
 	req.request(RANKED_REPORT_URL, ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
 
