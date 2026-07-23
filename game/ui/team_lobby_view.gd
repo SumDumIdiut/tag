@@ -22,6 +22,7 @@ const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 
 const CARD_PORTRAIT_SIZE := Vector2(150, 190)
 const CARD_WIDTH := 260.0
+const CARD_HEIGHT := 320.0
 const SLOT_SEPARATION := 14.0
 
 @export var playlist_id: String = "1v1"
@@ -53,39 +54,32 @@ func _build_static_shell() -> void:
 	split.accent_color = accent_color
 	add_child(split)
 
-	var chrome_top := _ChromeBar.new()
-	chrome_top.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	chrome_top.offset_bottom = 14
-	chrome_top.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(chrome_top)
-	var chrome_bottom := _ChromeBar.new()
-	chrome_bottom.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	chrome_bottom.offset_top = -14
-	chrome_bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(chrome_bottom)
-
-	var starburst := _VsStarburst.new()
-	starburst.accent_color = accent_color
-	starburst.custom_minimum_size = Vector2(210, 210)
-	starburst.size = Vector2(210, 210)
-	starburst.set_anchors_preset(Control.PRESET_CENTER)
-	starburst.position = -starburst.size * 0.5
-	starburst.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(starburst)
+	var badge := _VsBadge.new()
+	badge.accent_color = accent_color
+	badge.custom_minimum_size = Vector2(132, 132)
+	badge.size = Vector2(132, 132)
+	badge.set_anchors_preset(Control.PRESET_CENTER)
+	badge.position = -badge.size * 0.5
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(badge)
 
 	_vs_label = Label.new()
-	_vs_label.text = "VS."
-	_vs_label.add_theme_font_size_override("font_size", 56)
-	_vs_label.add_theme_color_override("font_color", Color(0.9, 0.15, 0.15))
-	_vs_label.add_theme_color_override("font_outline_color", Color.WHITE)
-	_vs_label.add_theme_constant_override("outline_size", 8)
+	_vs_label.text = "VS"
+	_vs_label.add_theme_font_size_override("font_size", 34)
+	_vs_label.add_theme_color_override("font_color", Color(0.95, 0.96, 0.98))
 	_vs_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_vs_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_vs_label.set_anchors_preset(Control.PRESET_CENTER)
-	_vs_label.pivot_offset = Vector2(50, 35)
-	_vs_label.position = Vector2(-50, -35)
+	_vs_label.pivot_offset = Vector2(30, 22)
+	_vs_label.position = Vector2(-30, -22)
 	add_child(_vs_label)
 
+	# Fixed-height slots (a placeholder reserves the exact same height a
+	# real card would, just centering its own smaller box within that space)
+	# so both sides' rows always land level with each other -- previously
+	# each side's stack centered independently by its own actual content
+	# height, so a side with a card + a placeholder visibly didn't line up
+	# against a side with two placeholders.
 	var team_size := PlaylistCatalog.team_size(playlist_id)
 	for side in 2:
 		var half := CenterContainer.new()
@@ -205,48 +199,78 @@ func _pop_in(node: Control) -> void:
 	var tween := create_tween()
 	tween.tween_property(node, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
+## Reserves the exact same height a real card would (CARD_HEIGHT), the
+## visible dark box centered within that space -- keeps this slot's row
+## level with the same slot on the other side even when one side has a
+## filled card and the other doesn't, since a filled card's own height is
+## fixed too (see _build_card).
 func _build_placeholder_slot() -> Control:
+	var reserved := CenterContainer.new()
+	reserved.custom_minimum_size = Vector2(CARD_WIDTH, CARD_HEIGHT)
+
 	var box := PanelContainer.new()
 	box.custom_minimum_size = Vector2(CARD_WIDTH, CARD_PORTRAIT_SIZE.y * 0.55)
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.04, 0.06, 0.85)
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.border_color = Color(1, 1, 1, 0.08)
-	style.corner_radius_top_left = 10
-	style.corner_radius_top_right = 10
-	style.corner_radius_bottom_right = 10
-	style.corner_radius_bottom_left = 10
+	style.bg_color = Color(0.06, 0.065, 0.09, 0.7)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_color = Color(1, 1, 1, 0.07)
+	style.corner_radius_top_left = 12
+	style.corner_radius_top_right = 12
+	style.corner_radius_bottom_right = 12
+	style.corner_radius_bottom_left = 12
 	box.add_theme_stylebox_override("panel", style)
+	reserved.add_child(box)
 
 	var label := Label.new()
 	label.text = "Waiting..."
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 14)
-	label.add_theme_color_override("font_color", Color(1, 1, 1, 0.25))
+	label.add_theme_font_size_override("font_size", 13)
+	label.add_theme_color_override("font_color", Color(1, 1, 1, 0.22))
 	box.add_child(label)
-	return box
+	return reserved
 
 func _build_card(peer_id: int, info: Dictionary, team: int) -> VBoxContainer:
+	var team_color: Color = PlayerColors.color_for(PlaylistCatalog.SLOT_COLORS[team % PlaylistCatalog.SLOT_COLORS.size()])
+
 	var card := VBoxContainer.new()
-	card.custom_minimum_size = Vector2(CARD_WIDTH, 320)
+	card.custom_minimum_size = Vector2(CARD_WIDTH, CARD_HEIGHT)
 	card.alignment = BoxContainer.ALIGNMENT_CENTER
 	card.add_theme_constant_override("separation", 8)
 
-	var portrait_wrap := CenterContainer.new()
+	var portrait_wrap := PanelContainer.new()
 	portrait_wrap.custom_minimum_size = Vector2(0, CARD_PORTRAIT_SIZE.y * 0.7)
+	# A soft panel behind the portrait, tinted to the player's own team
+	# color -- replaces the old bare CenterContainer with something that
+	# actually reads as "this player's card," not just a floating square.
+	var wrap_style := StyleBoxFlat.new()
+	wrap_style.bg_color = Color(team_color.r, team_color.g, team_color.b, 0.12)
+	wrap_style.border_width_left = 1
+	wrap_style.border_width_top = 1
+	wrap_style.border_width_right = 1
+	wrap_style.border_width_bottom = 1
+	wrap_style.border_color = Color(team_color.r, team_color.g, team_color.b, 0.5)
+	wrap_style.corner_radius_top_left = 14
+	wrap_style.corner_radius_top_right = 14
+	wrap_style.corner_radius_bottom_right = 14
+	wrap_style.corner_radius_bottom_left = 14
+	wrap_style.shadow_color = Color(team_color.r, team_color.g, team_color.b, 0.35)
+	wrap_style.shadow_size = 16
+	portrait_wrap.add_theme_stylebox_override("panel", wrap_style)
 	card.add_child(portrait_wrap)
+	var portrait_center := CenterContainer.new()
+	portrait_wrap.add_child(portrait_center)
 	var portrait := CharacterPreviewScene.new()
 	# By-team color (see PlaylistCatalog.SLOT_COLORS/slot_colors_for), not
 	# info's own color_id -- this view is only ever used for 1v1/2v2 (both
 	# among the 4 playlists that get the fixed by-team scheme at real match
 	# start), so team directly determines the color you'll actually have.
 	portrait.color_id = PlaylistCatalog.SLOT_COLORS[team % PlaylistCatalog.SLOT_COLORS.size()]
-	portrait.custom_minimum_size = CARD_PORTRAIT_SIZE * 0.7
-	portrait_wrap.add_child(portrait)
+	portrait.custom_minimum_size = CARD_PORTRAIT_SIZE * 0.65
+	portrait_center.add_child(portrait)
 
 	var you_tag := "  (You)" if peer_id == my_id else ""
 	var name_label := Label.new()
@@ -281,70 +305,51 @@ func _build_card(peer_id: int, info: Dictionary, team: int) -> VBoxContainer:
 
 	return card
 
-## A bold two-tone diagonal split with a jagged seam (Mario-Party-style
-## versus-screen reference the user provided) instead of a plain background
-## with a thin line drawn over it -- side 0's half is `accent_color` (ties
-## it to the ranked/casual identity color the rest of the app already
-## uses), side 1 is a fixed contrasting indigo so it always reads as
-## "the other side" regardless of what accent_color is. Drawn as hard-edged
-## flat polygons (no gradients) to match every other painted asset's
-## genuine-pixel-art rule, with a bright jagged energy streak along the seam.
+## A plain dark base (matching every other screen's own dark background)
+## with each side's own identity color as a soft glow behind that side's
+## cards -- reads as mood lighting, not a hazard-stripe split. A slim
+## glowing divider replaces the old random-jitter jagged seam. Concentric
+## alpha-blended circles for the glow (same technique _VsBadge below uses
+## for its own ring) rather than a GradientTexture2D stretched over
+## draw_texture_rect -- simpler to reason about and get right than fighting
+## UV-space fill_from/fill_to math for a result this soft anyway.
 class _SplitBackground extends Control:
-	const SIDE_B_COLOR := Color(0.16, 0.19, 0.5)
+	const BG_COLOR := Color(0.06, 0.065, 0.095)
+	const SIDE_B_COLOR := Color(0.3, 0.42, 0.85)
 	var accent_color: Color = Color(0.91, 0.29, 0.35)
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		resized.connect(queue_redraw)
 
 	func _draw() -> void:
 		var w: float = size.x
 		var h: float = size.y
+		draw_rect(Rect2(Vector2.ZERO, size), BG_COLOR)
+
+		# Contained near each side's own cards, not spanning past the
+		# midline -- half the width at most, so it reads as a glow behind
+		# that side specifically rather than a wash across the whole screen.
+		var glow_radius := minf(w * 0.5, h * 0.9)
+		_draw_glow(Vector2(w * 0.24, h * 0.5), glow_radius, accent_color)
+		_draw_glow(Vector2(w * 0.76, h * 0.5), glow_radius, SIDE_B_COLOR)
+
 		var cx := w * 0.5
-		var rng := RandomNumberGenerator.new()
-		rng.seed = 1337
-		var segments := 10
-		var boundary := PackedVector2Array()
-		for i in segments + 1:
-			var t := float(i) / float(segments)
-			var jitter := rng.randf_range(-w * 0.05, w * 0.05)
-			boundary.append(Vector2(cx + jitter, t * h))
+		draw_line(Vector2(cx, 0), Vector2(cx, h), Color(1, 1, 1, 0.05), 160.0)
+		draw_line(Vector2(cx, 0), Vector2(cx, h), Color(1, 1, 1, 0.3), 1.5)
 
-		var left_poly := PackedVector2Array([Vector2(0, 0)])
-		left_poly.append_array(boundary)
-		left_poly.append(Vector2(0, h))
-		var side_a := accent_color.darkened(0.35)
-		draw_colored_polygon(left_poly, side_a)
+	func _draw_glow(center: Vector2, max_radius: float, color: Color) -> void:
+		var steps := 28
+		for i in steps:
+			var t := float(steps - i) / float(steps) # 1.0 (largest, faintest) down to ~1/steps (smallest, strongest)
+			var radius := max_radius * t
+			var alpha := 0.006 + 0.02 * (1.0 - t)
+			draw_circle(center, radius, Color(color.r, color.g, color.b, alpha))
 
-		var right_poly := PackedVector2Array([Vector2(w, 0)])
-		right_poly.append_array(boundary)
-		right_poly.append(Vector2(w, h))
-		draw_colored_polygon(right_poly, SIDE_B_COLOR)
-
-		# A few faint radiating streaks per side, tinted to that side's own
-		# color -- cheap extra "busy" detail beyond two flat color blocks.
-		_draw_rays(c_for(0), accent_color.lightened(0.15))
-		_draw_rays(c_for(1), SIDE_B_COLOR.lightened(0.2))
-
-		var glow := Color(1, 1, 1, 0.9)
-		for i in boundary.size() - 1:
-			draw_line(boundary[i], boundary[i + 1], glow, 7.0)
-			draw_line(boundary[i], boundary[i + 1], accent_color.lightened(0.3), 3.0)
-
-	func c_for(side: int) -> Vector2:
-		return Vector2(size.x * (0.22 if side == 0 else 0.78), size.y * 0.5)
-
-	func _draw_rays(origin: Vector2, ray_color: Color) -> void:
-		var count := 10
-		var length := size.length() * 0.6
-		for i in count:
-			var ang := TAU * i / float(count)
-			var dir := Vector2(cos(ang), sin(ang))
-			draw_line(origin, origin + dir * length, Color(ray_color.r, ray_color.g, ray_color.b, 0.12), 10.0)
-
-## A jagged multi-point starburst (metallic silver, colored outline) behind
-## the "VS." text -- the reference's silver comic-book "impact star," drawn
-## as a hard-edged polygon rather than a rendered/gradient sprite.
-class _VsStarburst extends Control:
+## A small, restrained circular badge behind the "VS" text -- a soft glow
+## ring in the round's own accent color, not an oversized jagged comic-book
+## impact star dominating the middle of the screen.
+class _VsBadge extends Control:
 	var accent_color: Color = Color(0.91, 0.29, 0.35)
 
 	func _ready() -> void:
@@ -352,25 +357,9 @@ class _VsStarburst extends Control:
 
 	func _draw() -> void:
 		var c := size * 0.5
-		var outer := minf(size.x, size.y) * 0.5
-		var inner := outer * 0.58
-		var spikes := 12
-		var points := PackedVector2Array()
-		for i in spikes * 2:
-			var ang := TAU * i / float(spikes * 2) - PI / 2.0
-			var r := outer if i % 2 == 0 else inner
-			points.append(c + Vector2(cos(ang), sin(ang)) * r)
-		draw_colored_polygon(points, Color(0.82, 0.84, 0.88))
-		for i in points.size():
-			var a: Vector2 = points[i]
-			var b: Vector2 = points[(i + 1) % points.size()]
-			draw_line(a, b, accent_color, 4.0)
-
-## A flat beveled metal strip -- top/bottom frame accents matching the
-## reference's chrome bars.
-class _ChromeBar extends Control:
-	func _draw() -> void:
-		var base := Color(0.55, 0.57, 0.63)
-		draw_rect(Rect2(Vector2.ZERO, size), base)
-		draw_rect(Rect2(0, 0, size.x, 2), base.lightened(0.35))
-		draw_rect(Rect2(0, size.y - 2, size.x, 2), base.darkened(0.35))
+		var radius := minf(size.x, size.y) * 0.5
+		for i in 5:
+			var t := float(5 - i) / 5.0
+			draw_circle(c, radius * (0.55 + 0.45 * t), Color(accent_color.r, accent_color.g, accent_color.b, 0.05 + 0.05 * (1.0 - t)))
+		draw_circle(c, radius * 0.6, Color(0.086, 0.09, 0.125, 0.96))
+		draw_arc(c, radius * 0.6, 0, TAU, 48, accent_color, 3.0, true)
