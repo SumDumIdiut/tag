@@ -5,12 +5,11 @@ class_name AchievementCatalog
 # hand-synced tradeoff rank_tiers.gd already accepts for RANK_TIERS. The
 # server only ever reports which ids a player has *unlocked* (see
 # GET /api/progression/:clientId); this catalog is what lets the
-# achievements menu also show the ones they haven't gotten yet, grayed out,
+# achievements menu also show the ones they haven't gotten yet (dimmed),
 # rather than only ever showing an ever-growing unlocked list with no sense
-# of what's left. `category` picks the badge art/color (see
-# achievement_badge.gd) -- "tier" ones reuse their real rank tier's own
-# color (RankTiers.TIERS), tying the badge directly to the rank ladder
-# instead of an arbitrary one.
+# of what's left. `category`/`tier` are only used to group/order the
+# progression graph (see achievements_menu.gd's NODE_LAYOUT) -- no visual
+# art keys off them anymore.
 const ACHIEVEMENTS := [
 	{"id": "first_win", "name": "First Blood", "desc": "Win your first match", "category": "win"},
 	{"id": "ten_wins", "name": "Perfect Ten", "desc": "Win 10 matches", "category": "win"},
@@ -29,7 +28,6 @@ const ACHIEVEMENTS := [
 	{"id": "legend", "name": "Legend League", "desc": "Reach Legend rank", "category": "tier", "tier": "Legend"},
 	{"id": "mythic", "name": "Mythic League", "desc": "Reach Mythic rank", "category": "tier", "tier": "Mythic"},
 	{"id": "immortal", "name": "Immortal League", "desc": "Reach Immortal rank", "category": "tier", "tier": "Immortal"},
-	{"id": "creator", "name": "Creator League", "desc": "???", "category": "tier", "tier": "Creator"},
 	{"id": "last_place", "name": "Tag, You're It", "desc": "Place last in a match", "category": "misc"},
 ]
 

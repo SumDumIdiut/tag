@@ -382,7 +382,6 @@ const ACHIEVEMENTS = [
   { id: 'legend', name: 'Legend League', condition: (rank) => rank.elo >= 4800 },
   { id: 'mythic', name: 'Mythic League', condition: (rank) => rank.elo >= 6500 },
   { id: 'immortal', name: 'Immortal League', condition: (rank) => rank.elo >= 9000 },
-  { id: 'creator', name: 'Creator League', condition: (rank) => rank.elo >= 10000 },
   { id: 'last_place', name: "Tag, You're It", condition: (rank, m) => m.place === m.n },
 ];
 

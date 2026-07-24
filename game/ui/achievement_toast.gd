@@ -5,11 +5,10 @@ class_name AchievementToast
 # holds, then slides back out -- queued one at a time so multiple unlocks
 # in the same fetch (e.g. catching up on several at once) don't all pile up
 # illegibly on top of each other. A caller just calls queue() per id; this
-# handles its own timing entirely.
+# handles its own timing entirely. Text only -- no icon/badge.
 
 const UIStyle := preload("res://ui/ui_style.gd")
 const AchievementCatalog := preload("res://cosmetics/achievement_catalog.gd")
-const AchievementBadgeScene := preload("res://ui/achievement_badge.gd")
 
 const HOLD_DURATION_SEC := 2.6
 const SLIDE_DURATION_SEC := 0.35
@@ -17,7 +16,6 @@ const SLIDE_DURATION_SEC := 0.35
 var _queue: Array = []
 var _showing := false
 var _panel: PanelContainer
-var _badge_slot: Control
 var _name_label: Label
 
 func _ready() -> void:
@@ -32,25 +30,19 @@ func _ready() -> void:
 	_panel.position = Vector2(-140, -70) # off-screen above, slides down into view
 	add_child(_panel)
 
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	_panel.add_child(row)
-
-	_badge_slot = AchievementBadgeScene.new()
-	_badge_slot.custom_minimum_size = Vector2(36, 36)
-	row.add_child(_badge_slot)
-
 	var text_box := VBoxContainer.new()
 	text_box.add_theme_constant_override("separation", 1)
-	row.add_child(text_box)
+	_panel.add_child(text_box)
 
 	var title := Label.new()
 	title.text = "ACHIEVEMENT UNLOCKED"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 10)
 	title.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
 	text_box.add_child(title)
 
 	_name_label = Label.new()
+	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_name_label.add_theme_font_size_override("font_size", 16)
 	text_box.add_child(_name_label)
 
@@ -69,10 +61,6 @@ func _show_next() -> void:
 	_showing = true
 	var a: Dictionary = _queue.pop_front()
 	_name_label.text = String(a.name)
-	_badge_slot.category = String(a.category)
-	_badge_slot.tier = String(a.get("tier", ""))
-	_badge_slot.unlocked = true
-	_badge_slot.achievement_id = String(a.id)
 
 	var tween := create_tween()
 	tween.tween_property(_panel, "position:y", 16.0, SLIDE_DURATION_SEC).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)

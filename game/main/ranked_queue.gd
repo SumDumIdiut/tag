@@ -11,14 +11,12 @@ const DIRECTORY_URL := "https://codecade.co.za/tag/api/servers"
 const RELAY_JOIN_BASE := "wss://codecade.co.za/tag/relay/join/"
 
 const UIStyle := preload("res://ui/ui_style.gd")
-const ModeIconScene := preload("res://ui/mode_icon.gd")
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 const TeamLobbyViewScene := preload("res://ui/team_lobby_view.gd")
 const MapVotePopupScene := preload("res://ui/map_vote_popup.gd")
 
 @onready var status_label: Label = $VBox/StatusPanel/StatusBox/StatusLabel
 @onready var back_button: Button = $VBox/BackButton
-@onready var icon_slot: Control = $VBox/StatusPanel/StatusBox/Icon
 
 var _http: HTTPRequest
 var _spawner: LocalServerSpawner
@@ -39,7 +37,6 @@ func _ready() -> void:
 	UIStyle.add_background(self, "ranked_queue")
 	$VBox/StatusPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_RANKED))
 	UIStyle.style_back_button(back_button)
-	_setup_pulsing_icon()
 	if PlaylistCatalog.is_team_mode(_playlist_id):
 		_build_team_view()
 	# Built AFTER _build_team_view() -- a later sibling draws on top, and
@@ -206,16 +203,3 @@ func _on_back_pressed() -> void:
 	_spawner.kill_child()
 	get_tree().change_scene_to_file("res://main/online_menu.tscn")
 
-## A small pulsing star icon over the status text, matching the Ranked
-## bar's own icon/color from the main menu.
-func _setup_pulsing_icon() -> void:
-	var icon = ModeIconScene.new()
-	icon.icon_type = "star"
-	icon.icon_color = UIStyle.COLOR_RANKED
-	icon.custom_minimum_size = Vector2(40, 48)
-	icon.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	icon.position = Vector2(-20, 0)
-	icon_slot.add_child(icon)
-	var tween := create_tween().set_loops()
-	tween.tween_property(icon, "modulate:a", 0.4, 0.6).set_trans(Tween.TRANS_SINE)
-	tween.tween_property(icon, "modulate:a", 1.0, 0.6).set_trans(Tween.TRANS_SINE)

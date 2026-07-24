@@ -1,6 +1,5 @@
 extends Control
 
-const ModeIconScene := preload("res://ui/mode_icon.gd")
 const UIStyle := preload("res://ui/ui_style.gd")
 const UpdateCheckerScript := preload("res://net/update_checker.gd")
 const UpdatePromptScene := preload("res://ui/update_prompt.gd")
@@ -94,19 +93,6 @@ func _build_account_button() -> void:
 	btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	btn.position = Vector2(20, 24)
 	btn.pressed.connect(_on_mode_pressed.bind("res://main/login_screen.tscn"))
-
-	var icon_wrap := Control.new()
-	icon_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon_wrap.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	icon_wrap.position = Vector2(14, -10)
-	icon_wrap.custom_minimum_size = Vector2(20, 20)
-	btn.add_child(icon_wrap)
-	var icon := ModeIconScene.new()
-	icon.icon_type = "star"
-	icon.icon_color = UIStyle.COLOR_ONLINE
-	icon.custom_minimum_size = Vector2(18, 20)
-	icon_wrap.add_child(icon)
-
 	add_child(btn)
 
 ## Opposite corner from Account -- same "always available, doesn't compete
@@ -120,19 +106,6 @@ func _build_achievements_button() -> void:
 	btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	btn.position = Vector2(-170, 24)
 	btn.pressed.connect(_on_mode_pressed.bind("res://main/achievements_menu.tscn"))
-
-	var icon_wrap := Control.new()
-	icon_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon_wrap.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
-	icon_wrap.position = Vector2(-34, -10)
-	icon_wrap.custom_minimum_size = Vector2(20, 20)
-	btn.add_child(icon_wrap)
-	var icon := ModeIconScene.new()
-	icon.icon_type = "star"
-	icon.icon_color = UIStyle.COLOR_ACCENT
-	icon.custom_minimum_size = Vector2(18, 20)
-	icon_wrap.add_child(icon)
-
 	add_child(btn)
 
 func _on_mode_pressed(scene_path: String) -> void:
