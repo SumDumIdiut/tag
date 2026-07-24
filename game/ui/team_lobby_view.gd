@@ -277,6 +277,7 @@ func _build_card(peer_id: int, info: Dictionary, team: int) -> VBoxContainer:
 	name_label.text = "%s%s" % [info.get("username", "Player"), you_tag]
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_label.add_theme_font_size_override("font_size", 18)
+	name_label.add_theme_color_override("font_color", UIStyle.tier_color(info.get("tier", "")))
 	card.add_child(name_label)
 
 	if ranked:

@@ -11,6 +11,7 @@ class_name CircleRevealView
 # no incremental diffing needed.
 
 const CharacterPreviewScene := preload("res://ui/character_preview.gd")
+const UIStyle := preload("res://ui/ui_style.gd")
 
 const PORTRAIT_SIZE := Vector2(64, 64)
 const BASE_RADIUS := 150.0
@@ -67,6 +68,7 @@ func _place_participant(peer_id: int, info: Dictionary, index: int, total: int, 
 	name_label.text = "%s%s" % [info.get("username", "Player"), you_tag]
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_label.add_theme_font_size_override("font_size", 14)
+	name_label.add_theme_color_override("font_color", UIStyle.tier_color(info.get("tier", "")))
 	card.add_child(name_label)
 
 	var angle := TAU * index / float(total) - PI / 2.0

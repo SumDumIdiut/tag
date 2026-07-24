@@ -8,6 +8,7 @@ class_name CornersRevealView
 # this only ever lays out once.
 
 const CharacterPreviewScene := preload("res://ui/character_preview.gd")
+const UIStyle := preload("res://ui/ui_style.gd")
 
 const PORTRAIT_SIZE := Vector2(90, 110)
 const EDGE_MARGIN := 70.0
@@ -82,6 +83,7 @@ func _build_corner(peer_id: int, info: Dictionary, corner_index: int) -> void:
 	name_label.text = "%s%s" % [info.get("username", "Player"), you_tag]
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_label.add_theme_font_size_override("font_size", 15)
+	name_label.add_theme_color_override("font_color", UIStyle.tier_color(info.get("tier", "")))
 	card.add_child(name_label)
 
 	var corner: Vector2 = CORNERS[corner_index]

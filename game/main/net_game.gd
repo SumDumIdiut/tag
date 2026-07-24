@@ -74,6 +74,7 @@ func _ready() -> void:
 		avatar.display_name = info.username
 		avatars[peer_id] = avatar
 		_apply_color(peer_id)
+		avatar.set_rank_tier(info.get("tier", ""))
 
 	# my_peer_id == -1 means we're spectating (see NetworkManager.start_
 	# spectator) -- there's no local avatar to own the camera, so fall back
@@ -170,10 +171,16 @@ func _render_leaderboard(states: Dictionary) -> void:
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_label.clip_text = true
 		name_label.add_theme_font_size_override("font_size", 13)
+		# "Currently it"/"you" stay their own fixed colors -- real-time state
+		# worth flagging at a glance -- everyone else's name is tier-colored,
+		# same as the in-game nametag above their head (see remote_avatar.gd's
+		# set_rank_tier).
 		if peer_id in currently_it:
 			name_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
 		elif peer_id == my_peer_id:
 			name_label.add_theme_color_override("font_color", Color(0.5, 0.85, 1.0))
+		else:
+			name_label.add_theme_color_override("font_color", UIStyle.tier_color(info.get("tier", "")))
 		row.add_child(name_label)
 
 		var time_label := Label.new()
