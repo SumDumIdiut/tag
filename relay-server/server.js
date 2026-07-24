@@ -152,6 +152,11 @@ const RANK_TIERS = [
   { name: 'Platinum', minElo: 1550 },
   { name: 'Diamond', minElo: 1850 },
   { name: 'Master', minElo: 2200 },
+  { name: 'Grandmaster', minElo: 2800 },
+  { name: 'Champion', minElo: 3600 },
+  { name: 'Legend', minElo: 4800 },
+  { name: 'Mythic', minElo: 6500 },
+  { name: 'Immortal', minElo: 9000 },
 ];
 
 function tierForElo(elo) {
@@ -368,6 +373,11 @@ const ACHIEVEMENTS = [
   { id: 'platinum', name: 'Platinum League', condition: (rank) => rank.elo >= 1550 },
   { id: 'diamond', name: 'Diamond League', condition: (rank) => rank.elo >= 1850 },
   { id: 'master', name: 'Master League', condition: (rank) => rank.elo >= 2200 },
+  { id: 'grandmaster', name: 'Grandmaster League', condition: (rank) => rank.elo >= 2800 },
+  { id: 'champion', name: 'Champion League', condition: (rank) => rank.elo >= 3600 },
+  { id: 'legend', name: 'Legend League', condition: (rank) => rank.elo >= 4800 },
+  { id: 'mythic', name: 'Mythic League', condition: (rank) => rank.elo >= 6500 },
+  { id: 'immortal', name: 'Immortal League', condition: (rank) => rank.elo >= 9000 },
   { id: 'last_place', name: "Tag, You're It", condition: (rank, m) => m.place === m.n },
 ];
 

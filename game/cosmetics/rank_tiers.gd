@@ -13,6 +13,11 @@ const TIERS := [
 	{"name": "Platinum", "min_elo": 1550, "color": Color(0.4, 0.85, 0.75)},
 	{"name": "Diamond", "min_elo": 1850, "color": Color(0.55, 0.75, 0.98)},
 	{"name": "Master", "min_elo": 2200, "color": Color(0.75, 0.35, 0.95)},
+	{"name": "Grandmaster", "min_elo": 2800, "color": Color(0.95, 0.25, 0.25)},
+	{"name": "Champion", "min_elo": 3600, "color": Color(1.0, 0.55, 0.15)},
+	{"name": "Legend", "min_elo": 4800, "color": Color(0.3, 0.95, 0.85)},
+	{"name": "Mythic", "min_elo": 6500, "color": Color(0.95, 0.2, 0.65)},
+	{"name": "Immortal", "min_elo": 9000, "color": Color(1.0, 0.92, 0.55)},
 ]
 
 static func tier_for_elo(elo: int) -> Dictionary:
