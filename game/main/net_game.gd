@@ -4,6 +4,18 @@ const REMOTE_AVATAR_SCENE := preload("res://player/remote_avatar.tscn")
 const MATCH_RESULTS_SCENE := preload("res://main/match_results.tscn")
 const OnlineMapCatalog := preload("res://levels/online_maps/catalog.gd")
 const UIStyle := preload("res://ui/ui_style.gd")
+const RankBadgeScene := preload("res://ui/rank_badge.gd")
+
+# Leaderboard panel sizing -- see _build_leaderboard()/_render_leaderboard().
+# Header is the "LEAST TIME AS IT WINS" title + its separation from the row
+# list; row is one entry's own height plus the inter-row separation; padding
+# is panel_box()'s own content margin (14px top + 14px bottom, see
+# ui_style.gd) plus a couple px of slack so descenders never clip.
+const LEADERBOARD_HEADER_HEIGHT := 24.0
+const LEADERBOARD_ROW_HEIGHT := 23.0
+const LEADERBOARD_PADDING := 30.0
+
+var _leaderboard_panel: PanelContainer
 
 var arena: Node2D
 var avatars := {} # peer_id -> RemoteAvatar, including your own
@@ -92,22 +104,26 @@ func _apply_color(peer_id: int) -> void:
 	var color_id: String = roster[peer_id].get("color_id", PlayerColors.DEFAULT_ID)
 	avatars[peer_id].set_color(color_id)
 
-## A fixed-size side panel (no scrolling -- 420px comfortably fits a private
-## match's max 16 participants) ranking everyone by time spent as "it" so
-## far, least first -- the same ordering the actual end-of-match placement
-## uses (see server_match.gd's _rank_individually/_rank_by_team). Rows are
-## built once here as placeholders; _render_leaderboard() repopulates them.
+## A side panel (no scrolling -- fits a private match's max 16 participants
+## even at full height) ranking everyone by time spent as "it" so far, least
+## first -- the same ordering the actual end-of-match placement uses (see
+## server_match.gd's _rank_individually/_rank_by_team). Rows are built once
+## here as placeholders; _render_leaderboard() repopulates them and resizes
+## the panel to fit however many rows there actually are -- a small lobby
+## (e.g. a 1v1) previously still got a tall fixed 420px box with most of it
+## empty dead space below just 2 rows.
 func _build_leaderboard() -> void:
-	var panel := PanelContainer.new()
-	panel.anchor_left = 1.0
-	panel.anchor_right = 1.0
-	panel.offset_left = -240.0
-	panel.offset_right = -16.0
-	panel.offset_top = 16.0
-	panel.offset_bottom = 420.0
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_NEUTRAL))
-	_ui_layer.add_child(panel)
+	_leaderboard_panel = PanelContainer.new()
+	_leaderboard_panel.anchor_left = 1.0
+	_leaderboard_panel.anchor_right = 1.0
+	_leaderboard_panel.offset_left = -240.0
+	_leaderboard_panel.offset_right = -16.0
+	_leaderboard_panel.offset_top = 16.0
+	_leaderboard_panel.offset_bottom = 16.0 + LEADERBOARD_HEADER_HEIGHT + LEADERBOARD_PADDING
+	_leaderboard_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_leaderboard_panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_NEUTRAL))
+	_ui_layer.add_child(_leaderboard_panel)
+	var panel := _leaderboard_panel
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
@@ -166,6 +182,16 @@ func _render_leaderboard(states: Dictionary) -> void:
 		rank_label.add_theme_font_size_override("font_size", 13)
 		row.add_child(rank_label)
 
+		# Only for a real, resolved tier (a bot, or a lookup that failed/timed
+		# out -- see server_match.gd's _fill_ranked_stats -- has no "tier" key
+		# at all) -- skip the badge entirely rather than show one for
+		# "Unranked", which would just be noise on every bot's row.
+		if info.has("tier"):
+			var badge := RankBadgeScene.new()
+			badge.tier = String(info.tier)
+			badge.custom_minimum_size = Vector2(14, 16)
+			row.add_child(badge)
+
 		var name_label := Label.new()
 		name_label.text = "%s%s" % [info.get("username", "Player"), "  (you)" if peer_id == my_peer_id else ""]
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -190,6 +216,8 @@ func _render_leaderboard(states: Dictionary) -> void:
 		row.add_child(time_label)
 
 		_leaderboard_box.add_child(row)
+
+	_leaderboard_panel.offset_bottom = _leaderboard_panel.offset_top + LEADERBOARD_HEADER_HEIGHT + LEADERBOARD_PADDING + entries.size() * LEADERBOARD_ROW_HEIGHT
 
 func _physics_process(_delta: float) -> void:
 	# A spectator (my_peer_id == -1, see setup()/start_spectator()) has no
