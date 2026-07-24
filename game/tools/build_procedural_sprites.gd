@@ -22,7 +22,7 @@ const LocalMapCatalog := preload("res://levels/local_maps/catalog.gd")
 const RANK_BADGE_SIZE := Vector2i(44, 52) # 2x rank_badge.gd's real 22x26 render size
 const RANK_BADGE_OUT_DIR := "res://assets/icons/rank_badges"
 # "" (empty tier) is the unranked/default case -- see UIStyle.RANK_TIER_DEFAULT_COLOR.
-const RANK_TIERS := ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master", "Grandmaster", "Champion", "Legend", "Mythic", "Immortal", ""]
+const RANK_TIERS := ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master", "Grandmaster", "Champion", "Legend", "Mythic", "Immortal", "GOAT", ""]
 
 const MAP_ICON_SIZE := Vector2i(208, 110) # source resolution; LocalMapIcon stretches the baked PNG to whatever size a caller actually displays it at
 const MAP_ICON_OUT_DIR := "res://assets/icons/local_map_icons"

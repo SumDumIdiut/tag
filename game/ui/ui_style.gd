@@ -39,6 +39,7 @@ const RANK_TIER_COLORS := {
 	"Legend": Color(0.3, 0.95, 0.85),
 	"Mythic": Color(0.95, 0.2, 0.65),
 	"Immortal": Color(1.0, 0.92, 0.55),
+	"GOAT": Color(1.0, 0.65, 0.0),
 }
 const RANK_TIER_DEFAULT_COLOR := Color(0.6, 0.63, 0.72)
 
