@@ -303,6 +303,23 @@ function findAccountByUsername(usernameLower) {
   return null;
 }
 
+// An account's primaryClientId can carry a manually-set `isCreator: true`
+// (set directly in accounts.json, no signup-flow path to it) to pin its
+// displayed tier to 'Creator' regardless of its actual elo -- unlike the
+// old approach of just parking that one account's elo above MAX_ELO, this
+// keeps its elo a normal, honestly-earned/reset number that sorts into its
+// real position on the leaderboard, while the tier badge stays fixed.
+function isCreatorClientId(clientId) {
+  for (const account of Object.values(accounts)) {
+    if (account.primaryClientId === clientId && account.isCreator) return true;
+  }
+  return false;
+}
+
+function tierFor(clientId, elo) {
+  return isCreatorClientId(clientId) ? 'Creator' : tierForElo(elo);
+}
+
 function createSession(accountId) {
   const token = crypto.randomBytes(32).toString('hex');
   sessions[token] = { accountId, expiresAt: Date.now() + SESSION_TTL_MS };
@@ -866,7 +883,7 @@ app.get('/api/ranked/:clientId', (req, res) => {
   const playlist = String(req.query.playlist || '');
   const entry = getRankEntry(req.params.clientId, playlist);
   saveRanks(); // getRankEntry may have just created a fresh entry -- persist it so a lookup alone doesn't silently lose a brand-new player's row on restart
-  res.json({ elo: entry.elo, tier: tierForElo(entry.elo), wins: entry.wins, losses: entry.losses, matchesPlayed: entry.matchesPlayed, playlist });
+  res.json({ elo: entry.elo, tier: tierFor(req.params.clientId, entry.elo), wins: entry.wins, losses: entry.losses, matchesPlayed: entry.matchesPlayed, playlist });
 });
 
 // Mirrors game/net/server_match.gd's ROUND_DURATION_SEC -- a reported itTime
@@ -1009,7 +1026,7 @@ app.get('/api/leaderboard', (req, res) => {
     rows.push({
       clientId,
       username: (progression[clientId] && progression[clientId].username) || null,
-      elo: r.elo, tier: tierForElo(r.elo), wins: r.wins, losses: r.losses, matchesPlayed: r.matchesPlayed,
+      elo: r.elo, tier: tierFor(clientId, r.elo), wins: r.wins, losses: r.losses, matchesPlayed: r.matchesPlayed,
     });
   }
   rows.sort((a, b) => b.elo - a.elo);
@@ -1030,7 +1047,7 @@ app.get('/api/profile/:clientId', (req, res) => {
   const byPlaylist = ranks[clientId] || {};
   const playlistRanks = {};
   for (const [playlistId, r] of Object.entries(byPlaylist)) {
-    playlistRanks[playlistId] = { elo: r.elo, tier: tierForElo(r.elo), wins: r.wins, losses: r.losses, matchesPlayed: r.matchesPlayed };
+    playlistRanks[playlistId] = { elo: r.elo, tier: tierFor(clientId, r.elo), wins: r.wins, losses: r.losses, matchesPlayed: r.matchesPlayed };
   }
   res.json({
     clientId, username: prog.username,
