@@ -18,6 +18,7 @@ const TIERS := [
 	{"name": "Legend", "min_elo": 4800, "color": Color(0.3, 0.95, 0.85)},
 	{"name": "Mythic", "min_elo": 6500, "color": Color(0.95, 0.2, 0.65)},
 	{"name": "Immortal", "min_elo": 9000, "color": Color(1.0, 0.92, 0.55)},
+	{"name": "GOAT", "min_elo": 10000, "color": Color(1.0, 0.65, 0.0)},
 ]
 
 static func tier_for_elo(elo: int) -> Dictionary:
