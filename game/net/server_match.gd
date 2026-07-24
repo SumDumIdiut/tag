@@ -150,20 +150,25 @@ func _finish_setup() -> void:
 	# Simulation is already ticking (players spawned, TagMode running) by this
 	# point -- only the client-facing "match started" notice waits on this, so
 	# a slow/unreachable relay costs a brief extra beat before the VS screen
-	# appears, never a stuck match.
-	if ranked:
-		await _fill_ranked_stats()
+	# appears, never a stuck match. Fetched for every match, ranked or
+	# casual -- a casual player's own persistent elo/tier is still real (it's
+	# just never reported/moved by a casual result), and match_intro.gd's VS
+	# screen and every player-name tier-coloring path (net_game.gd,
+	# team_lobby_view.gd, the reveal views) all read this the same way
+	# regardless of match type. Previously ranked-only, which meant casual
+	# play never had rank data to color anything with at all.
+	await _fill_ranked_stats()
 	_network_manager.notify_match_started(lobby_id, roster, _network_manager.level_id, playlist_id)
 
-## Enriches each ranked participant's roster entry with their current elo/
-## tier (see match_intro.gd's VS screen) -- looked up server-side by the
-## already-private _client_ids, never sent to peers directly (client_id
-## itself stays server-only, same as everywhere else in this file). Fires
-## all lookups in parallel (one HTTPRequest each) rather than one after
-## another, so N players costs roughly one round-trip, not N. A lookup that
-## fails or times out just leaves that player's roster entry without
-## elo/tier -- match_intro.gd falls back to an "Unranked" placeholder
-## rather than blocking match start on the relay being briefly unreachable.
+## Enriches each participant's roster entry with their current elo/tier (see
+## match_intro.gd's VS screen and every name tier-coloring path) -- looked up
+## server-side by the already-private _client_ids, never sent to peers
+## directly (client_id itself stays server-only, same as everywhere else in
+## this file). Fires all lookups in parallel (one HTTPRequest each) rather
+## than one after another, so N players costs roughly one round-trip, not N.
+## A lookup that fails or times out just leaves that player's roster entry
+## without elo/tier -- callers fall back to an "Unranked" placeholder rather
+## than blocking match start on the relay being briefly unreachable.
 func _fill_ranked_stats() -> void:
 	var pending_peers: Array = []
 	for peer_id in _client_ids.keys():
