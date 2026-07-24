@@ -43,6 +43,11 @@ func _ready() -> void:
 		npc.skill_level = GameSettings.npc_skill
 		npc.tag_mode = tag_mode
 		npc.waypoint_graph = waypoint_graph
+		# TEMPORARY -- see GameSettings.use_trained_ai's own comment. Only
+		# the first NPC, not all of them, so there's always a normal
+		# scripted bot to compare it against in the same match.
+		if i == 0 and GameSettings.use_trained_ai:
+			npc.use_trained_policy = true
 		add_child(npc)
 		npc.global_position = spawn_points[(i + 1) % spawn_points.size()].global_position
 		participants.append(npc)

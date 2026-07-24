@@ -16,6 +16,8 @@ const MAP_THUMB_SIZE := Vector2(80, 64)
 @onready var start_button: Button = $VBox/StartButton
 @onready var back_button: Button = $VBox/BackButton
 
+var _trained_ai_button: Button
+
 func _ready() -> void:
 	UIStyle.add_background(self, "local_menu")
 	$VBox/SettingsPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_LOCAL))
@@ -30,6 +32,7 @@ func _ready() -> void:
 	UIStyle.style_slider(skill_slider, UIStyle.COLOR_LOCAL)
 	UIStyle.style_slider(round_duration_slider, UIStyle.COLOR_LOCAL)
 	_build_map_row()
+	_build_trained_ai_toggle()
 
 	npc_count_slider.value = GameSettings.npc_count
 	skill_slider.value = GameSettings.npc_skill
@@ -102,10 +105,28 @@ func _build_map_thumb(id: String, group: ButtonGroup) -> Button:
 	btn.add_child(preview)
 	return btn
 
+## TEMPORARY -- see GameSettings.use_trained_ai's own comment. A plain
+## toggle button, not a slider row like the others above -- this isn't a
+## real settings option meant to stick around, just a quick way to actually
+## reach the RL-trained NPC (game/npc/trained_policy.gd) in-game.
+func _build_trained_ai_toggle() -> void:
+	_trained_ai_button = Button.new()
+	_trained_ai_button.toggle_mode = true
+	_trained_ai_button.button_pressed = GameSettings.use_trained_ai
+	_trained_ai_button.custom_minimum_size = Vector2(0, 36)
+	UIStyle.style_button(_trained_ai_button, UIStyle.COLOR_LOCAL, 10, false)
+	_update_trained_ai_label()
+	_trained_ai_button.toggled.connect(func(_pressed: bool): _update_trained_ai_label())
+	settings_box.add_child(_trained_ai_button)
+
+func _update_trained_ai_label() -> void:
+	_trained_ai_button.text = "AI (trained): %s [temporary]" % ("ON -- one bot uses it" if _trained_ai_button.button_pressed else "OFF")
+
 func _on_start_pressed() -> void:
 	GameSettings.npc_count = int(npc_count_slider.value)
 	GameSettings.npc_skill = int(skill_slider.value)
 	GameSettings.round_duration = round_duration_slider.value
+	GameSettings.use_trained_ai = _trained_ai_button.button_pressed
 	get_tree().change_scene_to_file("res://main/game.tscn")
 
 func _on_back_pressed() -> void:

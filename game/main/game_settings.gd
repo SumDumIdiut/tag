@@ -8,6 +8,13 @@ const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 var npc_count: int = 3
 var npc_skill: int = 3
 var round_duration: float = 180.0
+# TEMPORARY -- exposes npc.gd's use_trained_policy toggle for local bot play
+# so the RL-trained NPC (see ai_training/, game/npc/trained_policy.gd) can
+# actually be tried in-game. Not a real "AI difficulty" option (no
+# matchmaking/ranked path reads this), just a quick way to reach it -- meant
+# to come out once there's a real place for it, or the trained policy
+# doesn't need one-off testing anymore.
+var use_trained_ai: bool = false
 # Set by local_menu.gd's inline map row, read right before change_scene_to_file
 # to game.tscn -- see LocalMapCatalog for what this id resolves to.
 var selected_local_map: String = LocalMapCatalog.CLASSIC_ID
