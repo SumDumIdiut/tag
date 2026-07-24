@@ -63,16 +63,23 @@ func _build_static_shell() -> void:
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(badge)
 
+	# A child of badge, sized to fill it exactly (PRESET_FULL_RECT), rather
+	# than a sibling independently anchored to screen-center with a
+	# hand-guessed pixel offset -- that guess assumed the Label's auto-size
+	# would land at exactly 60x44, which it doesn't (font metrics for "VS"
+	# at this size come out slightly different), so the text visibly drifted
+	# off-center from the badge's own true center. Filling the badge's own
+	# rect and centering via alignment is correct regardless of glyph size.
 	_vs_label = Label.new()
 	_vs_label.text = "VS"
 	_vs_label.add_theme_font_size_override("font_size", 34)
 	_vs_label.add_theme_color_override("font_color", Color(0.95, 0.96, 0.98))
 	_vs_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_vs_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_vs_label.set_anchors_preset(Control.PRESET_CENTER)
-	_vs_label.pivot_offset = Vector2(30, 22)
-	_vs_label.position = Vector2(-30, -22)
-	add_child(_vs_label)
+	_vs_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_vs_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_vs_label.pivot_offset = badge.size * 0.5
+	badge.add_child(_vs_label)
 
 	# Fixed-height slots (a placeholder reserves the exact same height a
 	# real card would, just centering its own smaller box within that space)
@@ -355,12 +362,29 @@ class _VsBadge extends Control:
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# Without this, a size change after the first _draw() (e.g. the
+		# explicit size assignment in _build_static_shell landing before
+		# layout has settled) leaves the glow baked in at whatever radius
+		# was true at that first, possibly-wrong draw -- looking like a
+		# lopsided/broken ring frozen mid-transition instead of a clean
+		# circle, since nothing ever tells it to redraw at the corrected size.
+		resized.connect(queue_redraw)
 
 	func _draw() -> void:
 		var c := size * 0.5
 		var radius := minf(size.x, size.y) * 0.5
-		for i in 5:
-			var t := float(5 - i) / 5.0
-			draw_circle(c, radius * (0.55 + 0.45 * t), Color(accent_color.r, accent_color.g, accent_color.b, 0.05 + 0.05 * (1.0 - t)))
+		_draw_glow(c, radius, accent_color)
 		draw_circle(c, radius * 0.6, Color(0.086, 0.09, 0.125, 0.96))
 		draw_arc(c, radius * 0.6, 0, TAU, 48, accent_color, 3.0, true)
+
+	# Same 28-step smooth ring-stack _SplitBackground's own glow uses (see
+	# its _draw_glow below) -- the previous 5-step version here was coarse
+	# enough to show visible banding (concentric hard edges) instead of a
+	# smooth soft glow, reading as "broken" next to the rest of this screen.
+	func _draw_glow(center: Vector2, max_radius: float, color: Color) -> void:
+		var steps := 28
+		for i in steps:
+			var t := float(steps - i) / float(steps)
+			var r := max_radius * (0.55 + 0.45 * t)
+			var alpha := 0.006 + 0.03 * (1.0 - t)
+			draw_circle(center, r, Color(color.r, color.g, color.b, alpha))
