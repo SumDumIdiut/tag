@@ -14,6 +14,14 @@ class_name NPC
 # skill_level (1-5) tunes reaction speed, mistake rate, dash readiness, and
 # how far ahead a chaser leads a moving target.
 @export var skill_level: int = 3
+# Opt-in alternative to the scripted heuristic below -- runs a forward pass
+# through an RL-trained policy instead (see ai_training/, trained_policy.gd)
+# for its move/jump/dash decision each reaction interval. Falls back to the
+# scripted heuristic automatically if no trained weights file is bundled
+# (TrainedPolicy.loaded stays false), so turning this on is never a hard
+# dependency on training having actually been run.
+@export var use_trained_policy: bool = false
+const TrainedPolicyScene := preload("res://npc/trained_policy.gd")
 
 var tag_mode: TagMode = null
 var waypoint_graph: WaypointGraph = null
@@ -121,6 +129,20 @@ func _make_decision() -> void:
 	if target == null:
 		_decision_move_dir = Vector2.ZERO
 		return
+
+	if use_trained_policy:
+		# Untyped -- TrainedPolicy.get_shared()'s return can't be statically
+		# typed to its own class from within that same file (see
+		# trained_policy.gd's comment), so this stays Variant/duck-typed too.
+		var policy = TrainedPolicyScene.get_shared()
+		if policy.loaded:
+			var result = policy.decide(self, target, tag_mode)
+			_decision_move_dir = result.move_dir
+			_decision_jump = result.jump
+			_decision_dash = result.dash
+			return
+		# No weights bundled -- fall through to the scripted heuristic below
+		# rather than leaving this NPC standing still.
 
 	var am_it := tag_mode.is_it(self)
 	var to_target: Vector2 = target.global_position - global_position
