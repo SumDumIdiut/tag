@@ -110,6 +110,7 @@ func _build_row(peer_id: int, info: Dictionary) -> Control:
 	name_label.text = "%s%s" % [info.get("username", "Player"), you_tag]
 	name_label.add_theme_font_size_override("font_size", 20)
 	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	name_label.add_theme_color_override("font_color", UIStyle.tier_color(info.get("tier", "")))
 	row.add_child(name_label)
 
 	return row

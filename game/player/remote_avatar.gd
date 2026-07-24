@@ -15,6 +15,8 @@ class_name RemoteAvatar
 @onready var _body: CharacterBodyRect = $Visual/Body
 @onready var _it_label: Label = $ItLabel
 
+const UIStyle := preload("res://ui/ui_style.gd")
+
 # How fast the rendered position catches up to the dead-reckoned target
 # each tick -- not prediction (this only ever reacts to already-confirmed
 # server state, never simulates ahead of it), just how tightly it tracks
@@ -62,6 +64,10 @@ var _it_pulse_tween: Tween
 func _ready() -> void:
 	if name_label:
 		name_label.text = display_name
+		# Sensible default until set_rank_tier() overrides it with this peer's
+		# real tier (see net_game.gd) -- tier_color("") is the same neutral
+		# gray "Unranked" already uses everywhere else.
+		name_label.add_theme_color_override("font_color", UIStyle.tier_color(""))
 	if visual:
 		# Sensible default until set_color() overrides it with this peer's
 		# actual server-assigned color -- covers the brief window before it's
@@ -91,6 +97,15 @@ func set_color(color_id: String) -> void:
 	_own_color = PlayerColors.color_for(color_id)
 	if _body and not _last_is_it:
 		_body.color = _own_color
+
+## Sets this avatar's floating name tag color to its rank tier's color --
+## called once by net_game.gd, same as set_color() above, off the same
+## roster entry ("tier" only present for a ranked match, see server_match.
+## gd's _fill_ranked_stats -- an empty/missing tier falls back to the same
+## neutral gray "Unranked" uses everywhere else, via UIStyle.tier_color).
+func set_rank_tier(tier: String) -> void:
+	if name_label:
+		name_label.add_theme_color_override("font_color", UIStyle.tier_color(tier))
 
 func _update_it_label(active: bool) -> void:
 	if not _it_label:
