@@ -99,3 +99,40 @@ trained back when `sim.py` only simulated `square_arena`) -- resuming
 against today's multi-arena `sim.py` continues from those learned
 run/jump/dash fundamentals while extending them to the other 7 maps, not a
 from-scratch restart.
+
+## Pooled training (multiple machines training one model together)
+
+`learner.py`/`worker.py` let more than one machine contribute rollout
+experience to the *same* PPO model, instead of each running its own
+independent `train.py`. This reuses stable-baselines3's own
+`collect_rollouts()`/`train()` unmodified -- each machine runs rollout
+collection (and GAE) locally, a central learner concatenates the finished
+per-env-column arrays from every contributor into one buffer each round,
+and calls `train()` once against the pooled data. See `pool_config.py`
+for the shared hyperparameters every contributor must agree on.
+
+```
+# one machine: the learner (holds the model + optimizer state)
+python learner.py --port 8770 --local-envs 4 --resume models/npc_v1.zip --out models/pooled
+
+# any other machine on the same LAN: a worker (pure rollout collection, no training)
+python worker.py --learner http://<learner-host>:8770 --envs 256
+```
+
+A worker defaults to idle (polling only, near-zero CPU) until told to
+dedicate:
+
+```
+curl -X POST "http://<learner-host>:8770/dedicate?worker_id=<id>&on=true"
+```
+
+(`worker_id` is generated once per machine and cached in `.worker_id`
+next to `worker.py` -- printed to stdout on startup.) LAN-only by design,
+no auth -- this is meant to run on a home network between machines you
+already trust, not to be exposed publicly.
+
+Currently local-only (a learner + worker can run on any two machines on
+the LAN today) -- not yet wired up as a persistent terraserver service or
+exposed via a dev-panel toggle; see `tests/test_pooling.py` for the
+correctness checks (`python tests/test_pooling.py`) covering the pooling
+math, the wire format, and the round/timeout/stale-rejection protocol.
