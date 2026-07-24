@@ -100,6 +100,14 @@ func _build_team_view() -> void:
 ## (see network_manager.gd's _begin_match_sequence), not a passive panel
 ## sitting on this screen the whole time it's waiting.
 func _on_map_vote_phase_started(duration: float) -> void:
+	# For an FFA playlist (no _team_view, see _build_team_view -- that path
+	# already hides $VBox itself), the "Finding a match..." status text and
+	# its pulsing star icon were still sitting there the whole time, bleeding
+	# through the popup's semi-transparent dim layer once voting starts --
+	# a stray red star (COLOR_RANKED) and leftover "Waiting..." text visible
+	# behind the vote buttons. Nothing here needs it anymore once a match is
+	# actually found.
+	$VBox.visible = false
 	_map_vote_popup.start_voting(duration)
 
 func _on_map_vote_phase_ended(chosen_level_id: String, countdown: float) -> void:
@@ -108,6 +116,12 @@ func _on_map_vote_phase_ended(chosen_level_id: String, countdown: float) -> void
 func _on_lobby_state_updated(lobby: Dictionary) -> void:
 	if _cancelled or lobby.is_empty():
 		return
+	# Bots (see network_manager.gd's _on_bot_fill_timeout) never live in
+	# lobby.members -- merge them in here so the vote popup's ballot row
+	# shows a slot for every actual voter, not just the real connected ones.
+	var voters: Dictionary = lobby.get("members", {}).duplicate()
+	voters.merge(lobby.get("bots", {}))
+	_map_vote_popup.set_roster(voters)
 	_map_vote_popup.set_votes(lobby.get("map_votes", {}))
 	if not _team_view:
 		return
