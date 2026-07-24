@@ -33,6 +33,7 @@ const RANK_TIER_COLORS := {
 	"Gold": Color(0.95, 0.8, 0.25),
 	"Platinum": Color(0.4, 0.85, 0.8),
 	"Diamond": Color(0.55, 0.8, 0.98),
+	"Master": Color(0.75, 0.35, 0.95),
 }
 const RANK_TIER_DEFAULT_COLOR := Color(0.6, 0.63, 0.72)
 

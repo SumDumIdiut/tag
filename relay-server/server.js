@@ -144,12 +144,14 @@ function readCatalog() {
 const RANKS_JSON_PATH = path.join(DATA_DIR, 'ranks.json');
 const ELO_K = 28;
 const STARTING_ELO = 1000;
+const MAX_ELO = 9999;
 const RANK_TIERS = [
   { name: 'Bronze', minElo: 0 },
   { name: 'Silver', minElo: 1100 },
   { name: 'Gold', minElo: 1300 },
   { name: 'Platinum', minElo: 1550 },
   { name: 'Diamond', minElo: 1850 },
+  { name: 'Master', minElo: 2200 },
 ];
 
 function tierForElo(elo) {
@@ -224,7 +226,7 @@ function applyEloUpdates(results, playlistId) {
   for (let i = 0; i < n; i++) {
     const entry = getRankEntry(results[i].clientId, playlistId);
     if (opponentCounts[i] > 0) {
-      entry.elo = Math.round(entry.elo + ELO_K * (deltas[i] / opponentCounts[i]));
+      entry.elo = Math.min(MAX_ELO, Math.round(entry.elo + ELO_K * (deltas[i] / opponentCounts[i])));
     }
     entry.matchesPlayed += 1;
     entry.lastPlayed = Date.now();
@@ -365,6 +367,7 @@ const ACHIEVEMENTS = [
   { id: 'gold', name: 'Gold League', condition: (rank) => rank.elo >= 1300 },
   { id: 'platinum', name: 'Platinum League', condition: (rank) => rank.elo >= 1550 },
   { id: 'diamond', name: 'Diamond League', condition: (rank) => rank.elo >= 1850 },
+  { id: 'master', name: 'Master League', condition: (rank) => rank.elo >= 2200 },
   { id: 'last_place', name: "Tag, You're It", condition: (rank, m) => m.place === m.n },
 ];
 
