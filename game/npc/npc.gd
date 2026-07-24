@@ -137,9 +137,27 @@ func _make_decision() -> void:
 		var policy = TrainedPolicyScene.get_shared()
 		if policy.loaded:
 			var result = policy.decide(self, target, tag_mode)
-			_decision_move_dir = result.move_dir
-			_decision_jump = result.jump
-			_decision_dash = result.dash
+			var move_dir: Vector2 = result.move_dir
+			var jump: bool = result.jump
+			var dash: bool = result.dash
+			# The trained policy always plays its one trained level of
+			# competence -- skill_level (1-5) is layered on top of its
+			# output, same _skill_t()/_mistake_chance()/_dash_chance() curve
+			# the scripted heuristic below already uses for the identical
+			# purpose. That keeps "how strong should this bot be" meaning
+			# the same thing regardless of which AI backend is behind it,
+			# whatever skill_level actually came from -- the local Skill
+			# slider (game.gd sets it directly) or online bot-fill's
+			# elo-derived value (network_manager.gd's _compute_bot_skill_level).
+			if randf() < _mistake_chance():
+				move_dir.x = -move_dir.x
+			if jump and randf() < _mistake_chance():
+				jump = false
+			if dash and randf() > _dash_chance():
+				dash = false
+			_decision_move_dir = move_dir
+			_decision_jump = jump
+			_decision_dash = dash
 			return
 		# No weights bundled -- fall through to the scripted heuristic below
 		# rather than leaving this NPC standing still.
