@@ -30,12 +30,22 @@ func _ready() -> void:
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
 
+	# A CenterContainer, not a hand-computed position offset sized for one
+	# specific content height -- the square map tiles (see map_vote_view.gd)
+	# made this panel taller/wider than the old text-only version, and a
+	# fixed pixel offset calibrated for the old size would center the wrong
+	# box once content grew past it (the exact class of bug the VS badge's
+	# label had -- see team_lobby_view.gd). A CenterContainer re-centers
+	# correctly at whatever size its child actually ends up.
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_PASS
+	add_child(center)
+
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_QUICKPLAY, 0.9, 1.0))
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.position = Vector2(-260, -110)
 	panel.custom_minimum_size = Vector2(520, 200)
-	add_child(panel)
+	center.add_child(panel)
 
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
@@ -58,7 +68,6 @@ func _ready() -> void:
 	box.add_child(_countdown_label)
 
 	_vote_view = MapVoteViewScene.new()
-	_vote_view.custom_minimum_size = Vector2(0, 60)
 	box.add_child(_vote_view)
 
 func start_voting(duration: float) -> void:
@@ -77,6 +86,9 @@ func show_result(_chosen_level_id: String, countdown: float) -> void:
 
 func set_votes(votes: Dictionary) -> void:
 	_vote_view.set_votes(votes)
+
+func set_roster(roster: Dictionary) -> void:
+	_vote_view.set_roster(roster)
 
 func _process(delta: float) -> void:
 	if not visible or _phase.is_empty():

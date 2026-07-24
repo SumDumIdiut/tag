@@ -37,6 +37,7 @@ signal map_vote_phase_ended(chosen_level_id: String, countdown: float)
 
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 const RankTiers := preload("res://cosmetics/rank_tiers.gd")
+const OnlineMapCatalog := preload("res://levels/online_maps/catalog.gd")
 
 const DEFAULT_PORT := 9000
 const MAX_LOBBY_PLAYERS := 8
@@ -48,7 +49,7 @@ const MAX_CHAT_MESSAGE_LEN := 200
 ## _begin_match_sequence()/_on_map_vote_timeout()) -- map selection is now
 ## a timed pop-up-vote-then-countdown moment right before a match starts,
 ## not a passive panel players could ignore indefinitely.
-const MAP_VOTE_DURATION_SEC := 8.0
+const MAP_VOTE_DURATION_SEC := 30.0
 const MAP_VOTE_COUNTDOWN_SEC := 3.0
 ## How long a ranked playlist lobby waits for real players before topping
 ## the remaining slots up with bots (see _on_bot_fill_timeout()) rather than
@@ -550,6 +551,7 @@ func _server_submit_map_vote(map_level_id: String) -> void:
 		lobby["map_votes"] = {}
 	lobby["map_votes"][sender] = map_level_id
 	_send_lobby_state(lobby_id)
+	_maybe_resolve_map_vote_early(lobby_id)
 
 ## Weighted-random, not winner-take-all -- a map with 3 of 4 votes is much
 ## more likely to be picked than one with 1, but never guaranteed, matching
@@ -713,7 +715,7 @@ func _fetch_elo(client_id: String, playlist: String) -> int:
 	return -1
 
 func _bot_name(index: int) -> String:
-	return "Bot " + BOT_NAMES[index % BOT_NAMES.size()]
+	return "[Bot] " + BOT_NAMES[index % BOT_NAMES.size()]
 
 ## The moment a lobby is ready to start (fill/host-start/ranked-threshold
 ## reached), map selection becomes a timed pop-up vote instead of the match
@@ -721,36 +723,82 @@ func _bot_name(index: int) -> String:
 ## before, which already keeps it out of the server list via
 ## _lobby_summaries() and blocks new joins via _join_lobby_internal/
 ## _join_ranked_lobby's existing in_match checks) and broadcasts a
-## vote-start to every member, then waits MAP_VOTE_DURATION_SEC before
-## resolving the winner and starting a short countdown. Every match gets
-## this, including a party's auto-started Private match (is_party_private
-## still skips the manual Start button/share-address panel -- see
-## lobby_room.gd -- just not the map picker itself, which runs before the
-## circle reveal like any other match's map vote runs before its own intro).
+## vote-start to every member, then waits up to MAP_VOTE_DURATION_SEC before
+## resolving the winner and starting a short countdown -- resolved sooner if
+## every voter (members + bots, see _maybe_resolve_map_vote_early) has
+## already voted, so a full lobby isn't stuck waiting out a timer nobody
+## needs. Every match gets this, including a party's auto-started Private
+## match (is_party_private still skips the manual Start button/share-address
+## panel -- see lobby_room.gd -- just not the map picker itself, which runs
+## before the circle reveal like any other match's map vote runs before its
+## own intro).
 func _begin_match_sequence(lobby_id: int, ranked: bool) -> void:
 	if not _lobbies.has(lobby_id):
 		return
 	var lobby: Dictionary = _lobbies[lobby_id]
 	lobby.in_match = true
 	lobby["voting_open"] = true
+	# Stashed on the lobby itself (not just threaded through as a bound timer
+	# arg) so the early-resolve path (triggered from a vote RPC, which has no
+	# other way to know this match's ranked-ness) can read it too.
+	lobby["ranked"] = ranked
 	_broadcast_lobby_list()
 	for peer_id in lobby.members.keys():
 		rpc_id(peer_id, "_client_map_vote_started", MAP_VOTE_DURATION_SEC)
-	get_tree().create_timer(MAP_VOTE_DURATION_SEC).timeout.connect(_on_map_vote_timeout.bind(lobby_id, ranked))
+	# Bots vote too (staggered, so a full-bot lobby doesn't resolve in a
+	# single instant frame) -- see _bot_submit_map_vote.
+	for bot_id in lobby.get("bots", {}).keys():
+		get_tree().create_timer(randf_range(0.6, 3.5)).timeout.connect(_bot_submit_map_vote.bind(lobby_id, bot_id))
+	_send_lobby_state(lobby_id) # so clients see the bot roster (for the ballot row) right away, not just once a vote trickles in
+	get_tree().create_timer(MAP_VOTE_DURATION_SEC).timeout.connect(_on_map_vote_timeout.bind(lobby_id))
+
+func _bot_submit_map_vote(lobby_id: int, bot_id: int) -> void:
+	if not _lobbies.has(lobby_id):
+		return
+	var lobby: Dictionary = _lobbies[lobby_id]
+	if not lobby.get("voting_open", false):
+		return
+	if not lobby.has("map_votes"):
+		lobby["map_votes"] = {}
+	lobby["map_votes"][bot_id] = OnlineMapCatalog.MAP_ORDER[randi() % OnlineMapCatalog.MAP_ORDER.size()]
+	_send_lobby_state(lobby_id)
+	_maybe_resolve_map_vote_early(lobby_id)
+
+## Called after every vote (real or bot) lands -- once every voter this
+## lobby actually has (members + bots) has one in, there's nothing left to
+## wait MAP_VOTE_DURATION_SEC out for.
+func _maybe_resolve_map_vote_early(lobby_id: int) -> void:
+	if not _lobbies.has(lobby_id):
+		return
+	var lobby: Dictionary = _lobbies[lobby_id]
+	if not lobby.get("voting_open", false):
+		return
+	var total_voters: int = lobby.members.size() + lobby.get("bots", {}).size()
+	if lobby.get("map_votes", {}).size() >= total_voters:
+		_resolve_map_vote(lobby_id)
 
 ## `_lobbies.has(lobby_id)` can fail here if every member left during the
 ## voting window (see _remove_peer_from_lobby's empty-lobby teardown) --
 ## nothing left to start, so just quietly do nothing rather than resurrect
 ## an abandoned lobby.
-func _on_map_vote_timeout(lobby_id: int, ranked: bool) -> void:
+func _on_map_vote_timeout(lobby_id: int) -> void:
+	_resolve_map_vote(lobby_id)
+
+## The actual "voting's over" transition -- shared by the MAP_VOTE_DURATION_
+## SEC timeout and the early-everyone-voted path, guarded by voting_open so
+## whichever one fires first is the only one that does anything (the other
+## finds voting_open already false and no-ops).
+func _resolve_map_vote(lobby_id: int) -> void:
 	if not _lobbies.has(lobby_id):
 		return
 	var lobby: Dictionary = _lobbies[lobby_id]
+	if not lobby.get("voting_open", false):
+		return
 	lobby["voting_open"] = false
 	var chosen_level_id := _pick_voted_level(lobby)
 	for peer_id in lobby.members.keys():
 		rpc_id(peer_id, "_client_map_vote_ended", chosen_level_id, MAP_VOTE_COUNTDOWN_SEC)
-	get_tree().create_timer(MAP_VOTE_COUNTDOWN_SEC).timeout.connect(_start_match_for_lobby.bind(lobby_id, ranked, chosen_level_id))
+	get_tree().create_timer(MAP_VOTE_COUNTDOWN_SEC).timeout.connect(_start_match_for_lobby.bind(lobby_id, lobby.get("ranked", false), chosen_level_id))
 
 func _start_match_for_lobby(lobby_id: int, ranked: bool, chosen_level_id: String) -> void:
 	if not _lobbies.has(lobby_id):
