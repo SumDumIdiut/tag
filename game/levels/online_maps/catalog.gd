@@ -5,14 +5,24 @@ class_name OnlineMapCatalog
 ## casual/private) pick between -- both the generator
 ## (tools/generate_online_maps.gd) and ui/map_vote_view.gd's vote buttons
 ## read the same `platforms` data here, same "one source, never drifts"
-## reasoning as levels/local_maps/catalog.gd (that catalog's own maps are
-## for offline bot play only -- a separate menu, separate concern).
+## reasoning as levels/local_maps/catalog.gd.
 ##
 ## Replaces the old setup where every real match used a single hand-built
 ## tag_arena.tscn plus whatever a live-published custom level catalog fetch
 ## happened to return -- that fetch was unreliable (confirmed: only "Classic
 ## Arena" ever actually showed up in the vote popup), so online play now
 ## picks from a small, fully built-in set instead, no network dependency.
+##
+## Every Local map (see LocalMapCatalog) is also playable online -- both
+## conventions build the exact same node shape (Arena/SpawnPoints/Waypoints/
+## Tiles, 8 spawn points, more than any real playlist needs), so this just
+## points straight at the same .tscn files and reuses the same `platforms`
+## rects rather than duplicating either. Their vote-popup preview thumbnails
+## (see ui/map_vote_view.gd) are the exact same baked PNGs Local's own
+## picker uses too (see tools/build_procedural_sprites.gd) -- copied
+## byte-for-byte into online_map_icons/, not regenerated in a different
+## accent color.
+const LocalMapCatalog := preload("res://levels/local_maps/catalog.gd")
 
 const DEFAULT_ID := "square_arena"
 
@@ -42,6 +52,35 @@ const MAPS := {
 			{"x0": -100, "y0": 100, "x1": 100, "y1": 120},
 		],
 	},
+	"classic_arena": {
+		"name": "Classic Arena",
+		"scene": "res://levels/tag_arena.tscn",
+	},
+	"wide_open": {
+		"name": "Wide Open",
+		"scene": "res://levels/local_maps/wide_open.tscn",
+		"platforms": LocalMapCatalog.MAPS["wide_open"]["platforms"],
+	},
+	"twin_towers": {
+		"name": "Twin Towers",
+		"scene": "res://levels/local_maps/twin_towers.tscn",
+		"platforms": LocalMapCatalog.MAPS["twin_towers"]["platforms"],
+	},
+	"staircase": {
+		"name": "Staircase",
+		"scene": "res://levels/local_maps/staircase.tscn",
+		"platforms": LocalMapCatalog.MAPS["staircase"]["platforms"],
+	},
+	"scattered_islands": {
+		"name": "Scattered Islands",
+		"scene": "res://levels/local_maps/scattered_islands.tscn",
+		"platforms": LocalMapCatalog.MAPS["scattered_islands"]["platforms"],
+	},
+	"pillars_and_ledges": {
+		"name": "Pillars & Ledges",
+		"scene": "res://levels/local_maps/pillars_and_ledges.tscn",
+		"platforms": LocalMapCatalog.MAPS["pillars_and_ledges"]["platforms"],
+	},
 }
 
 ## Explicitly typed (not just := inferring from the literal) -- an untyped
@@ -51,7 +90,10 @@ const MAPS := {
 ## even for an all-string literal), leaving it permanently empty with no
 ## error surfaced anywhere -- confirmed live as the actual cause of the
 ## vote popup never showing any map choices at all.
-const MAP_ORDER: Array[String] = ["square_arena", "floating_platforms"]
+const MAP_ORDER: Array[String] = [
+	"square_arena", "floating_platforms",
+	"classic_arena", "wide_open", "twin_towers", "staircase", "scattered_islands", "pillars_and_ledges",
+]
 
 ## Resolves a map id (including "" -- the "no vote yet"/legacy default) to
 ## its scene path, falling back to the default map for anything unknown.
