@@ -18,6 +18,8 @@ const UIStyle := preload("res://ui/ui_style.gd")
 const RankBadgeScene := preload("res://ui/rank_badge.gd")
 const LocalMapIconScene := preload("res://ui/local_map_icon.gd")
 const LocalMapCatalog := preload("res://levels/local_maps/catalog.gd")
+const AchievementBadgeScene := preload("res://ui/achievement_badge.gd")
+const AchievementCatalog := preload("res://cosmetics/achievement_catalog.gd")
 
 const RANK_BADGE_SIZE := Vector2i(44, 52) # 2x rank_badge.gd's real 22x26 render size
 const RANK_BADGE_OUT_DIR := "res://assets/icons/rank_badges"
@@ -30,9 +32,13 @@ const MAP_IDS := ["classic_arena", "wide_open", "twin_towers", "staircase", "sca
 
 const SLIDER_GRABBER_OUT := "res://assets/icons/slider_grabber_local.png"
 
+const ACHIEVEMENT_BADGE_SIZE := Vector2i(48, 48)
+const ACHIEVEMENT_BADGE_OUT_DIR := "res://assets/icons/achievement_badges"
+
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(RANK_BADGE_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MAP_ICON_OUT_DIR))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(ACHIEVEMENT_BADGE_OUT_DIR))
 
 	for tier in RANK_TIERS:
 		var img := await _render_rank_badge(tier)
@@ -44,6 +50,14 @@ func _ready() -> void:
 		var img := await _render_map_icon(map_id)
 		img.save_png("%s/%s.png" % [MAP_ICON_OUT_DIR, map_id])
 		print("baked local map icon: ", map_id)
+
+	# Only the unlocked art is ever baked -- the locked/grayed-out state is a
+	# cheap runtime overlay (see achievement_badge.gd), not worth doubling
+	# every file for.
+	for a in AchievementCatalog.ACHIEVEMENTS:
+		var img := await _render_achievement_badge(a)
+		img.save_png("%s/%s.png" % [ACHIEVEMENT_BADGE_OUT_DIR, a.id])
+		print("baked achievement badge: ", a.id)
 
 	_bake_slider_grabber()
 
@@ -68,6 +82,30 @@ func _render_rank_badge(tier: String) -> Image:
 	viewport.add_child(badge)
 	badge.custom_minimum_size = Vector2(RANK_BADGE_SIZE)
 	badge.size = Vector2(RANK_BADGE_SIZE)
+	badge.queue_redraw()
+
+	for i in 8:
+		await get_tree().process_frame
+	var img := viewport.get_texture().get_image()
+	viewport.queue_free()
+	return img
+
+func _render_achievement_badge(achievement: Dictionary) -> Image:
+	var viewport := SubViewport.new()
+	viewport.size = ACHIEVEMENT_BADGE_SIZE
+	viewport.transparent_bg = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(viewport)
+	await get_tree().process_frame
+
+	var badge := AchievementBadgeScene.new()
+	badge.category = String(achievement.category)
+	badge.tier = String(achievement.get("tier", ""))
+	badge.unlocked = true
+	badge.achievement_id = "" # avoid its own baked-PNG lookup while rendering the source for that exact file
+	viewport.add_child(badge)
+	badge.custom_minimum_size = Vector2(ACHIEVEMENT_BADGE_SIZE)
+	badge.size = Vector2(ACHIEVEMENT_BADGE_SIZE)
 	badge.queue_redraw()
 
 	for i in 8:

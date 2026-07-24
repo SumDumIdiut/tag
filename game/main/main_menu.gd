@@ -25,6 +25,7 @@ func _ready() -> void:
 	for mode in MODES:
 		mode_bar.add_child(_build_bar(mode))
 	_build_account_button()
+	_build_achievements_button()
 	_check_for_update()
 	_check_for_asset_update()
 
@@ -103,6 +104,32 @@ func _build_account_button() -> void:
 	var icon := ModeIconScene.new()
 	icon.icon_type = "star"
 	icon.icon_color = UIStyle.COLOR_ONLINE
+	icon.custom_minimum_size = Vector2(18, 20)
+	icon_wrap.add_child(icon)
+
+	add_child(btn)
+
+## Opposite corner from Account -- same "always available, doesn't compete
+## with the mode bars" placement, just top-right instead of top-left.
+func _build_achievements_button() -> void:
+	var btn := Button.new()
+	btn.text = "Achievements  "
+	btn.custom_minimum_size = Vector2(150, 44)
+	btn.focus_mode = Control.FOCUS_ALL
+	UIStyle.style_button(btn, UIStyle.COLOR_ACCENT, 10)
+	btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	btn.position = Vector2(-170, 24)
+	btn.pressed.connect(_on_mode_pressed.bind("res://main/achievements_menu.tscn"))
+
+	var icon_wrap := Control.new()
+	icon_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon_wrap.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	icon_wrap.position = Vector2(-34, -10)
+	icon_wrap.custom_minimum_size = Vector2(20, 20)
+	btn.add_child(icon_wrap)
+	var icon := ModeIconScene.new()
+	icon.icon_type = "star"
+	icon.icon_color = UIStyle.COLOR_ACCENT
 	icon.custom_minimum_size = Vector2(18, 20)
 	icon_wrap.add_child(icon)
 
