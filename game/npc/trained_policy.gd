@@ -15,8 +15,17 @@ class_name TrainedPolicy
 
 const WEIGHTS_PATH := "res://assets/ai/npc_policy_weights.json"
 
-# Mirrors ai_training/sim.py's own constants exactly.
-const ARENA_HALF_EXTENT := Vector2(600.0, 650.0)
+# Mirrors ai_training/tag_env.py's own constant exactly -- sim.py now trains
+# across every map in the online pool (domain randomization, not one fixed
+# arena), so this covers the largest of them (classic_arena) with margin,
+# not just whichever single arena used to be the only one. IMPORTANT: the
+# currently-bundled npc_policy_weights.json was trained against the OLD
+# single-arena (600, 650) scale -- it's now out of sync with this constant
+## until a model trained against the new multi-arena sim.py is re-exported
+# and re-bundled (see ai_training/README.md). Using the old model with this
+# new normalization would feed it inputs scaled differently than what it
+# actually learned on.
+const ARENA_HALF_EXTENT := Vector2(1250.0, 550.0)
 const SCALE := 32.0 / 11.0
 const DASH_SPEED := 240.0 * SCALE * 1.5
 const MAX_FALL_SPEED := 160.0 * SCALE

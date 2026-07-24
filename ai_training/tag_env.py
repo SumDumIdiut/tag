@@ -15,7 +15,14 @@ from stable_baselines3.common.vec_env import VecEnv
 
 from sim import TagSim, ROUND_DURATION_SEC, MAX_FALL_SPEED, DASH_SPEED
 
-ARENA_HALF_EXTENT = np.array([600.0, 650.0], dtype=np.float32)  # normalizes position obs -- matches sim.py's boundary walls
+# Normalizes position obs -- generous enough to cover the largest of
+# sim.py's now-multiple arenas (classic_arena, its own extracted boundary
+# spans roughly x:[-1220,1220] y:[-480,480]; staircase reaches y=500) with
+# margin, not just whichever single arena used to be the only one. Smaller
+# arenas just end up using a smaller fraction of the [-1, 1] range -- same
+# shared scale for every arena, same reasoning game/npc/trained_policy.gd's
+# copy of this constant needs to match exactly (see that file).
+ARENA_HALF_EXTENT = np.array([1250.0, 550.0], dtype=np.float32)
 
 
 def _opponent_scripted_action(sim: TagSim) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
