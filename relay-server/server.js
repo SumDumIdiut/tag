@@ -160,7 +160,7 @@ const RANK_TIERS = [
   // Above MAX_ELO (see applyEloUpdates' clamp below) -- no normal match
   // result can ever push a player's elo past 9999, so this tier is
   // unreachable through real play. Exists only for a manually-set account.
-  { name: 'GOAT', minElo: 10000 },
+  { name: 'Creator', minElo: 10000 },
 ];
 
 function tierForElo(elo) {
@@ -382,7 +382,7 @@ const ACHIEVEMENTS = [
   { id: 'legend', name: 'Legend League', condition: (rank) => rank.elo >= 4800 },
   { id: 'mythic', name: 'Mythic League', condition: (rank) => rank.elo >= 6500 },
   { id: 'immortal', name: 'Immortal League', condition: (rank) => rank.elo >= 9000 },
-  { id: 'goat', name: 'GOAT League', condition: (rank) => rank.elo >= 10000 },
+  { id: 'creator', name: 'Creator League', condition: (rank) => rank.elo >= 10000 },
   { id: 'last_place', name: "Tag, You're It", condition: (rank, m) => m.place === m.n },
 ];
 
