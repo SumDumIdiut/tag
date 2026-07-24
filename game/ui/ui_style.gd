@@ -34,6 +34,11 @@ const RANK_TIER_COLORS := {
 	"Platinum": Color(0.4, 0.85, 0.8),
 	"Diamond": Color(0.55, 0.8, 0.98),
 	"Master": Color(0.75, 0.35, 0.95),
+	"Grandmaster": Color(0.95, 0.25, 0.25),
+	"Champion": Color(1.0, 0.55, 0.15),
+	"Legend": Color(0.3, 0.95, 0.85),
+	"Mythic": Color(0.95, 0.2, 0.65),
+	"Immortal": Color(1.0, 0.92, 0.55),
 }
 const RANK_TIER_DEFAULT_COLOR := Color(0.6, 0.63, 0.72)
 
