@@ -8,6 +8,8 @@ extends Control
 const RANKED_API_BASE := "https://codecade.co.za/tag/api/ranked"
 const PROGRESSION_API_BASE := "https://codecade.co.za/tag/api/progression"
 const UIStyle := preload("res://ui/ui_style.gd")
+const AchievementTracker := preload("res://cosmetics/achievement_tracker.gd")
+const AchievementToastScene := preload("res://ui/achievement_toast.gd")
 
 # Podium colors are medal colors (gold/silver/bronze), deliberately distinct
 # from the rank-tier color system (UIStyle.tier_color) -- this is about
@@ -31,6 +33,7 @@ const PODIUM_RISE_GAP_SEC := 0.15
 # relay-server/server.js's applyProgressionUpdates) -- not a "here's what's
 # new this match" diff, just current totals, same as rank_label above.
 var _progression_label: Label
+var _toast: Control
 
 var _ranking := []
 var _my_peer_id := -1
@@ -43,6 +46,8 @@ func _ready() -> void:
 	UIStyle.add_background(self, "match_results")
 	$VBox/PlacementsPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_RANKED))
 	UIStyle.style_button(continue_button, UIStyle.COLOR_QUICKPLAY)
+	_toast = AchievementToastScene.new()
+	add_child(_toast)
 	continue_button.pressed.connect(_on_continue_pressed)
 	# Top 3 (or fewer, for a small match) get the podium visual instead of a
 	# plain row -- anyone past 3rd still gets the existing plain-row list,
@@ -180,6 +185,11 @@ func _fetch_my_progression() -> void:
 		_progression_label.text = "Level %d -- %d XP -- %d achievement%s unlocked" % [
 			level, xp, achievements.size(), "" if achievements.size() == 1 else "s",
 		]
+		var ids: Array = []
+		for a in achievements:
+			ids.append(String(a.get("id", "")))
+		for new_id in AchievementTracker.diff_and_mark_seen(ids):
+			_toast.queue(new_id)
 	)
 	req.request("%s/%s" % [PROGRESSION_API_BASE, PlayerIdentity.client_id])
 
