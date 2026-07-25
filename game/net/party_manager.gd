@@ -22,7 +22,6 @@ signal friend_request_received(from_client_id: String, from_username: String)
 signal friend_request_responded(target_username: String, accepted: bool)
 
 const UIStyle := preload("res://ui/ui_style.gd")
-const MatchIntroScene := preload("res://main/match_intro.tscn")
 const PARTY_RELAY_URL_BASE := "wss://codecade.co.za/tag/relay/party/"
 const DIRECTORY_URL := "https://codecade.co.za/tag/api/servers"
 const RELAY_JOIN_BASE := "wss://codecade.co.za/tag/relay/join/"
@@ -335,7 +334,6 @@ func _search_for_leader_server() -> void:
 
 func _connect_to_follow_target(address: String) -> void:
 	NetworkManager.connected_to_server.connect(_on_follow_connected, CONNECT_ONE_SHOT)
-	NetworkManager.match_started.connect(_on_follow_match_started, CONNECT_ONE_SHOT)
 	NetworkManager.set_username(GameSettings.saved_username)
 	NetworkManager.start_client(address, GameSettings.saved_username)
 
@@ -346,14 +344,22 @@ func _connect_to_follow_target(address: String) -> void:
 ## same playlist-restricted lobby the leader did, private with none (a
 ## private lobby never has one).
 func _on_follow_connected() -> void:
+	# The leader's own path (online_menu.gd's entered_lobby handler) switches
+	# to lobby_room.tscn the moment it's actually in a lobby -- this used to
+	# be entirely missing here, so a follower stayed on whatever screen it
+	# was already on (never seeing the waiting room/team-select view at all)
+	# until match_started eventually fired and yanked them straight into the
+	# match. lobby_room.gd already listens for match_started itself and
+	# handles that transition on its own once we're actually there, so this
+	# is the only piece that was missing -- no separate follower-specific
+	# match-started handling needed (that used to exist here too, and would
+	# now double-fire alongside lobby_room.gd's own handler, racing to
+	# instantiate two MatchIntroScenes for the same event).
+	NetworkManager.lobby_state_updated.connect(_on_follow_in_lobby, CONNECT_ONE_SHOT)
 	if _follow_mode == "casual":
 		NetworkManager.quick_join_lobby(_follow_playlist)
 	elif _follow_mode == "private":
 		NetworkManager.quick_join_lobby()
 
-func _on_follow_match_started(_lobby_id: int, my_id: int, roster: Dictionary, level_id: String, playlist_id: String = "") -> void:
-	var scene := MatchIntroScene.instantiate()
-	scene.setup(my_id, roster, level_id, _follow_mode == "ranked", playlist_id)
-	get_tree().root.add_child(scene)
-	get_tree().current_scene.queue_free()
-	get_tree().current_scene = scene
+func _on_follow_in_lobby(_lobby: Dictionary) -> void:
+	get_tree().change_scene_to_file("res://main/lobby_room.tscn")
