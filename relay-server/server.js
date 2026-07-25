@@ -22,7 +22,19 @@ const MAX_PAYLOAD_BYTES = 64 * 1024;
 // mirrored constants in this file (level tile index ranges, below).
 const MAX_LOBBY_PLAYERS = 8;
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 5;
+// Two separate budgets, tracked independently per IP -- WS connection setup
+// (hosting/joining a match, or the party channel that opens any time a
+// player is just sitting in the online menus) happens automatically and
+// often during completely normal play (browsing servers, joining, backing
+// out, trying another), so it needs a much more generous budget than the
+// handful of deliberate HTTP actions (registering, logging in, adding a
+// friend, publishing an asset, reporting a ranked result). These used to
+// share ONE 5-per-60s bucket -- confirmed live that normal navigation alone
+// (which opens/reopens the party WS and a match join/host WS) could exhaust
+// it before a player ever got to click "Add Friend" or finish creating an
+// account, surfacing as an unexplained "slow down" on an unrelated action.
+const RATE_LIMIT_ACTION_MAX = 20;
+const RATE_LIMIT_CONNECT_MAX = 60;
 
 // catalog.json currently holds published levels (type: 'level') only --
 // players are flat auto-colored rectangles now, no client-curated cosmetic
@@ -616,9 +628,14 @@ const servers = new Map();       // serverId -> { id, name, maxPlayers, playerCo
 const pendingTokens = new Map(); // token -> { playerSocket, timer }
 const rateLimitHits = new Map(); // ip -> [timestamps]
 
-function withinRateLimit(ip) {
+// `category` keeps the action-budget and connect-budget counting
+// completely independently per IP, even though they share the same
+// underlying Map -- without it, generous-budget connect hits would still
+// crowd out the tighter action budget by filling the same timestamp array.
+function withinRateLimit(category, ip, max) {
+  const key = `${category}:${ip}`;
   const now = Date.now();
-  const hits = (rateLimitHits.get(ip) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  const hits = (rateLimitHits.get(key) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
   // Only record a hit for an attempt actually being let through -- recording
   // rejected attempts too meant a client that retries on failure (every
   // caller of this does: PartyManager.gd/RelayClient.gd's reconnect timers,
@@ -627,12 +644,12 @@ function withinRateLimit(ip) {
   // RATE_LIMIT_WINDOW_MS -- a permanent lockout from one brief burst
   // (confirmed live: a handful of reconnects in a short window kept a real
   // client 502'd on /relay/party well past when the original burst aged out).
-  if (hits.length >= RATE_LIMIT_MAX) {
-    rateLimitHits.set(ip, hits);
+  if (hits.length >= max) {
+    rateLimitHits.set(key, hits);
     return false;
   }
   hits.push(now);
-  rateLimitHits.set(ip, hits);
+  rateLimitHits.set(key, hits);
   return true;
 }
 
@@ -762,7 +779,7 @@ app.get('/api/levels/catalog', (req, res) => {
 
 app.post('/api/levels/:clientId/upload', (req, res) => {
   if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  if (!withinRateLimit(clientIpFor(req))) return res.status(429).json({ error: 'slow down' });
+  if (!withinRateLimit('action', clientIpFor(req), RATE_LIMIT_ACTION_MAX)) return res.status(429).json({ error: 'slow down' });
 
   const clientId = req.params.clientId;
   const existingCount = readCatalog().filter(e => e.createdBy === clientId && e.type === 'level').length;
@@ -850,7 +867,7 @@ app.post('/api/game-assets/:category/publish', (req, res) => {
   const category = req.params.category;
   if (!GAME_ASSET_CATEGORIES.includes(category)) return res.status(404).json({ error: 'unknown category' });
   if (!verifyAssetKey(req.body.key)) return res.status(401).json({ error: 'bad or missing publish key' });
-  if (!withinRateLimit(clientIpFor(req))) return res.status(429).json({ error: 'slow down' });
+  if (!withinRateLimit('action', clientIpFor(req), RATE_LIMIT_ACTION_MAX)) return res.status(429).json({ error: 'slow down' });
 
   if (MULTI_KEY_CATEGORIES[category]) {
     const err = publishMultiKeyImages(category, MULTI_KEY_CATEGORIES[category], req.body.images);
@@ -917,7 +934,7 @@ const ROUND_DURATION_SEC = 180.0;
 // report. This doesn't address a fully malicious host lying about placement
 // itself -- an accepted, known limitation of this hosted-authority model.
 app.post('/api/ranked/report-result', (req, res) => {
-  if (!withinRateLimit(clientIpFor(req))) return res.status(429).json({ error: 'slow down' });
+  if (!withinRateLimit('action', clientIpFor(req), RATE_LIMIT_ACTION_MAX)) return res.status(429).json({ error: 'slow down' });
   const results = req.body.results;
   if (!Array.isArray(results) || results.length === 0) return res.status(400).json({ error: 'results required' });
   const playlist = String(req.body.playlist || '');
@@ -949,7 +966,7 @@ app.get('/api/progression/:clientId', (req, res) => {
 // This is purely "make progress follow you across devices," not a gate on
 // playing at all.
 app.post('/api/auth/register', (req, res) => {
-  if (!withinRateLimit(clientIpFor(req))) return res.status(429).json({ error: 'slow down' });
+  if (!withinRateLimit('action', clientIpFor(req), RATE_LIMIT_ACTION_MAX)) return res.status(429).json({ error: 'slow down' });
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
   const clientId = String(req.body.clientId || '');
@@ -972,7 +989,7 @@ app.post('/api/auth/register', (req, res) => {
 });
 
 app.post('/api/auth/login', (req, res) => {
-  if (!withinRateLimit(clientIpFor(req))) return res.status(429).json({ error: 'slow down' });
+  if (!withinRateLimit('action', clientIpFor(req), RATE_LIMIT_ACTION_MAX)) return res.status(429).json({ error: 'slow down' });
   const usernameLower = String(req.body.username || '').trim().toLowerCase();
   const password = String(req.body.password || '');
   const found = findAccountByUsername(usernameLower);
@@ -995,7 +1012,7 @@ app.get('/api/auth/me', (req, res) => {
 // ─── HTTP: friends ────────────────────────────────────────────────────────────
 app.post('/api/friends/:clientId/add', (req, res) => {
   if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
-  if (!withinRateLimit(clientIpFor(req))) return res.status(429).json({ error: 'slow down' });
+  if (!withinRateLimit('action', clientIpFor(req), RATE_LIMIT_ACTION_MAX)) return res.status(429).json({ error: 'slow down' });
   const clientId = req.params.clientId;
   const friendCode = String(req.body.friendCode || '');
   if (!CLIENT_ID_RE.test(friendCode)) return res.status(400).json({ error: 'bad friend code' });
@@ -1123,7 +1140,7 @@ server.on('upgrade', (req, socket, head) => {
   }
 
   if (pathname === '/relay/host') {
-    if (!withinRateLimit(ip)) { socket.destroy(); return; }
+    if (!withinRateLimit('connect', ip, RATE_LIMIT_CONNECT_MAX)) { socket.destroy(); return; }
     wss.handleUpgrade(req, socket, head, ws => handleHostControl(ws));
     return;
   }
@@ -1134,7 +1151,7 @@ server.on('upgrade', (req, socket, head) => {
   }
   const joinMatch = pathname.match(/^\/relay\/join\/([a-f0-9]+)$/);
   if (joinMatch) {
-    if (!withinRateLimit(ip)) { socket.destroy(); return; }
+    if (!withinRateLimit('connect', ip, RATE_LIMIT_CONNECT_MAX)) { socket.destroy(); return; }
     wss.handleUpgrade(req, socket, head, ws => handlePlayerJoin(ws, joinMatch[1]));
     return;
   }
@@ -1146,7 +1163,7 @@ server.on('upgrade', (req, socket, head) => {
   // round-trip needed before the relay knows who's on the other end.
   const partyMatch = pathname.match(/^\/relay\/party\/([a-f0-9-]{8,64})$/i);
   if (partyMatch) {
-    if (!withinRateLimit(ip)) { socket.destroy(); return; }
+    if (!withinRateLimit('connect', ip, RATE_LIMIT_CONNECT_MAX)) { socket.destroy(); return; }
     wss.handleUpgrade(req, socket, head, ws => handlePlayerParty(ws, partyMatch[1]));
     return;
   }
