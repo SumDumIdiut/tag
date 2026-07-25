@@ -28,6 +28,19 @@ const RELAY_JOIN_BASE := "wss://codecade.co.za/tag/relay/join/"
 const RECONNECT_DELAY_SEC := 5.0
 const FOLLOW_SEARCH_RETRY_SEC := 1.0
 const FOLLOW_SEARCH_MAX_ATTEMPTS := 10
+## codecade.co.za is served through a Cloudflare Tunnel (see install.sh's
+## ensure_portable_cloudflared/CF_DOMAIN), which silently drops an idle
+## WebSocket connection after a period of no traffic -- this socket can sit
+## completely idle for arbitrarily long (a player just sitting on the
+## Friends/lobby screen doing nothing), unlike relay_client.gd's own
+## connection, which already sends a real heartbeat every
+## HEARTBEAT_INTERVAL_SEC (5s) and has never shown this symptom. Without
+## this, get_ready_state() can keep reporting STATE_OPEN long after the
+## tunnel has actually dropped the connection (no clean close frame makes
+## it back), so leave/kick/invite calls silently go nowhere -- exactly the
+## live "buttons don't work, no error, every time" report. Comfortably
+## under Cloudflare's ~100s idle timeout, with margin.
+const KEEPALIVE_INTERVAL_SEC := 20.0
 
 ## {} means no real party (just yourself) -- party_size() below treats that
 ## as size 1 rather than 0, so "is my party bigger than N" checks read
@@ -62,6 +75,7 @@ var _follow_playlist := ""
 var _follow_target := ""
 var _follow_attempts := 0
 var _follow_search_timer: Timer
+var _keepalive_timer: Timer
 
 func _ready() -> void:
 	_reconnect_timer = Timer.new()
@@ -74,6 +88,11 @@ func _ready() -> void:
 	_follow_search_timer.one_shot = true
 	_follow_search_timer.timeout.connect(_search_for_leader_server)
 	add_child(_follow_search_timer)
+	_keepalive_timer = Timer.new()
+	_keepalive_timer.wait_time = KEEPALIVE_INTERVAL_SEC
+	_keepalive_timer.timeout.connect(_send_keepalive)
+	add_child(_keepalive_timer)
+	_keepalive_timer.start()
 	invite_received.connect(_on_invite_received)
 	friend_request_received.connect(_on_friend_request_received)
 	connect_now.connect(_on_connect_now)
@@ -234,6 +253,13 @@ func _handle_message(raw: PackedByteArray) -> void:
 func _send(data: Dictionary) -> void:
 	if _socket != null and _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		_socket.send_text(JSON.stringify(data))
+
+## See KEEPALIVE_INTERVAL_SEC's own comment -- an unrecognized message type
+## is already silently ignored by relay-server's handlePlayerParty dispatch,
+## so this needs no server-side counterpart at all, just real traffic
+## flowing often enough that the tunnel never sees this socket go idle.
+func _send_keepalive() -> void:
+	_send({"type": "keepalive"})
 
 func _on_invite_received(party_id: String, from_client_id: String, from_username: String) -> void:
 	_pending_popups.append({"kind": "party", "party_id": party_id, "from_client_id": from_client_id, "from_username": from_username})
