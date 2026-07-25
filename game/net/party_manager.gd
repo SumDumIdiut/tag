@@ -69,6 +69,7 @@ func _ready() -> void:
 	add_child(_follow_search_timer)
 	invite_received.connect(_on_invite_received)
 	connect_now.connect(_on_connect_now)
+	PlayerIdentity.client_id_changed.connect(_on_client_id_changed)
 	_connect()
 
 func party_size() -> int:
@@ -112,6 +113,24 @@ func kick(target_client_id: String) -> void:
 ## a real connectable address.
 func queue_party(target: String, mode: String, playlist: String) -> void:
 	_send({"type": "party_queue_start", "serverAddress": target, "mode": mode, "playlist": playlist})
+
+## This autoload's socket connects once at boot under whatever client_id was
+## current then -- almost always the local-device id, since login is a menu
+## action that happens well after _ready() runs. The relay identifies a
+## /relay/party/:clientId connection by whatever id was in the URL at
+## connect time for the socket's whole lifetime, so without this, logging
+## in later left every party action (invite/kick/leave) silently operating
+## under the OLD pre-login id forever -- friends added under the real
+## account afterward would never match against it, failing invites with a
+## confusing "not_friend" error despite the Friends list (a fresh HTTP call
+## using the current client_id) correctly showing them as a friend.
+func _on_client_id_changed(_new_id: String) -> void:
+	_socket = null
+	_identified = false
+	if not current_party.is_empty():
+		current_party = {}
+		party_updated.emit(current_party)
+	_connect()
 
 func _connect() -> void:
 	if PlayerIdentity.client_id.is_empty():
