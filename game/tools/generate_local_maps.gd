@@ -68,7 +68,8 @@ func _build_map(id: String, def: Dictionary) -> void:
 
 	var spawn_i := 0
 	var waypoint_i := 0
-	for plat in def.platforms:
+	for plat_index in def.platforms.size():
+		var plat: Dictionary = def.platforms[plat_index]
 		var x0: int = plat.x0
 		var y0: int = plat.y0
 		var x1: int = plat.x1
@@ -77,7 +78,7 @@ func _build_map(id: String, def: Dictionary) -> void:
 		_add_waypoints(waypoints, waypoint_i, x0, y0, x1)
 		waypoint_i += 100 # keep names unique; exact numbering doesn't matter
 		if y0 >= SPAWN_FLOOR_Y:
-			spawn_i = _add_spawns(spawn_points, spawn_i, x0, y0, x1)
+			spawn_i = _add_spawns(spawn_points, spawn_i, x0, y0, x1, plat_index, def.platforms)
 
 	var packed := PackedScene.new()
 	packed.pack(arena)
@@ -109,18 +110,45 @@ func _add_waypoints(parent: Node2D, start_index: int, x0: int, y0: int, x1: int)
 		parent.add_child(marker)
 		marker.owner = parent.get_parent()
 
-## Spreads spawn points evenly along a platform's top surface, continuing
-## the running index across multiple spawn-eligible platforms in the same
-## map. Returns the updated index.
-func _add_spawns(parent: Node2D, start_index: int, x0: int, y0: int, x1: int) -> int:
+## A platform elevated above this one (e.g. Twin Towers' pillars, which
+## rest directly on the main floor) can horizontally overlap a floor spawn
+## candidate while its base touches that same y0 surface -- spawning a
+## player there means their collider spawns embedded in the pillar's solid
+## tiles, which physics then resolves by shoving them somewhere
+## unpredictable. Confirmed as the actual cause of a live "player spawned
+## outside the map" report on Twin Towers: two of the floor's 8 evenly
+## -spaced candidates (x=-875 and x=875) land exactly inside the towers'
+## 100px-wide bases (x -900..-800 and 800..900).
+func _is_spawn_blocked(sx: float, y0: int, all_platforms: Array, self_index: int) -> bool:
+	for i in all_platforms.size():
+		if i == self_index:
+			continue
+		var other: Dictionary = all_platforms[i]
+		var oy0: int = other.y0
+		var oy1: int = other.y1
+		if oy0 >= y0 or oy1 < y0:
+			continue # not elevated structure whose base reaches this surface
+		if sx >= other.x0 and sx <= other.x1:
+			return true
+	return false
+
+## Spreads spawn points evenly along a platform's top surface, skipping any
+## candidate blocked by another platform resting on this same surface (see
+## _is_spawn_blocked), continuing the running index across multiple spawn
+## -eligible platforms in the same map. Returns the updated index.
+func _add_spawns(parent: Node2D, start_index: int, x0: int, y0: int, x1: int, self_index: int, all_platforms: Array) -> int:
 	var width := x1 - x0
 	var count := maxi(2, int(round(float(width) / 260.0)))
+	var placed := 0
 	for i in count:
 		var t := (i + 0.5) / float(count)
 		var sx := x0 + t * width
+		if _is_spawn_blocked(sx, y0, all_platforms, self_index):
+			continue
 		var marker := Marker2D.new()
-		marker.name = "Spawn%d" % (start_index + i)
+		marker.name = "Spawn%d" % (start_index + placed)
 		marker.position = Vector2(sx, y0)
 		parent.add_child(marker)
 		marker.owner = parent.get_parent()
-	return start_index + count
+		placed += 1
+	return start_index + placed

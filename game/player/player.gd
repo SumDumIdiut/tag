@@ -222,6 +222,20 @@ func _trigger_action(action_name: String) -> void:
 	current_action_id += 1
 
 func _ready() -> void:
+	# Default (1.0px) is too tight at this player's top speeds -- sliding
+	# across many separate 10px TileMapLayer tile colliders (see
+	# generate_local_maps.gd's per-cell set_cell()) at a boosted dash-jump's
+	# ~1300+ px/s crosses several tile seams per physics tick, and
+	# move_and_slide() intermittently failed to resolve floor contact right
+	# at a seam -- confirmed live via a headless repro: is_on_floor()
+	# flickered true/false on most ticks while sliding at boosted speed
+	# across Twin Towers' floor. Each flicker's false->true edge re-armed
+	# _process_horizontal's landing-retention window (see
+	# speed_boost_active's own comment) before it could ever expire, which
+	# read as the floor being permanently frictionless. A snap length well
+	# under the smallest real gap between any two platforms in this map set
+	# (tens of px at least) still safely lets you walk off a real ledge.
+	floor_snap_length = 16.0
 	if _visual:
 		# Sensible default until set_color() overrides it with this
 		# instance's actual server-assigned color -- NPCs never get one of
