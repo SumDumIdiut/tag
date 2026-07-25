@@ -35,6 +35,16 @@ var playlist_id := "" # set by network_manager.gd right after construction, "" f
 ## the process itself was launched with a different --level=, since a vote
 ## is a live per-match choice, not a per-process constant.
 var _level_id_override := ""
+## The level_id actually resolved in _ready() (the vote's choice if there
+## was one, else _network_manager.level_id) -- the arena/collision are
+## always built from this. notify_match_started()/report_match_state_summary()
+## below must send this exact value too, not read _network_manager.level_id
+## again directly: that property is this whole process's own generic
+## default, never updated by a per-match vote, so doing that sent every
+## client a mismatched map for rendering while the server's own collision
+## (built from this var) stayed correct -- confirmed live as "the default
+## map's visuals but Twin Towers' collision" after voting Twin Towers.
+var _resolved_level_id := ""
 var _network_manager: Node
 var _usernames := {} # peer_id -> String
 var _color_ids := {} # peer_id -> String
@@ -95,8 +105,8 @@ func _init(network_manager: Node, p_lobby_id: int, members: Dictionary, p_ranked
 ## or a process launched without a matching --level=) resolves to the
 ## catalog's own default.
 func _ready() -> void:
-	var level_id: String = _level_id_override if not _level_id_override.is_empty() else _network_manager.level_id
-	_arena = load(OnlineMapCatalog.scene_path_for(level_id)).instantiate()
+	_resolved_level_id = _level_id_override if not _level_id_override.is_empty() else _network_manager.level_id
+	_arena = load(OnlineMapCatalog.scene_path_for(_resolved_level_id)).instantiate()
 	add_child(_arena)
 	_finish_setup()
 
@@ -158,7 +168,7 @@ func _finish_setup() -> void:
 	# regardless of match type. Previously ranked-only, which meant casual
 	# play never had rank data to color anything with at all.
 	await _fill_ranked_stats()
-	_network_manager.notify_match_started(lobby_id, roster, _network_manager.level_id, playlist_id)
+	_network_manager.notify_match_started(lobby_id, roster, _resolved_level_id, playlist_id)
 
 ## Enriches each participant's roster entry with their current elo/tier (see
 ## match_intro.gd's VS screen and every name tier-coloring path) -- looked up
@@ -423,7 +433,7 @@ func _report_state_summary() -> void:
 		# see tools/export_default_arena.gd) -- otherwise this is a real level
 		# id the website can fetch the exact same JSON for via the existing
 		# public GET /api/levels/data/:id, no new endpoint needed.
-		"levelId": _network_manager.level_id,
+		"levelId": _resolved_level_id,
 	})
 
 ## Mirrors tag_tileset.tres's texture_region_size (10x10) -- see
