@@ -17,6 +17,23 @@ const MODES := [
 
 const BAR_SIZE := Vector2(190, 360)
 
+# main_menu.tscn isn't a singleton -- get_tree().change_scene_to_file() to
+# it re-runs _ready() from scratch on every return here (after a match,
+# every "back" button, from 20+ call sites across the game), which used to
+# mean _check_for_update()/_check_for_asset_update() re-ran every single
+# time too. Neither prompt persists a "you already answered this" anywhere
+# (Skip just queue_free()s itself; a failed download just re-enables its
+# own buttons), so the exact same "NEW ART AVAILABLE -- Download now?" card
+# kept resurfacing after every match -- read as a stuck/stale popup that
+# wouldn't go away. Static vars persist across scene reloads within one
+# running process (same pattern TrainedPolicy._shared uses) without needing
+# a whole new autoload just for two booleans -- this makes both checks
+# genuinely "once per launch," matching what update_prompt.gd's own comment
+# already claims ("the check runs again next launch") but nothing actually
+# enforced.
+static var _checked_for_update_this_session := false
+static var _checked_for_asset_update_this_session := false
+
 @onready var mode_bar: HBoxContainer = $VBox/ModeBar
 
 func _ready() -> void:
@@ -29,6 +46,9 @@ func _ready() -> void:
 	_check_for_asset_update()
 
 func _check_for_update() -> void:
+	if _checked_for_update_this_session:
+		return
+	_checked_for_update_this_session = true
 	var checker := UpdateCheckerScript.new("Tag.exe")
 	add_child(checker)
 	checker.check_completed.connect(_on_update_check_completed)
@@ -45,6 +65,9 @@ func _on_update_check_completed(result: Dictionary) -> void:
 ## published from the Art Tool (see game_asset_updater.gd) don't need a new
 ## release or a relaunch, just a couple small PNGs applied live.
 func _check_for_asset_update() -> void:
+	if _checked_for_asset_update_this_session:
+		return
+	_checked_for_asset_update_this_session = true
 	var updater := GameAssetUpdaterScript.new()
 	add_child(updater)
 	updater.check_completed.connect(_on_asset_check_completed)

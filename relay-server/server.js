@@ -332,6 +332,23 @@ function tierFor(clientId, elo) {
   return isCreatorClientId(clientId) ? 'Creator' : tierForElo(elo);
 }
 
+// Prefer an account's real (login) username over progression[clientId]'s
+// own username field wherever a clientId's display name is shown to other
+// players (friends list, profile, leaderboard). progression's username is
+// just whatever the client last self-reported over an unauthenticated
+// channel (a match-result report, or the party socket's initial message,
+// see applyProgressionUpdates()/handlePlayerParty() below) -- it predates
+// the account system and never gets updated by logging into an account,
+// so a player who signed up after already having played under some other
+// name (or a shared/reused clientId, e.g. from local testing) would show
+// that old name to friends forever, with no way to fix it client-side.
+function accountUsernameFor(clientId) {
+  for (const account of Object.values(accounts)) {
+    if (account.primaryClientId === clientId) return account.username;
+  }
+  return null;
+}
+
 function createSession(accountId) {
   const token = crypto.randomBytes(32).toString('hex');
   sessions[token] = { accountId, expiresAt: Date.now() + SESSION_TTL_MS };
@@ -1047,7 +1064,7 @@ app.get('/api/friends/:clientId', (req, res) => {
     const progressionEntry = progression[friendId];
     return {
       clientId: friendId,
-      username: (progressionEntry && progressionEntry.username) || null,
+      username: accountUsernameFor(friendId) || (progressionEntry && progressionEntry.username) || null,
       online: playerSockets.has(friendId) || !!server,
       serverId: server ? server.id : null,
       serverName: server ? server.name : null,
@@ -1066,7 +1083,7 @@ app.get('/api/leaderboard', (req, res) => {
     if (!r) continue; // never played this specific playlist -- not on its leaderboard
     rows.push({
       clientId,
-      username: (progression[clientId] && progression[clientId].username) || null,
+      username: accountUsernameFor(clientId) || (progression[clientId] && progression[clientId].username) || null,
       elo: r.elo, tier: tierFor(clientId, r.elo), wins: r.wins, losses: r.losses, matchesPlayed: r.matchesPlayed,
     });
   }
@@ -1091,7 +1108,7 @@ app.get('/api/profile/:clientId', (req, res) => {
     playlistRanks[playlistId] = { elo: r.elo, tier: tierFor(clientId, r.elo), wins: r.wins, losses: r.losses, matchesPlayed: r.matchesPlayed };
   }
   res.json({
-    clientId, username: prog.username,
+    clientId, username: accountUsernameFor(clientId) || prog.username,
     ranks: playlistRanks,
     xp: prog.xp, level: levelForXp(prog.xp), achievements: achievementList(prog.achievements),
     recentMatches,
