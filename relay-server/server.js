@@ -1025,10 +1025,19 @@ app.post('/api/friends/:clientId/add', (req, res) => {
   res.json({ ok: true });
 });
 
-// Cross-references each friend's clientId against every live server's own
-// heartbeat-reported roster (servers Map, see the heartbeat handler below)
-// to answer "is my friend online, and where" -- purely a live, in-memory
-// lookup, nothing persisted beyond the friend list itself.
+// "online" comes from playerSockets (populated the instant a client opens
+// /relay/party -- i.e. simply having the game open in the online/friends
+// menus, no match required), the same presence signal handlePartyInvite()
+// itself checks before allowing an invite -- see that function's own
+// playerSockets.has(targetId) check. This used to check ONLY whether the
+// friend showed up in some live server's own heartbeat-reported match
+// roster (servers Map, see the heartbeat handler below), which only ever
+// covers someone *actively hosting/in a match* -- a friend sitting in the
+// menus, exactly who you'd want to invite to a party, always showed
+// offline with no Join/Invite button at all (friends_menu.gd only renders
+// them when online is true). The servers-roster lookup is kept alongside
+// it purely to report *where* a friend is playing (serverId/serverName),
+// which playerSockets alone can't tell you.
 app.get('/api/friends/:clientId', (req, res) => {
   if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
   const list = friends[req.params.clientId] || [];
@@ -1039,7 +1048,7 @@ app.get('/api/friends/:clientId', (req, res) => {
     return {
       clientId: friendId,
       username: (progressionEntry && progressionEntry.username) || null,
-      online: !!server,
+      online: playerSockets.has(friendId) || !!server,
       serverId: server ? server.id : null,
       serverName: server ? server.name : null,
     };
