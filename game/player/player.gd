@@ -342,6 +342,9 @@ func apply_input(input: Dictionary, delta: float) -> void:
 
 	move_and_slide()
 
+	if is_dashing:
+		_end_dash_on_impact()
+
 	# Dashing (or just running) into the top edge of a platform hits its
 	# vertical face square-on -- a hard 90-degree corner has no slope to
 	# slide you up over it, so without this you just hang on the wall face
@@ -711,3 +714,42 @@ func _process_dash(delta: float) -> void:
 			end_speed *= DASH_END_UP_MULT
 		velocity = dash_direction * end_speed
 		dash_jump_grace_timer = DASH_JUMP_WINDOW
+
+## Ends a dash immediately the instant it hits something solid, instead of
+## continuing to reassert full DASH_SPEED into it for the rest of the dash's
+## duration -- without this, a dash blocked by a wall/floor kept slamming
+## into it every remaining frame (move_and_slide() just re-arrested it each
+## time, going nowhere), and even the natural-expiry branch in
+## _process_dash() reasserted ANOTHER push in that same blocked direction
+## right as control was handed back. Every other dash-momentum path in this
+## file (_wall_jump, _dash_jump_cancel, _dash_wall_jump_kick) explicitly
+## redirects/preserves speed instead of destroying it against a surface --
+## this makes a dash that simply runs into something, with no jump pressed,
+## follow that same rule instead of being the one path that doesn't.
+##
+## Checked via THIS frame's actual move_and_slide() collision result, not
+## is_on_wall_only()/is_on_floor() -- confirmed live that those
+## resting-contact heuristics don't reliably read true on the exact frame of
+## a DASH_SPEED impact (a body moving that fast into a surface can resolve
+## the slide without leaving is_on_wall_only() true that same frame), which
+## would have left an is_on_wall_only()/is_on_floor()-based check blocked
+## for a frame or two after the real impact. get_slide_collision() has no
+## such lag -- it's exactly what this move_and_slide() call actually
+## resolved.
+func _end_dash_on_impact() -> void:
+	for i in get_slide_collision_count():
+		var normal := get_slide_collision(i).get_normal()
+		if normal.dot(dash_direction) < -0.3:
+			is_dashing = false
+			var end_speed := DASH_END_SPEED
+			if dash_direction.y < -0.5:
+				end_speed *= DASH_END_UP_MULT
+			# Clips only the component driving into the surface -- a
+			# wall/floor only blocks motion into it, not motion parallel to
+			# it (same rule _dash_wall_jump_kick's own comment states), so a
+			# diagonal dash hitting a wall/floor keeps falling/sliding along
+			# it instead of stopping dead.
+			var into_surface := normal * normal.dot(dash_direction)
+			velocity = (dash_direction - into_surface) * end_speed
+			dash_jump_grace_timer = DASH_JUMP_WINDOW
+			return
