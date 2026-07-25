@@ -28,6 +28,7 @@ func _ready() -> void:
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	PartyManager.party_updated.connect(_on_party_updated)
 	PartyManager.party_error.connect(_on_party_error)
+	PartyManager.kicked.connect(_on_kicked)
 
 	var vbox := VBoxContainer.new()
 	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 32)
@@ -139,6 +140,17 @@ func _on_party_error(reason: String) -> void:
 		"party_full": "Your party is full (16 max).",
 	}
 	_party_status_label.text = messages.get(reason, "Couldn't do that.")
+
+## party_manager.gd already clears current_party the instant a "party_kicked"
+## message arrives, but that alone never touches this screen's rendered
+## _party_box -- only the party_updated signal does that, and a kick doesn't
+## send the kicked player one of those (only the party's remaining members
+## get a fresh party_updated broadcast). Without this, a kicked player's
+## Friends screen kept showing their old party/Leave button until something
+## else happened to trigger a re-render.
+func _on_kicked() -> void:
+	_render_party()
+	_party_status_label.text = "You were removed from the party."
 
 func _render_party() -> void:
 	for child in _party_box.get_children():

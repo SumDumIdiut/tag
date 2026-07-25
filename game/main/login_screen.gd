@@ -162,7 +162,9 @@ func _check_session() -> void:
 			_show_form()
 			return
 		PlayerIdentity.override_client_id(str(parsed.get("primaryClientId", "")))
-		_show_logged_in(str(parsed.get("username", "")))
+		var confirmed_username := str(parsed.get("username", ""))
+		GameSettings.save_username(confirmed_username)
+		_show_logged_in(confirmed_username)
 	)
 	var err := req.request("%s/me" % AUTH_BASE, ["Authorization: Bearer %s" % _token])
 	if err != OK:
@@ -211,7 +213,9 @@ func _send_auth_request(url: String, body: String) -> void:
 		_save_token(token)
 		PlayerIdentity.override_client_id(str(parsed.get("primaryClientId", "")))
 		_password_edit.text = ""
-		_show_logged_in(_username_edit.text.strip_edges())
+		var confirmed_username := _username_edit.text.strip_edges()
+		GameSettings.save_username(confirmed_username)
+		_show_logged_in(confirmed_username)
 	)
 	var err := req.request(url, ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
 	if err != OK:
