@@ -13,8 +13,6 @@ const MapVotePopupScene := preload("res://ui/map_vote_popup.gd")
 @onready var leave_button: Button = $VBox/LeaveButton
 
 var _is_ready := false
-var _chat_scrollback: RichTextLabel
-var _chat_input: LineEdit
 var _team_view: TeamLobbyView
 var _team_view_built_for_playlist := ""
 var _map_vote_popup: MapVotePopup
@@ -31,13 +29,11 @@ func _ready() -> void:
 	NetworkManager.lobby_state_updated.connect(_on_lobby_state_updated)
 	NetworkManager.match_started.connect(_on_match_started)
 	NetworkManager.disconnected_from_server.connect(_on_disconnected)
-	NetworkManager.chat_message_received.connect(_on_chat_message_received)
 	NetworkManager.map_vote_phase_started.connect(_on_map_vote_phase_started)
 	NetworkManager.map_vote_phase_ended.connect(_on_map_vote_phase_ended)
 	_map_vote_popup = MapVotePopupScene.new()
 	add_child(_map_vote_popup)
 	_build_share_address_panel()
-	_build_chat_panel()
 	_on_lobby_state_updated(NetworkManager.current_lobby)
 
 ## Only built when NetworkManager.hosted_private_address is set -- i.e. this
@@ -95,54 +91,6 @@ func _on_map_vote_phase_started(duration: float) -> void:
 func _on_map_vote_phase_ended(chosen_level_id: String, countdown: float) -> void:
 	_map_vote_popup.show_result(chosen_level_id, countdown)
 
-## Built in code, not the .tscn -- inserted right after the roster list,
-## same "extend an existing hand-authored screen without touching its node
-## tree" approach the Art Tool's later pages and online_menu.gd's Friends
-## button already used. Lobby-only (see NetworkManager.send_chat_message).
-func _build_chat_panel() -> void:
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(0, 160)
-	panel.add_theme_stylebox_override("panel", UIStyle.panel_box())
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
-	panel.add_child(box)
-
-	_chat_scrollback = RichTextLabel.new()
-	_chat_scrollback.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_chat_scrollback.scroll_following = true
-	_chat_scrollback.bbcode_enabled = true
-	box.add_child(_chat_scrollback)
-
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	box.add_child(row)
-	_chat_input = LineEdit.new()
-	_chat_input.placeholder_text = "Say something..."
-	_chat_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	UIStyle.style_line_edit(_chat_input)
-	_chat_input.text_submitted.connect(func(_t): _send_chat())
-	row.add_child(_chat_input)
-	var send_btn := Button.new()
-	send_btn.text = "  Send"
-	UIStyle.style_button(send_btn, UIStyle.COLOR_ONLINE, 8)
-	send_btn.pressed.connect(_send_chat)
-	row.add_child(send_btn)
-	UIStyle.prefix_icon(send_btn, "send", UIStyle.COLOR_ONLINE)
-
-	var vbox: VBoxContainer = roster_list.get_parent()
-	vbox.add_child(panel)
-	vbox.move_child(panel, roster_list.get_index() + 1)
-
-func _send_chat() -> void:
-	var text := _chat_input.text.strip_edges()
-	if text.is_empty():
-		return
-	NetworkManager.send_chat_message(text)
-	_chat_input.text = ""
-
-func _on_chat_message_received(sender_username: String, text: String) -> void:
-	_chat_scrollback.append_text("[b]%s:[/b] %s\n" % [sender_username.replace("[", "").replace("]", ""), text.replace("[", "").replace("]", "")])
-
 func _on_lobby_state_updated(lobby: Dictionary) -> void:
 	if lobby.is_empty():
 		return
@@ -166,6 +114,23 @@ func _on_lobby_state_updated(lobby: Dictionary) -> void:
 	voters.merge(lobby.get("bots", {}))
 	_map_vote_popup.set_roster(voters)
 	_map_vote_popup.set_votes(lobby.get("map_votes", {}))
+	# Normally driven entirely by the one-shot map_vote_phase_started RPC
+	# (_on_map_vote_phase_started below) -- but a party follower can reach
+	# this scene (see party_manager.gd's _on_follow_in_lobby) AFTER the
+	# leader's own client already triggered start_match() and the vote
+	# phase began, since the follower's own connect-then-join round trip is
+	# real network latency the leader's fast local loopback never pays.
+	# Signals aren't buffered for late connections, so that RPC's emission
+	# is simply missed if this scene wasn't loaded and listening yet --
+	# lobby.voting_open is part of this same lobby_state sync instead,
+	# which (unlike the one-shot RPC) keeps arriving throughout the vote
+	# window, so a follower who missed the original signal still catches up
+	# here. Guarded to only actually (re)start the popup once: calling
+	# start_voting() again would reset its own countdown back to the full
+	# duration on every subsequent lobby_state update (e.g. every time
+	# another player's vote comes in).
+	if lobby.get("voting_open", false) and not _map_vote_popup.is_voting_active():
+		_map_vote_popup.start_voting(NetworkManager.MAP_VOTE_DURATION_SEC)
 
 	# The leader's own client drives this -- same _server_start_match RPC
 	# and host-only check a manual Start press uses, just triggered the

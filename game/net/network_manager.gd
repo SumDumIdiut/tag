@@ -18,10 +18,6 @@ signal match_ended(ranking: Array)
 signal connected_to_server
 signal connection_failed
 signal disconnected_from_server
-## Fires on a peer once the server relays a lobby chat message -- see
-## send_chat_message()/lobby_room.gd. Lobby-only by design (not in-match),
-## to keep the tight tag-gameplay netcode path untouched by this.
-signal chat_message_received(username: String, text: String)
 ## Fires on a peer that tried start_spectator() when no match is currently
 ## in progress on that server to watch.
 signal spectate_failed
@@ -43,7 +39,6 @@ const DEFAULT_PORT := 9000
 const MAX_LOBBY_PLAYERS := 8
 const MIN_RANKED_PLAYERS := 2
 const RANKED_REPORT_URL := "https://codecade.co.za/tag/api/ranked/report-result"
-const MAX_CHAT_MESSAGE_LEN := 200
 ## How long the map-vote popup stays open, and how long the "starting
 ## in..." countdown after it runs, before the match actually begins (see
 ## _begin_match_sequence()/_on_map_vote_timeout()) -- map selection is now
@@ -850,26 +845,6 @@ func _server_submit_input(input: Dictionary) -> void:
 	if lobby_id != -1 and _matches.has(lobby_id):
 		_matches[lobby_id].receive_input(sender, input)
 
-## Lobby-only chat (not in-match, to keep this well clear of the tight tag-
-## gameplay netcode path) -- rides the same bridged connection every other
-## RPC here does, no relay-server changes needed. Relays to exactly the
-## sender's own lobby, never a blind server-wide broadcast, since one
-## dedicated server process can be hosting several unrelated lobbies at once.
-@rpc("any_peer", "reliable")
-func _server_send_chat_message(text: String) -> void:
-	if not is_server:
-		return
-	var sender := multiplayer.get_remote_sender_id()
-	var lobby_id: int = _peer_lobby.get(sender, -1)
-	if lobby_id == -1 or not _lobbies.has(lobby_id):
-		return
-	var clean_text := text.strip_edges().left(MAX_CHAT_MESSAGE_LEN)
-	if clean_text.is_empty():
-		return
-	var sender_username: String = _peer_username.get(sender, "Player")
-	for member_peer_id in _lobbies[lobby_id].members.keys():
-		rpc_id(member_peer_id, "_client_receive_chat_message", sender_username, clean_text)
-
 # ==================== Server -> client push helpers ====================
 
 func _lobby_summaries() -> Array:
@@ -973,10 +948,6 @@ func _client_match_ended(ranking: Array) -> void:
 	match_ended.emit(ranking)
 
 @rpc("authority", "reliable")
-func _client_receive_chat_message(sender_username: String, text: String) -> void:
-	chat_message_received.emit(sender_username, text)
-
-@rpc("authority", "reliable")
 func _client_spectate_failed() -> void:
 	spectate_failed.emit()
 
@@ -1014,9 +985,6 @@ func set_ready(ready: bool) -> void:
 ## member's vote turns into the one map that's actually played.
 func submit_map_vote(level_id: String) -> void:
 	rpc_id(1, "_server_submit_map_vote", level_id)
-
-func send_chat_message(text: String) -> void:
-	rpc_id(1, "_server_send_chat_message", text)
 
 func start_match() -> void:
 	rpc_id(1, "_server_start_match")
