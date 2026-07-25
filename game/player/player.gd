@@ -157,8 +157,19 @@ var climb_exhausted_timer := 0.0
 @onready var _visual: Node2D = $Visual
 @onready var _body: CharacterBodyRect = $Visual/Body
 @onready var _it_label: Label = $ItLabel
+@onready var _collision_shape: CollisionShape2D = $CollisionShape2D
 
-var _was_on_floor_visual := false
+# The squash/stretch scale, driving both the cosmetic Visual node AND the
+# actual CollisionShape2D -- scaling the shape NODE's own transform (not the
+# underlying RectangleShape2D resource, which is shared across every Player
+# instance from this same packed scene; mutating its size directly would
+# resize every player's hitbox at once). Computed once per physics tick (see
+# _update_squash(), called from apply_input()) rather than per render frame
+# -- it used to be render-frame-only and purely cosmetic, but a hitbox that
+# doesn't match what you see (e.g. a dash's wide/short squash) would be a
+# real, not just visual, mismatch, and collision only ever gets read at the
+# physics tick regardless of render rate.
+var squash_scale := Vector2.ONE
 # The actual assigned player color, tracked separately from _body.color so
 # set_tagged_it() can restore it exactly when untagged, and so a late
 # set_color() call while already tagged doesn't stomp the tag's own color.
@@ -246,20 +257,14 @@ func _update_it_label(active: bool) -> void:
 		_it_pulse_tween.tween_property(_it_label, "modulate:a", 0.35, 0.5).set_trans(Tween.TRANS_SINE)
 		_it_pulse_tween.tween_property(_it_label, "modulate:a", 1.0, 0.5).set_trans(Tween.TRANS_SINE)
 
-# Purely cosmetic squash/stretch, recomputed every rendered frame (not tied
-# to the fixed physics tick). Still runs client-side for local/AI play
-# (game.gd), which simulates Player directly with no network involved --
-# net_game.gd's online mode no longer instantiates Player client-side at
-# all, rendering every peer (local one included) from confirmed server
-# state via RemoteAvatar instead.
-func _process(delta: float) -> void:
-	if not _visual:
-		return
+## Squash/stretch that drives both the cosmetic Visual node and the actual
+## CollisionShape2D (see squash_scale's own comment) -- called once per
+## physics tick from apply_input(), after move_and_slide(), so it reflects
+## this tick's real resulting velocity/is_dashing state (matching what the
+## old render-frame version read) while landing the collision-shape update
+## in time for the *next* tick's own move_and_slide() to see it.
+func _update_squash(delta: float) -> void:
 	var on_floor_now := is_on_floor()
-	if on_floor_now and not _was_on_floor_visual:
-		_visual.scale = Vector2(1.25, 0.75)
-	_was_on_floor_visual = on_floor_now
-
 	var target_scale := Vector2.ONE
 	if is_dashing:
 		target_scale = Vector2(1.5, 0.6)
@@ -268,13 +273,17 @@ func _process(delta: float) -> void:
 			target_scale = Vector2(0.85, 1.2)
 		elif velocity.y > 40.0:
 			target_scale = Vector2(1.1, 0.9)
-	_visual.scale = _visual.scale.lerp(target_scale, clampf(delta * 12.0, 0.0, 1.0))
-	# While grounded (landing bounce, dashing along the floor), shift Visual
-	# down to compensate for its scale origin sitting above the feet -- see
-	# _ground_line_y -- so the feet stay planted and only the top compresses.
-	# Airborne squash/stretch has no ground to stay anchored to, so it's left
-	# scaling around Visual's own origin as before.
-	_visual.position.y = _ground_line_y * (1.0 - _visual.scale.y) if on_floor_now else 0.0
+	squash_scale = squash_scale.lerp(target_scale, clampf(delta * 12.0, 0.0, 1.0))
+	if _collision_shape:
+		_collision_shape.scale = squash_scale
+	if _visual:
+		_visual.scale = squash_scale
+		# While grounded (landing bounce, dashing along the floor), shift
+		# Visual down to compensate for its scale origin sitting above the
+		# feet -- see _ground_line_y -- so the feet stay planted and only
+		# the top compresses. Airborne squash/stretch has no ground to stay
+		# anchored to, so it's left scaling around Visual's own origin.
+		_visual.position.y = _ground_line_y * (1.0 - squash_scale.y) if on_floor_now else 0.0
 
 func apply_input(input: Dictionary, delta: float) -> void:
 	var move_dir: Vector2 = input.get("move_dir", Vector2.ZERO)
@@ -303,6 +312,11 @@ func apply_input(input: Dictionary, delta: float) -> void:
 	# retention window instead of losing it to ground friction immediately.
 	if on_floor and not _was_on_floor_physics and speed_boost_active:
 		landed_grace_timer = DASH_JUMP_LANDING_RETENTION_FRAMES / 60.0
+	# Landing bounce -- an instant squash snap (not eased like the rest of
+	# squash_scale) the tick you touch down, same as the old render-frame
+	# version did.
+	if on_floor and not _was_on_floor_physics:
+		squash_scale = Vector2(1.25, 0.75)
 	_was_on_floor_physics = on_floor
 	if jump_pressed:
 		jump_buffer_timer = JUMP_BUFFER_TIME
@@ -356,6 +370,8 @@ func apply_input(input: Dictionary, delta: float) -> void:
 		var post_move_wall := _find_wall_jump_normal(is_on_wall_only())
 		if post_move_wall != Vector2.ZERO:
 			_try_corner_correction(post_move_wall)
+
+	_update_squash(delta)
 
 func _tick_timers(delta: float) -> void:
 	coyote_timer = maxf(coyote_timer - delta, 0.0)
