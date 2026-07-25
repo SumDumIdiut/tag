@@ -138,7 +138,28 @@ func queue_party(target: String, mode: String, playlist: String) -> void:
 ## account afterward would never match against it, failing invites with a
 ## confusing "not_friend" error despite the Friends list (a fresh HTTP call
 ## using the current client_id) correctly showing them as a friend.
-func _on_client_id_changed(_new_id: String) -> void:
+##
+## If already in a party when this fires, just discarding the old socket
+## isn't safe on its own: the relay's own ws.on('close') handler treats
+## ANY disconnect as a real "left the party" (see relay-server's
+## handlePartyLeave), which for a leader silently hands leadership to
+## whoever else is still in the party and drops this client out of it for
+## good -- confirmed live (a raw two-socket reproduction: closing the
+## leader's old socket handed leadership to the other member, and the new
+## socket that reconnected under the correct id was never associated with
+## any party at all). Kick/Leave Party then looked like they'd simply
+## stopped working, since the client displayed a party it no longer
+## server-side belonged to. identity_migrate tells the relay to carry
+## membership/leadership over to the new id BEFORE the old socket closes,
+## so the close that follows finds nothing left to "leave".
+func _on_client_id_changed(new_id: String) -> void:
+	if not current_party.is_empty() and _socket != null and _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		_send({"type": "identity_migrate", "newClientId": new_id})
+		# send_text() only queues the message -- give it a moment to actually
+		# reach the relay (via _process()'s own poll(), still running on this
+		# same socket during the wait) before tearing the socket down below,
+		# rather than risking the plain disconnect winning the race.
+		await get_tree().create_timer(0.3).timeout
 	_socket = null
 	_identified = false
 	if not current_party.is_empty():

@@ -84,6 +84,11 @@ func show_result(_chosen_level_id: String, countdown: float) -> void:
 		btn.disabled = true
 	visible = true
 
+## Used by lobby_room.gd's own lobby_state fallback (see its own comment) to
+## avoid restarting an already-running countdown from the top.
+func is_voting_active() -> bool:
+	return _phase == "voting"
+
 func set_votes(votes: Dictionary) -> void:
 	_vote_view.set_votes(votes)
 
