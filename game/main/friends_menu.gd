@@ -21,6 +21,7 @@ var _cancelled := false
 var _party_box: VBoxContainer
 var _party_status_label: Label
 var _last_friends: Array = []
+var _requests_box: VBoxContainer
 
 func _ready() -> void:
 	UIStyle.add_background(self, "friends_menu")
@@ -29,6 +30,8 @@ func _ready() -> void:
 	PartyManager.party_updated.connect(_on_party_updated)
 	PartyManager.party_error.connect(_on_party_error)
 	PartyManager.kicked.connect(_on_kicked)
+	PartyManager.friend_request_received.connect(_on_friend_request_received)
+	PartyManager.friend_request_responded.connect(_on_friend_request_responded)
 
 	var vbox := VBoxContainer.new()
 	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 32)
@@ -80,6 +83,22 @@ func _ready() -> void:
 	party_outer.add_child(_party_status_label)
 	_render_party()
 
+	# Requests that arrived while this client wasn't connected to pop the
+	# live popup (see PartyManager._show_next_popup) still need somewhere to
+	# be seen and acted on -- this panel is the catch-up path for those, and
+	# doubles as the visible result of one just accepted/declined here.
+	var requests_panel := PanelContainer.new()
+	requests_panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_ACCENT))
+	vbox.add_child(requests_panel)
+	var requests_outer := VBoxContainer.new()
+	requests_outer.add_theme_constant_override("separation", 6)
+	requests_panel.add_child(requests_outer)
+	requests_outer.add_child(_dim_label("FRIEND REQUESTS"))
+	_requests_box = VBoxContainer.new()
+	_requests_box.add_theme_constant_override("separation", 4)
+	requests_outer.add_child(_requests_box)
+	_render_friend_requests([])
+
 	var add_row := HBoxContainer.new()
 	add_row.add_theme_constant_override("separation", 10)
 	vbox.add_child(add_row)
@@ -117,10 +136,12 @@ func _ready() -> void:
 	_refresh_timer = Timer.new()
 	_refresh_timer.wait_time = REFRESH_INTERVAL_SEC
 	_refresh_timer.timeout.connect(_fetch_friends)
+	_refresh_timer.timeout.connect(_fetch_friend_requests)
 	add_child(_refresh_timer)
 	_refresh_timer.start()
 
 	_fetch_friends()
+	_fetch_friend_requests()
 
 func _dim_label(text: String) -> Label:
 	var l := Label.new()
@@ -151,6 +172,19 @@ func _on_party_error(reason: String) -> void:
 func _on_kicked() -> void:
 	_render_party()
 	_party_status_label.text = "You were removed from the party."
+
+## The live popup (party_manager.gd) already handles accepting/declining --
+## this just keeps the inline panel in sync the moment one arrives while
+## already on this screen, instead of waiting up to REFRESH_INTERVAL_SEC.
+func _on_friend_request_received(_from_client_id: String, _from_username: String) -> void:
+	_fetch_friend_requests()
+
+## Fires for whoever SENT the request once the other side responds --
+## refresh the friends list too since an accept just added a new friend.
+func _on_friend_request_responded(target_username: String, accepted: bool) -> void:
+	_status_label.text = "%s accepted your friend request." % target_username if accepted else "%s declined your friend request." % target_username
+	if accepted:
+		_fetch_friends()
 
 func _render_party() -> void:
 	for child in _party_box.get_children():
@@ -217,8 +251,15 @@ func _on_add_pressed() -> void:
 			_status_label.text = err_msg
 			return
 		_add_edit.text = ""
-		_status_label.text = "Friend added."
-		_fetch_friends()
+		if typeof(parsed) == TYPE_DICTIONARY and bool(parsed.get("alreadyFriends", false)):
+			_status_label.text = "Already friends."
+		elif typeof(parsed) == TYPE_DICTIONARY and bool(parsed.get("autoAccepted", false)):
+			_status_label.text = "Friend added -- they'd already requested you."
+			_fetch_friends()
+		elif typeof(parsed) == TYPE_DICTIONARY and bool(parsed.get("alreadyPending", false)):
+			_status_label.text = "Request already sent -- waiting on them."
+		else:
+			_status_label.text = "Friend request sent."
 	)
 	var url := "%s/%s/add" % [FRIENDS_API_BASE, PlayerIdentity.client_id]
 	var body := JSON.stringify({"friendCode": code})
@@ -240,6 +281,63 @@ func _fetch_friends() -> void:
 		_render_friends(parsed)
 	)
 	req.request("%s/%s" % [FRIENDS_API_BASE, PlayerIdentity.client_id])
+
+func _fetch_friend_requests() -> void:
+	if PlayerIdentity.client_id.is_empty():
+		return
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+		req.queue_free()
+		if response_code != 200:
+			return
+		var parsed = JSON.parse_string(body.get_string_from_utf8())
+		if typeof(parsed) != TYPE_ARRAY:
+			return
+		_render_friend_requests(parsed)
+	)
+	req.request("%s/%s/requests" % [FRIENDS_API_BASE, PlayerIdentity.client_id])
+
+func _render_friend_requests(requests: Array) -> void:
+	for child in _requests_box.get_children():
+		_requests_box.remove_child(child)
+		child.queue_free()
+	if requests.is_empty():
+		_requests_box.add_child(_dim_label("No pending requests."))
+		return
+	for entry in requests:
+		_requests_box.add_child(_build_friend_request_row(entry))
+
+func _build_friend_request_row(entry: Dictionary) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+
+	var from_id: String = str(entry.get("clientId", ""))
+	var name_label := Label.new()
+	name_label.text = entry.get("username", "") if entry.get("username", null) else from_id.left(12) + "…"
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_label)
+
+	var decline_btn := Button.new()
+	decline_btn.text = "Decline"
+	UIStyle.style_button(decline_btn, UIStyle.COLOR_NEUTRAL, 8)
+	decline_btn.pressed.connect(func():
+		PartyManager.decline_friend_request(from_id)
+		_fetch_friend_requests()
+	)
+	row.add_child(decline_btn)
+
+	var accept_btn := Button.new()
+	accept_btn.text = "Accept"
+	UIStyle.style_button(accept_btn, UIStyle.COLOR_ONLINE, 8)
+	accept_btn.pressed.connect(func():
+		PartyManager.accept_friend_request(from_id)
+		_fetch_friend_requests()
+		_fetch_friends()
+	)
+	row.add_child(accept_btn)
+
+	return row
 
 func _render_friends(friends: Array) -> void:
 	for child in _list_box.get_children():

@@ -16,6 +16,10 @@ signal invite_declined(target_username: String)
 signal kicked
 signal connect_now(server_address: String, mode: String, playlist: String)
 signal party_error(reason: String)
+signal friend_request_received(from_client_id: String, from_username: String)
+## Fired when someone I sent a friend request to responds -- accepted tells
+## the Friends screen it can stop waiting and refresh its list.
+signal friend_request_responded(target_username: String, accepted: bool)
 
 const UIStyle := preload("res://ui/ui_style.gd")
 const MatchIntroScene := preload("res://main/match_intro.tscn")
@@ -35,13 +39,17 @@ var _socket: WebSocketPeer = null
 var _identified := false
 var _reconnect_timer: Timer
 
-# Invite popups are owned here rather than by whatever screen happens to be
-# open -- an invite can land while you're anywhere in the online menus, not
-# just on the Friends screen, and this autoload is the one thing guaranteed
-# to be alive regardless of scene. Queued one at a time rather than stacked,
-# since two overlapping popups fighting for the same screen space would be
-# more confusing than useful.
-var _pending_invites: Array[Dictionary] = []
+# Invite/request popups are owned here rather than by whatever screen
+# happens to be open -- a party invite or friend request can land while
+# you're anywhere in the online menus, not just on the Friends screen, and
+# this autoload is the one thing guaranteed to be alive regardless of
+# scene. Queued one at a time rather than stacked, since two overlapping
+# popups fighting for the same screen space would be more confusing than
+# useful. Each queued item is {kind: "party"|"friend_request", ...} --
+# both share the same popup shell/styling, just different label text and
+# accept/decline actions, so friend requests get the exact same treatment
+# a party invite already does rather than a separately-designed prompt.
+var _pending_popups: Array[Dictionary] = []
 var _invite_popup: CanvasLayer = null
 
 # Follower-side "come along with the leader" state -- see queue_party()/
@@ -68,6 +76,7 @@ func _ready() -> void:
 	_follow_search_timer.timeout.connect(_search_for_leader_server)
 	add_child(_follow_search_timer)
 	invite_received.connect(_on_invite_received)
+	friend_request_received.connect(_on_friend_request_received)
 	connect_now.connect(_on_connect_now)
 	PlayerIdentity.client_id_changed.connect(_on_client_id_changed)
 	_connect()
@@ -94,6 +103,12 @@ func leave_party() -> void:
 
 func kick(target_client_id: String) -> void:
 	_send({"type": "party_kick", "targetClientId": target_client_id})
+
+func accept_friend_request(from_client_id: String) -> void:
+	_send({"type": "friend_request_accept", "fromClientId": from_client_id})
+
+func decline_friend_request(from_client_id: String) -> void:
+	_send({"type": "friend_request_decline", "fromClientId": from_client_id})
 
 ## Called by whoever just resolved/hosted the actual game server exactly like
 ## a solo player would (see ranked_queue.gd/casual_queue.gd/the private-match
@@ -189,19 +204,30 @@ func _handle_message(raw: PackedByteArray) -> void:
 			connect_now.emit(str(msg.get("serverAddress", "")), str(msg.get("mode", "")), str(msg.get("playlist", "")))
 		"party_error":
 			party_error.emit(str(msg.get("reason", "")))
+		"friend_request_received":
+			friend_request_received.emit(str(msg.get("fromClientId", "")), str(msg.get("fromUsername", "")))
+		"friend_request_accepted":
+			friend_request_responded.emit(str(msg.get("targetUsername", "")), true)
+		"friend_request_declined":
+			friend_request_responded.emit(str(msg.get("targetUsername", "")), false)
 
 func _send(data: Dictionary) -> void:
 	if _socket != null and _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		_socket.send_text(JSON.stringify(data))
 
 func _on_invite_received(party_id: String, from_client_id: String, from_username: String) -> void:
-	_pending_invites.append({"party_id": party_id, "from_client_id": from_client_id, "from_username": from_username})
-	_show_next_invite()
+	_pending_popups.append({"kind": "party", "party_id": party_id, "from_client_id": from_client_id, "from_username": from_username})
+	_show_next_popup()
 
-func _show_next_invite() -> void:
-	if _invite_popup != null or _pending_invites.is_empty():
+func _on_friend_request_received(from_client_id: String, from_username: String) -> void:
+	_pending_popups.append({"kind": "friend_request", "from_client_id": from_client_id, "from_username": from_username})
+	_show_next_popup()
+
+func _show_next_popup() -> void:
+	if _invite_popup != null or _pending_popups.is_empty():
 		return
-	var invite: Dictionary = _pending_invites.pop_front()
+	var item: Dictionary = _pending_popups.pop_front()
+	var is_party: bool = item.kind == "party"
 
 	var layer := CanvasLayer.new()
 	layer.layer = 100
@@ -227,7 +253,7 @@ func _show_next_invite() -> void:
 	panel.add_child(box)
 
 	var label := Label.new()
-	label.text = "%s invited you to their party" % invite.from_username
+	label.text = ("%s invited you to their party" % item.from_username) if is_party else ("%s wants to be friends" % item.from_username)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	box.add_child(label)
@@ -241,7 +267,10 @@ func _show_next_invite() -> void:
 	decline_btn.text = "Decline"
 	UIStyle.style_button(decline_btn, UIStyle.COLOR_NEUTRAL, 8)
 	decline_btn.pressed.connect(func():
-		decline_invite(invite.party_id)
+		if is_party:
+			decline_invite(item.party_id)
+		else:
+			decline_friend_request(item.from_client_id)
 		_close_invite_popup(layer)
 	)
 	button_row.add_child(decline_btn)
@@ -250,7 +279,10 @@ func _show_next_invite() -> void:
 	accept_btn.text = "Accept"
 	UIStyle.style_button(accept_btn, UIStyle.COLOR_ONLINE, 8)
 	accept_btn.pressed.connect(func():
-		accept_invite(invite.party_id)
+		if is_party:
+			accept_invite(item.party_id)
+		else:
+			accept_friend_request(item.from_client_id)
 		_close_invite_popup(layer)
 	)
 	button_row.add_child(accept_btn)
@@ -260,7 +292,7 @@ func _show_next_invite() -> void:
 func _close_invite_popup(layer: CanvasLayer) -> void:
 	layer.queue_free()
 	_invite_popup = null
-	_show_next_invite()
+	_show_next_popup()
 
 ## The leader just told us where to go (see queue_party() above) -- for
 ## "private" `target` is already a real address; for "ranked"/"casual" it's
