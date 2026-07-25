@@ -1,0 +1,17 @@
+[configuration]
+
+entry_symbol = "webrtc_extension_init"
+compatibility_minimum = 4.3
+
+[libraries]
+
+; Windows x86_64 only -- this project's client and dedicated server are
+; both the same Tag.exe (see local_server_spawner.gd), and terraserver
+; (the only non-Windows machine involved) never runs a Godot process, only
+; the matchmaking/signaling backend. Trimmed from upstream's full release
+; (which also ships Linux/macOS/Android/iOS builds) to keep repo size
+; down -- re-extract the full godot-extension-webrtc_native.zip release
+; from github.com/godotengine/webrtc-native if a non-Windows target is
+; ever needed.
+windows.debug.x86_64 = "lib/libwebrtc_native.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "lib/libwebrtc_native.windows.template_release.x86_64.dll"
