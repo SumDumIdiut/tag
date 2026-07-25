@@ -21,6 +21,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -233,6 +235,15 @@ def main() -> None:
     # never pass a schedule) progress-remaining calculation -- this
     # process runs until --rounds or killed, not until a step count.
     _, callback = model._setup_learn(total_timesteps=10**15, callback=None, reset_num_timesteps=(args.resume is None))
+
+    # install.sh's stop_proc() sends a plain SIGTERM -- Python's default
+    # handling for that terminates the process immediately without
+    # running try/finally blocks, which would silently skip the
+    # final-checkpoint-on-shutdown safety net below on every ordinary
+    # `install.sh stop tag-trainer`, not just an actual crash. Converting
+    # it to SystemExit routes it through the same finally block a clean
+    # Ctrl+C (SIGINT) already goes through.
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(0))
 
     state = LearnerState(model)
     server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(state))
