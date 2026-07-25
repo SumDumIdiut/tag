@@ -230,6 +230,14 @@ func _on_match_started(_lobby_id: int, my_id: int, roster: Dictionary, level_id:
 	get_tree().current_scene = scene
 
 func _on_leave_pressed() -> void:
+	# A party-queued lobby only ever exists because PartyManager told this
+	# client to connect here (see party_manager.gd's _on_connect_now) -- if
+	# this player is still in that party, leaving the lobby without also
+	# telling the relay meant they'd disconnect from the match but keep
+	# showing up as a party member everywhere else (Friends screen, future
+	# invites) until they separately found the dedicated Leave Party button.
+	if not PartyManager.current_party.is_empty():
+		PartyManager.leave_party()
 	NetworkManager.leave_lobby()
 	NetworkManager.disconnect_from_server()
 	get_tree().change_scene_to_file("res://main/online_menu.tscn")
