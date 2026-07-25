@@ -489,6 +489,7 @@ function applyProgressionUpdates(results, playlistId) {
 // request/accept step) -- consistent with every other low-friction, no-
 // review trust decision already made elsewhere in this file.
 const FRIENDS_JSON_PATH = path.join(DATA_DIR, 'friends.json');
+const FRIEND_REQUESTS_JSON_PATH = path.join(DATA_DIR, 'friend_requests.json');
 const MAX_FRIENDS_PER_CLIENT = 100;
 
 function loadFriends() {
@@ -506,6 +507,28 @@ function addFriendPair(a, b) {
   if (!friends[b]) friends[b] = [];
   if (!friends[a].includes(b)) friends[a].push(b);
   if (!friends[b].includes(a)) friends[b].push(a);
+}
+
+function loadFriendRequests() {
+  try { return JSON.parse(fs.readFileSync(FRIEND_REQUESTS_JSON_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+// targetClientId -> [requesterClientId, ...] -- pending incoming requests,
+// keyed by the person who'd need to accept/decline them. Persisted (not
+// just pushed live over the party socket) so a request sent while the
+// target is offline is still there for them to see/act on next time they
+// open the Friends screen, not lost the moment the tab they'd have popped
+// up in was never open.
+let friendRequests = loadFriendRequests();
+
+function saveFriendRequests() {
+  fs.writeFileSync(FRIEND_REQUESTS_JSON_PATH, JSON.stringify(friendRequests));
+}
+
+function friendRequestSnapshot(clientId) {
+  return (friendRequests[clientId] || []).map(fromId => ({
+    clientId: fromId, username: accountUsernameFor(fromId) || (progression[fromId] && progression[fromId].username) || null,
+  }));
 }
 
 // ─── Party (live group queueing) ───────────────────────────────────────────
@@ -590,6 +613,37 @@ function handlePartyInviteDecline(clientId, partyId) {
   party.pendingInvites.delete(clientId);
   sendToPlayer(party.leaderId, {
     type: 'party_invite_declined',
+    targetUsername: (playerSockets.get(clientId) || {}).username || 'Player',
+  });
+}
+
+// Accept/decline mirror the party invite pair above (WS-delivered, same
+// live-popup path client-side) rather than going through the HTTP add
+// route again -- the requester already made their ask over HTTP; this is
+// the target responding to it, which (like party invite responses) only
+// ever needs to happen while connected to react to a live popup.
+function handleFriendRequestAccept(clientId, fromId) {
+  const pending = friendRequests[clientId] || [];
+  const idx = pending.indexOf(fromId);
+  if (idx === -1) return;
+  pending.splice(idx, 1);
+  addFriendPair(clientId, fromId);
+  saveFriendRequests();
+  saveFriends();
+  sendToPlayer(fromId, {
+    type: 'friend_request_accepted',
+    targetUsername: (playerSockets.get(clientId) || {}).username || 'Player',
+  });
+}
+
+function handleFriendRequestDecline(clientId, fromId) {
+  const pending = friendRequests[clientId] || [];
+  const idx = pending.indexOf(fromId);
+  if (idx === -1) return;
+  pending.splice(idx, 1);
+  saveFriendRequests();
+  sendToPlayer(fromId, {
+    type: 'friend_request_declined',
     targetUsername: (playerSockets.get(clientId) || {}).username || 'Player',
   });
 }
@@ -1027,6 +1081,11 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 // ─── HTTP: friends ────────────────────────────────────────────────────────────
+// Adding a friend used to be instant and symmetric (no request/accept step)
+// -- changed to a real request flow so a stranger with your code can't just
+// add themselves without you having any say. `clientId` is the requester
+// here (whoever's client called this route), `friendCode` is who they want
+// to add.
 app.post('/api/friends/:clientId/add', (req, res) => {
   if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
   if (!withinRateLimit('action', clientIpFor(req), RATE_LIMIT_ACTION_MAX)) return res.status(429).json({ error: 'slow down' });
@@ -1037,9 +1096,38 @@ app.post('/api/friends/:clientId/add', (req, res) => {
   if ((friends[clientId] || []).length >= MAX_FRIENDS_PER_CLIENT) {
     return res.status(400).json({ error: `max ${MAX_FRIENDS_PER_CLIENT} friends` });
   }
-  addFriendPair(clientId, friendCode);
-  saveFriends();
-  res.json({ ok: true });
+  if ((friends[clientId] || []).includes(friendCode)) {
+    return res.json({ ok: true, alreadyFriends: true });
+  }
+  // friendCode already sent clientId a request of their own -- treat this
+  // as accepting it rather than leaving two one-way pending requests
+  // sitting around never resolving each other.
+  if ((friendRequests[clientId] || []).includes(friendCode)) {
+    friendRequests[clientId] = friendRequests[clientId].filter(id => id !== friendCode);
+    addFriendPair(clientId, friendCode);
+    saveFriendRequests();
+    saveFriends();
+    return res.json({ ok: true, autoAccepted: true });
+  }
+  if ((friendRequests[friendCode] || []).includes(clientId)) {
+    return res.json({ ok: true, alreadyPending: true });
+  }
+  if (!friendRequests[friendCode]) friendRequests[friendCode] = [];
+  friendRequests[friendCode].push(clientId);
+  saveFriendRequests();
+  sendToPlayer(friendCode, {
+    type: 'friend_request_received', fromClientId: clientId,
+    fromUsername: accountUsernameFor(clientId) || (progression[clientId] && progression[clientId].username) || 'Player',
+  });
+  res.json({ ok: true, pending: true });
+});
+
+// Pending incoming requests for clientId -- lets the Friends screen show
+// (and act on) requests that arrived while this client wasn't connected to
+// pop the live notification, not just ones received this session.
+app.get('/api/friends/:clientId/requests', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  res.json(friendRequestSnapshot(req.params.clientId));
 });
 
 // "online" comes from playerSockets (populated the instant a client opens
@@ -1362,6 +1450,10 @@ function handlePlayerParty(ws, clientId) {
       handlePartyKick(clientId, String(msg.targetClientId || ''));
     } else if (msg.type === 'party_queue_start') {
       handlePartyQueueStart(clientId, msg);
+    } else if (msg.type === 'friend_request_accept') {
+      handleFriendRequestAccept(clientId, String(msg.fromClientId || ''));
+    } else if (msg.type === 'friend_request_decline') {
+      handleFriendRequestDecline(clientId, String(msg.fromClientId || ''));
     }
   });
 
