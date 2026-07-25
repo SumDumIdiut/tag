@@ -674,6 +674,38 @@ function handlePartyKick(fromId, targetId) {
   broadcastPartyUpdate(party);
 }
 
+// PartyManager's socket connects once at boot under whatever client_id was
+// current then (near-guaranteed to be the local-device id, since login
+// resolves asynchronously) -- when a session restore later adopts the
+// account's real id, that client reconnects under the new one (see
+// party_manager.gd's _on_client_id_changed). Without this, the OLD
+// socket's own disconnect hit this same server's ws.on('close') handler
+// (see handlePlayerParty below), which calls handlePartyLeave for the OLD
+// id -- for a leader, that silently hands leadership to whoever else was
+// in the party and drops this client out of it entirely, while the NEW
+// (correctly-identified) socket never gets associated with any party at
+// all, since clientParty has no entry for an id it's never seen. The
+// client now sends this BEFORE tearing the old socket down, so party
+// membership/leadership carries over to the new id atomically instead of
+// the old socket's close ever being treated as a real "left the party".
+function handleIdentityMigrate(oldId, newId) {
+  if (!CLIENT_ID_RE.test(newId) || newId === oldId) return;
+  const partyId = clientParty.get(oldId);
+  if (!partyId) return;
+  const party = parties.get(partyId);
+  if (!party || !party.members.has(oldId)) return;
+  party.members.delete(oldId);
+  party.members.add(newId);
+  clientParty.delete(oldId);
+  clientParty.set(newId, partyId);
+  if (party.leaderId === oldId) party.leaderId = newId;
+  if (party.pendingInvites.has(oldId)) {
+    party.pendingInvites.delete(oldId);
+    party.pendingInvites.add(newId);
+  }
+  broadcastPartyUpdate(party);
+}
+
 const PARTY_QUEUE_PRIVATE_RESOLVE_RETRIES = 5;
 const PARTY_QUEUE_PRIVATE_RESOLVE_DELAY_MS = 500;
 
@@ -1507,6 +1539,8 @@ function handlePlayerParty(ws, clientId) {
       handleFriendRequestAccept(clientId, String(msg.fromClientId || ''));
     } else if (msg.type === 'friend_request_decline') {
       handleFriendRequestDecline(clientId, String(msg.fromClientId || ''));
+    } else if (msg.type === 'identity_migrate') {
+      handleIdentityMigrate(clientId, String(msg.newClientId || ''));
     }
   });
 
