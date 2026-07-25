@@ -23,6 +23,14 @@ var _http: HTTPRequest
 var _spawner: LocalServerSpawner
 var _username := ""
 var _private := false
+## Set alongside _spawner.spawn() so _on_connected_to_own_host() can hand
+## this exact name to PartyManager.queue_party() for a private match --
+## the relay resolves a following party member's connect target by this
+## name server-side (see relay-server/server.js's handlePartyQueueStart),
+## since an unlisted server is deliberately excluded from /api/servers, so
+## a client-side name search wouldn't find it the way ranked/casual
+## followers already do.
+var _hosted_server_name := ""
 # See quick_play.gd's own _cancelled for the full explanation -- NetworkManager
 # is an autoload, so a late async callback (HTTP response, connection signal)
 # can still fire after cancel() tears this node down if it's already queued.
@@ -91,12 +99,13 @@ func _on_connected_to_existing_server() -> void:
 func _host_new_match() -> void:
 	if _cancelled:
 		return
+	_hosted_server_name = "%s's Match" % _username
 	if _private:
 		status_changed.emit("Starting a private match...")
-		_spawner.spawn("%s's Match" % _username, _username, PackedStringArray(["--private"]))
+		_spawner.spawn(_hosted_server_name, _username, PackedStringArray(["--private"]))
 	else:
 		status_changed.emit("No open servers -- starting one...")
-		_spawner.spawn("%s's Match" % _username, _username)
+		_spawner.spawn(_hosted_server_name, _username)
 
 func _on_spawn_failed(reason: String) -> void:
 	if _cancelled:
@@ -108,13 +117,17 @@ func _on_connected_to_own_host() -> void:
 	if _cancelled:
 		return
 	if _private:
+		# Kept for lobby_room.gd's separate "share this address" panel --
+		# manually sharing a raw LAN address still works for a friend on the
+		# same network with no party involved at all, unchanged. Party
+		# members come along via queue_party() below instead, which the
+		# relay resolves by _hosted_server_name (a private match is
+		# unlisted, not addressless -- see RelayClient.unlisted).
 		NetworkManager.hosted_private_address = "%s:%d" % [LocalServerSpawner.get_lan_ip(), _spawner.get_port()]
 		# See ranked_queue.gd's identical call for what this does and why
-		# it's a no-op for anyone but the party leader -- private is a real
-		# address (never listed in the directory), unlike ranked/casual's
-		# server-name lookup.
+		# it's a no-op for anyone but the party leader.
 		if PartyManager.is_leader():
-			PartyManager.queue_party(NetworkManager.hosted_private_address, "private", "")
+			PartyManager.queue_party(_hosted_server_name, "private", "")
 	status_changed.emit("Waiting for players...")
 	NetworkManager.lobby_state_updated.connect(_on_in_lobby, CONNECT_ONE_SHOT)
 	NetworkManager.quick_join_lobby()

@@ -674,20 +674,53 @@ function handlePartyKick(fromId, targetId) {
   broadcastPartyUpdate(party);
 }
 
-// Pure forward -- the leader has already resolved/hosted the actual game
-// server exactly like a solo player would (see PartyManager.queue_party on
-// the client); this just tells every other member's client to connect+join
-// the same place. No party state changes here, and a follower who isn't
-// currently connected simply misses it -- party-synced queueing is a
-// live-session feature, not an offline queue.
-function handlePartyQueueStart(fromId, msg) {
+const PARTY_QUEUE_PRIVATE_RESOLVE_RETRIES = 5;
+const PARTY_QUEUE_PRIVATE_RESOLVE_DELAY_MS = 500;
+
+// Mostly a pure forward -- the leader has already resolved/hosted the
+// actual game server exactly like a solo player would (see
+// PartyManager.queue_party on the client); this just tells every other
+// member's client to connect+join the same place. No party state changes
+// here, and a follower who isn't currently connected simply misses it --
+// party-synced queueing is a live-session feature, not an offline queue.
+//
+// "private" is the one exception: msg.serverAddress there carries the
+// server's own registered NAME, not a connectable address -- unlisted
+// (private) servers are deliberately excluded from the public
+// /api/servers directory (see that route's own comment: it's what
+// index.html's public server browser and casual/ranked matchmaking both
+// read, and a private match showing up there with a working join link
+// would defeat the entire point of "private"). A follower's client can't
+// resolve the name itself the way ranked/casual followers already do by
+// searching that same public endpoint, so this process resolves it here
+// instead, against its own full view of `servers` (which does include
+// unlisted ones) -- followers only ever receive a bare relay server id
+// back, never the private server's name/existence exposed anywhere public.
+// Retried a few times with a short delay: the leader's own client can
+// reach this point (having just connected to their own freshly-spawned
+// server over a fast loopback hop) before that same server's OWN
+// RelayClient has finished its own, separate, real-network registration
+// round-trip with this relay -- a genuine race, not a hypothetical one.
+function handlePartyQueueStart(fromId, msg, attempt = 0) {
   const partyId = clientParty.get(fromId);
   const party = partyId ? parties.get(partyId) : null;
   if (!party || party.leaderId !== fromId) return;
+  const mode = String(msg.mode || '').slice(0, 16);
+  let serverAddress = String(msg.serverAddress || '').slice(0, 256);
+  if (mode === 'private') {
+    const match = [...servers.values()].find(s => s.unlisted && s.name === serverAddress);
+    if (!match) {
+      if (attempt < PARTY_QUEUE_PRIVATE_RESOLVE_RETRIES) {
+        setTimeout(() => handlePartyQueueStart(fromId, msg, attempt + 1), PARTY_QUEUE_PRIVATE_RESOLVE_DELAY_MS);
+      }
+      return;
+    }
+    serverAddress = match.id;
+  }
   const payload = {
     type: 'party_connect_now',
-    serverAddress: String(msg.serverAddress || '').slice(0, 256),
-    mode: String(msg.mode || '').slice(0, 16),
+    serverAddress,
+    mode,
     playlist: String(msg.playlist || '').slice(0, 16),
   };
   for (const memberId of party.members) {
@@ -758,8 +791,17 @@ setInterval(() => {
 }, SWEEP_INTERVAL_MS);
 
 // ─── HTTP: directory + website panel ─────────────────────────────────────────
+// Excludes unlisted (private) servers entirely -- this is what index.html's
+// public server browser reads (complete with a working "copy connect
+// link" button) and what casual/ranked matchmaking auto-picks the
+// fullest open server from, so a private match showing up here at all
+// would defeat the point of "private" regardless of what any individual
+// caller does with the field. A party member following their leader into
+// a private match doesn't go through this endpoint -- see
+// handlePartyQueueStart's own resolution, which uses this process's full
+// (unfiltered) view instead.
 app.get('/api/servers', (req, res) => {
-  res.json([...servers.values()].map(s => ({
+  res.json([...servers.values()].filter(s => !s.unlisted).map(s => ({
     id: s.id, name: s.name, playerCount: s.playerCount, maxPlayers: s.maxPlayers, createdAt: s.createdAt, ranked: !!s.ranked,
     playlist: s.playlist || '',
   })));
@@ -1338,6 +1380,17 @@ function handleHostControl(ws) {
         playerCount: 0,
         ranked: !!msg.ranked,
         playlist: String(msg.playlist || ''),
+        // Private matches (server_main.gd's --private) register like any
+        // other server -- otherwise a party member on a different network
+        // than the host could never actually reach them, LAN-only sharing
+        // being the only alternative -- but never appear in /api/servers,
+        // so they're excluded from the public site's server browser and
+        // can never be auto-picked by casual/ranked matchmaking. A party
+        // member following their leader in still reaches this exact
+        // server: handlePartyQueueStart resolves it server-side by name
+        // instead of relying on the (deliberately blind to it) public
+        // directory endpoint.
+        unlisted: !!msg.unlisted,
         createdAt: Date.now(),
         lastHeartbeat: Date.now(),
         controlSocket: ws,

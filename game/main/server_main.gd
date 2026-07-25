@@ -65,9 +65,15 @@ func _ready() -> void:
 	NetworkManager.level_id = level_id
 	NetworkManager.playlist_id = playlist_id
 
-	if not is_private:
-		_relay_client = RelayClient.new(relay_url, server_name, max_players, port, is_ranked, playlist_id)
-		add_child(_relay_client)
+	# A private server used to skip relay registration entirely, reachable
+	# only via its raw LAN address (see LocalServerSpawner.get_lan_ip()) --
+	# meaning a party member on a different network than the host could
+	# never actually join, no error shown anywhere, just absent from the
+	# lobby forever. Now it registers the same as any other server, just
+	# marked unlisted so it's excluded from /api/servers (see that route
+	# and RelayClient.unlisted's own comments for why that matters).
+	_relay_client = RelayClient.new(relay_url, server_name, max_players, port, is_ranked, playlist_id, is_private)
+	add_child(_relay_client)
 
 	# Godot has no native "die with parent". This used to poll
 	# OS.is_process_running(parent_pid), but that call only reliably tracks

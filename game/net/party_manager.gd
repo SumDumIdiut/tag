@@ -294,17 +294,21 @@ func _close_invite_popup(layer: CanvasLayer) -> void:
 	_show_next_popup()
 
 ## The leader just told us where to go (see queue_party() above) -- for
-## "private" `target` is already a real address; for "ranked"/"casual" it's
-## a server name we have to resolve to an id via the public directory
-## first, same lookup ranked_queue.gd/casual_queue.gd already do to find
-## each other, just filtered down to one exact name instead of picking the
-## fullest match.
+## "private" `target` is already a bare relay server id, resolved
+## server-side by relay-server/server.js's handlePartyQueueStart (a
+## private match is unlisted, deliberately excluded from the public
+## /api/servers directory, so there's nothing here for a client-side name
+## search to find the way ranked/casual do); for "ranked"/"casual" it's a
+## server name we have to resolve to an id via that public directory
+## ourselves, same lookup ranked_queue.gd/casual_queue.gd already do to
+## find each other, just filtered down to one exact name instead of
+## picking the fullest match.
 func _on_connect_now(target: String, mode: String, playlist: String) -> void:
 	_follow_mode = mode
 	_follow_playlist = playlist
 	_follow_target = target
 	if mode == "private":
-		_connect_to_follow_target(target)
+		_connect_to_follow_target(RELAY_JOIN_BASE + target)
 	else:
 		_follow_attempts = 0
 		_search_for_leader_server()
