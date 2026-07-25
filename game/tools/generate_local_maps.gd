@@ -29,17 +29,6 @@ const Catalog := preload("res://levels/local_maps/catalog.gd")
 # scattered_islands) across every map in the catalog.
 const SPAWN_FLOOR_Y := 360
 
-# Every map gets sealed into a solid box (left wall, right wall, ceiling --
-# the ground floor already closes the bottom) so wall-jump/wall-tech works
-# at the map's edges instead of players sailing off into open space. Same
-# solid tile collision every platform already uses -- player.gd's wall-jump
-# detection (is_on_wall_only()/get_wall_normal()) just needs real geometry
-# to push against, no special tagging.
-const WALL_THICKNESS := 20
-# Vertical clearance above the tallest platform in a map, so the ceiling
-# doesn't clip jump arcs right above the highest usable platform.
-const CEILING_CLEARANCE := 300
-
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
 	for id in Catalog.MAP_ORDER:
@@ -90,35 +79,11 @@ func _build_map(id: String, def: Dictionary) -> void:
 		if y0 >= SPAWN_FLOOR_Y:
 			spawn_i = _add_spawns(spawn_points, spawn_i, x0, y0, x1)
 
-	_add_boundary_box(tiles_layer, def.platforms)
-
 	var packed := PackedScene.new()
 	packed.pack(arena)
 	var out_path := "%s/%s.tscn" % [OUT_DIR, id]
 	var err := ResourceSaver.save(packed, out_path)
 	print("wrote map: ", id, " err=", err)
-
-## Encloses the map's whole platform bounding box in solid walls -- left
-## wall, right wall, and a ceiling, all WALL_THICKNESS thick. The ground
-## floor (the lowest platform's own bottom edge) already closes the bottom,
-## so no floor wall is added.
-func _add_boundary_box(layer: TileMapLayer, platforms: Array) -> void:
-	var min_x: float = INF
-	var max_x: float = -INF
-	var min_y: float = INF
-	var max_y: float = -INF
-	for plat in platforms:
-		min_x = minf(min_x, plat.x0)
-		max_x = maxf(max_x, plat.x1)
-		min_y = minf(min_y, plat.y0)
-		max_y = maxf(max_y, plat.y1)
-
-	var ceiling_y: float = min_y - CEILING_CLEARANCE
-	# Left/right walls span from the ceiling down to the floor's bottom so
-	# they meet the ceiling with no gap in the corner.
-	_fill_tiles(layer, int(min_x) - WALL_THICKNESS, int(ceiling_y), int(min_x), int(max_y))
-	_fill_tiles(layer, int(max_x), int(ceiling_y), int(max_x) + WALL_THICKNESS, int(max_y))
-	_fill_tiles(layer, int(min_x) - WALL_THICKNESS, int(ceiling_y) - WALL_THICKNESS, int(max_x) + WALL_THICKNESS, int(ceiling_y))
 
 func _fill_tiles(layer: TileMapLayer, x0: int, y0: int, x1: int, y1: int) -> void:
 	var gx0 := int(floor(float(x0) / TILE_SIZE))
