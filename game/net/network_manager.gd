@@ -70,6 +70,13 @@ var current_lobby: Dictionary = {}
 ## hosting a private match (the normal case). Purely client-local display
 ## state, read by lobby_room.gd; never synced to any peer.
 var hosted_private_address := ""
+## Set alongside hosted_private_address whenever it came from
+## multiplayer_connect.gd's Host button (real UDP/ENet, see
+## start_server_direct) rather than the usual Private-button relay-routed
+## hosting -- lobby_room.gd's share-address panel reads this to warn that
+## the shown address is this machine's LAN-local one, and a player outside
+## that LAN needs the host's forwarded public address instead.
+var hosted_private_is_direct := false
 
 # ---- Server-side state only ----
 var _lobbies := {}       # lobby_id -> {id, name, host_peer, max_players, members: {peer_id: {username, ready}}, in_match, ranked}
@@ -234,6 +241,54 @@ func _normalize_address(address: String) -> String:
 		return trimmed
 	return "ws://%s" % trimmed
 
+## Real UDP (ENetMultiplayerPeer), not WebSocket -- for two players who've
+## deliberately agreed to connect directly (see multiplayer_connect.gd's
+## Host/Connect pair) rather than going through the relay. WebSocket rides
+## on TCP, which has no true "unreliable" delivery: a single lost packet
+## blocks EVERY subsequent packet on that connection (including unrelated
+## ones) until it's retransmitted -- head-of-line blocking. That's mostly
+## invisible on a short/clean link, but on a long international one
+## (confirmed live: South Africa <-> Netherlands, multi-second stalls vs.
+## the ~250ms other UDP-based games manage on the same physical link) it's
+## the actual cause of the stalls, not raw propagation delay. ENet is real
+## UDP -- a lost "unreliable" packet is just gone, never blocking anything
+## behind it. The tradeoff (see start_server's own comment on why WebSocket
+## was chosen in the first place) is this can't cross the Cloudflare Tunnel
+## at all -- it needs a real port forwarded to the host, which is why this
+## is a separate, deliberately-opt-in path rather than replacing
+## start_server/start_client outright.
+func start_server_direct(port: int = DEFAULT_PORT) -> bool:
+	var peer := ENetMultiplayerPeer.new()
+	var err := peer.create_server(port)
+	if err != OK:
+		push_error("NetworkManager: failed to start direct (UDP) server on port %d (%s)" % [port, err])
+		return false
+	multiplayer.multiplayer_peer = peer
+	is_server = true
+	my_peer_id = 1
+	print("NetworkManager: direct (UDP) server listening on port %d" % port)
+	return true
+
+## `address` is a bare host:port -- no ws://, this never goes through the
+## relay/tunnel at all. See start_server_direct's own comment.
+func start_client_direct(address: String, display_name: String) -> void:
+	username = display_name
+	is_server = false
+	_pending_as_spectator = false
+	var host := address
+	var port := DEFAULT_PORT
+	var colon := address.rfind(":")
+	if colon != -1:
+		host = address.substr(0, colon)
+		port = int(address.substr(colon + 1))
+	var peer := ENetMultiplayerPeer.new()
+	var err := peer.create_client(host, port)
+	if err != OK:
+		push_error("NetworkManager: failed to create direct (UDP) client peer (%s)" % err)
+		connection_failed.emit()
+		return
+	multiplayer.multiplayer_peer = peer
+
 func disconnect_from_server() -> void:
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
@@ -242,6 +297,7 @@ func disconnect_from_server() -> void:
 	my_peer_id = -1
 	current_lobby = {}
 	hosted_private_address = ""
+	hosted_private_is_direct = false
 
 func _on_connected_to_server() -> void:
 	my_peer_id = multiplayer.get_unique_id()

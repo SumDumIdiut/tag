@@ -24,6 +24,11 @@ var _pending_port := -1
 var _attempts := 0
 var _username := ""
 var _retry_timer: Timer
+## Set by spawn()'s own use_direct param -- see its comment. Only affects
+## how _try_connect() loops back to the freshly-spawned server; the spawned
+## process itself already knows to use ENet from the --direct flag in
+## extra_args.
+var _use_direct := false
 
 func _ready() -> void:
 	_retry_timer = Timer.new()
@@ -46,7 +51,13 @@ func _ready() -> void:
 ## "--server" straight to the same server scene the dedicated-server export
 ## uses, so this needs nothing extra bundled -- Tag.exe already contains
 ## that code.
-func spawn(server_name: String, username: String, extra_args: PackedStringArray = PackedStringArray()) -> void:
+## use_direct spawns the server with --direct (real UDP/ENet, see
+## NetworkManager.start_server_direct) and loops this client's own back-
+## connect through start_client_direct instead of the usual WebSocket
+## start_client -- only multiplayer_connect.gd's Host button sets this;
+## every other caller (Quick Play, ranked auto-host, regular Private
+## hosting) leaves it false and behaves exactly as before.
+func spawn(server_name: String, username: String, extra_args: PackedStringArray = PackedStringArray(), use_direct: bool = false) -> void:
 	var self_exe := OS.get_executable_path()
 	if not FileAccess.file_exists(self_exe):
 		failed.emit("Couldn't find this client's own executable -- can't host.")
@@ -71,6 +82,8 @@ func spawn(server_name: String, username: String, extra_args: PackedStringArray 
 		"--quit-when-empty",
 	])
 	args.append_array(extra_args)
+	if use_direct:
+		args.append("--direct")
 	_child_pid = OS.create_process(self_exe, args)
 	if _child_pid == -1:
 		failed.emit("Failed to launch a local server.")
@@ -78,6 +91,7 @@ func spawn(server_name: String, username: String, extra_args: PackedStringArray 
 
 	_username = username
 	_pending_port = port
+	_use_direct = use_direct
 	_attempts = 0
 	_pending = true
 	_retry_timer.start()
@@ -125,7 +139,11 @@ func _try_connect() -> void:
 		failed.emit("Server didn't come up in time.")
 		return
 	NetworkManager.set_username(_username)
-	NetworkManager.start_client("127.0.0.1:%d" % _pending_port, _username)
+	var loopback := "127.0.0.1:%d" % _pending_port
+	if _use_direct:
+		NetworkManager.start_client_direct(loopback, _username)
+	else:
+		NetworkManager.start_client(loopback, _username)
 
 func _on_connect_attempt_failed() -> void:
 	if not _pending:

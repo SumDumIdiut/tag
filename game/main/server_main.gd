@@ -31,6 +31,15 @@ func _ready() -> void:
 	var max_players := DEFAULT_MAX_PLAYERS
 	var relay_url := DEFAULT_RELAY_URL
 	var is_private := false
+	## Real UDP (ENetMultiplayerPeer) instead of the usual WebSocket server --
+	## see NetworkManager.start_server_direct's own comment. Never set by the
+	## normal Private/Casual/Ranked hosting paths (LocalServerSpawner.spawn's
+	## own use_direct defaults false) -- only multiplayer_connect.gd's Host
+	## button opts into this, since it requires the host to have forwarded a
+	## real port and skips relay registration entirely (no NAT traversal, no
+	## party auto-join -- the other side connects with a manually-shared
+	## address instead).
+	var is_direct := false
 	var quit_when_empty := false
 	var is_ranked := false
 	var level_id := ""
@@ -51,12 +60,14 @@ func _ready() -> void:
 			playlist_id = arg.substr(11)
 		elif arg == "--private":
 			is_private = true
+		elif arg == "--direct":
+			is_direct = true
 		elif arg == "--quit-when-empty":
 			quit_when_empty = true
 		elif arg == "--ranked":
 			is_ranked = true
 
-	var ok := NetworkManager.start_server(port)
+	var ok := NetworkManager.start_server_direct(port) if is_direct else NetworkManager.start_server(port)
 	if not ok:
 		push_error("Server failed to start -- exiting.")
 		get_tree().quit(1)
@@ -72,8 +83,15 @@ func _ready() -> void:
 	# lobby forever. Now it registers the same as any other server, just
 	# marked unlisted so it's excluded from /api/servers (see that route
 	# and RelayClient.unlisted's own comments for why that matters).
-	_relay_client = RelayClient.new(relay_url, server_name, max_players, port, is_ranked, playlist_id, is_private)
-	add_child(_relay_client)
+	#
+	# A --direct server skips this entirely: it's real UDP (ENet), which the
+	# relay/tunnel can't carry at all (see start_server_direct's own
+	# comment), and has no party auto-join to support -- the other side
+	# connects with a manually-shared address, so there's nothing for the
+	# relay to help with here.
+	if not is_direct:
+		_relay_client = RelayClient.new(relay_url, server_name, max_players, port, is_ranked, playlist_id, is_private)
+		add_child(_relay_client)
 
 	# Godot has no native "die with parent". This used to poll
 	# OS.is_process_running(parent_pid), but that call only reliably tracks

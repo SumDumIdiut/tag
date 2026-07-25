@@ -75,6 +75,18 @@ func _build_share_address_panel() -> void:
 	UIStyle.prefix_icon(copy_btn, "copy", UIStyle.COLOR_ONLINE)
 	copy_btn.pressed.connect(func(): DisplayServer.clipboard_set(NetworkManager.hosted_private_address))
 	row.add_child(copy_btn)
+	# Real UDP (see NetworkManager.start_server_direct) never goes through
+	# the relay/tunnel at all -- the address above is this machine's
+	# LAN-local one, which only ever reaches a player on the same network.
+	# Anyone else needs this port forwarded and the host's own public IP
+	# (not the LAN address shown) instead.
+	if NetworkManager.hosted_private_is_direct:
+		var warn := Label.new()
+		warn.text = "Direct (UDP) match -- this is your LAN address. A player outside your network needs this port forwarded and your public IP instead."
+		warn.add_theme_font_size_override("font_size", 11)
+		warn.add_theme_color_override("font_color", Color(0.85, 0.7, 0.4))
+		warn.autowrap_mode = TextServer.AUTOWRAP_WORD
+		box.add_child(warn)
 
 	var vbox: VBoxContainer = lobby_name_label.get_parent()
 	vbox.add_child(panel)
