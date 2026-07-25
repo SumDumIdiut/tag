@@ -77,6 +77,20 @@ var _tick := 0
 # timer runs at the same cadence.
 const STATE_SUMMARY_INTERVAL_TICKS := 15
 var _arena_bounds := {"size": Vector2.ZERO, "center": Vector2.ZERO}
+## Any y below this is "fell off the map" -- generous margin below the
+## lowest painted tile row (_arena_bounds' bottom edge) so it only fires
+## once a player is unambiguously off the level, never from an ordinary
+## fall onto a lower platform that's still within bounds. INF (never
+## fires) if the arena has no Tiles node to measure at all, matching
+## _compute_arena_bounds_px's own zero-bounds fallback. Set once in
+## _finish_setup(), below the boundary walls generate_local_maps.gd used
+## to paint around every built-in map -- with those gone (see
+## _add_boundary_box's removal), a player can now walk/dash straight off
+## the side into open space, which is exactly what surfaced this as a
+## real, reachable bug rather than a hypothetical one.
+const DEATH_PLANE_MARGIN_PX := 400.0
+var _death_plane_y := INF
+var _spawn_points: Array = []
 ## Set once by _finish_setup() and kept for the lifetime of the match --
 ## a late-joining spectator (see NetworkManager._server_register_spectator)
 ## needs this exact shape to send as its own "_client_match_started" payload,
@@ -112,8 +126,11 @@ func _ready() -> void:
 
 func _finish_setup() -> void:
 	_arena_bounds = _compute_arena_bounds_px()
-	var spawn_points := _arena.get_node("SpawnPoints").get_children()
-	spawn_points.shuffle()
+	if _arena_bounds.size.y > 0.0:
+		_death_plane_y = _arena_bounds.center.y + _arena_bounds.size.y / 2.0 + DEATH_PLANE_MARGIN_PX
+	_spawn_points = _arena.get_node("SpawnPoints").get_children()
+	_spawn_points.shuffle()
+	var spawn_points := _spawn_points
 
 	# Built once per match regardless of whether any bots actually joined --
 	# cheap, and degrades gracefully to direct steering on a level with no
@@ -169,6 +186,17 @@ func _finish_setup() -> void:
 	# play never had rank data to color anything with at all.
 	await _fill_ranked_stats()
 	_network_manager.notify_match_started(lobby_id, roster, _resolved_level_id, playlist_id)
+
+## Teleports a player back to a random spawn point with velocity zeroed --
+## used by the death-plane check in _physics_process. A fresh random pick
+## each time (not a per-player fixed spawn) matches how the match's own
+## opening placement already works.
+func _respawn_player(p: Player) -> void:
+	if _spawn_points.is_empty():
+		return
+	var point: Node2D = _spawn_points[randi() % _spawn_points.size()]
+	p.global_position = point.global_position
+	p.velocity = Vector2.ZERO
 
 ## Enriches each participant's roster entry with their current elo/tier (see
 ## match_intro.gd's VS screen and every name tier-coloring path) -- looked up
@@ -354,6 +382,17 @@ func _physics_process(delta: float) -> void:
 			input["jump_pressed"] = false
 		if input.has("dash_pressed"):
 			input["dash_pressed"] = false
+
+	# Checked every tick for every player, bots included -- a stray dash or
+	# knockback off an edge is exactly as reachable for an NPC as a real
+	# player now that maps have no boundary walls (see _death_plane_y's own
+	# comment). Falling off just respawns like the match's own opening
+	# placement; no time/score penalty -- "it" status and it_time are
+	# untouched either way, same as any other reposition.
+	for peer_id in _players.keys():
+		var p: Player = _players[peer_id]
+		if p.global_position.y > _death_plane_y:
+			_respawn_player(p)
 
 	# Every client renders every player -- their own included -- purely from
 	# this confirmed state via RemoteAvatar's dead-reckoning interpolation,
