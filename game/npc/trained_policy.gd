@@ -14,6 +14,15 @@ class_name TrainedPolicy
 # behavior in a way that's hard to notice just from watching it play.
 
 const WEIGHTS_PATH := "res://assets/ai/npc_policy_weights.json"
+# Served by relay-server, written by ai_training/learner.py's
+# --publish-weights every few checkpoint rounds while the pool trains --
+# lets a client use the CURRENT model instead of only whatever was bundled
+# into its own build at export time. Fetched once, fire-and-forget, right
+# after the bundled copy loads (see get_shared()) -- an unreachable/slow
+# server just leaves the bundled weights in place rather than blocking or
+# failing anything, same fallback policy every other relay call in this
+# project already follows (see e.g. game/net/update_checker.gd).
+const POLICY_WEIGHTS_URL := "https://codecade.co.za/tag/api/ai/policy-weights"
 
 # Mirrors ai_training/tag_env.py's own constant exactly -- sim.py now trains
 # across every map in the online pool (domain randomization, not one fixed
@@ -57,7 +66,42 @@ static func get_shared():
 		# did, so this uses a plain resource load instead.
 		_shared = load("res://npc/trained_policy.gd").new()
 		_shared.load_weights(WEIGHTS_PATH)
+		_shared._fetch_latest_weights()
 	return _shared
+
+## Fire-and-forget refresh from the live training pool -- see
+## POLICY_WEIGHTS_URL's own comment. RefCounted (not Node) can't
+## add_child() on itself, so this borrows the scene tree's root as the
+## HTTPRequest's parent instead -- a common pattern for a non-Node
+## singleton that needs a transient request node.
+func _fetch_latest_weights() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return
+	var req := HTTPRequest.new()
+	req.timeout = 3.0
+	tree.root.add_child(req)
+	req.request_completed.connect(_on_weights_fetched.bind(req))
+	if req.request(POLICY_WEIGHTS_URL) != OK:
+		req.queue_free()
+
+func _on_weights_fetched(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray, req: HTTPRequest) -> void:
+	req.queue_free()
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		return # server unreachable or nothing published yet -- keep the bundled weights, not fatal
+	var parsed = JSON.parse_string(body.get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY or not parsed.has("layers"):
+		return
+	var new_layers: Array = parsed.layers
+	if new_layers.is_empty():
+		return
+	# Hot-swap: decide() reads _layers fresh on every call and GDScript is
+	# single-threaded, so replacing these between two decide() calls is
+	# safe with no locking needed.
+	_layers = new_layers
+	_action_dims = parsed.get("action_dims", [3, 2, 2])
+	loaded = true
+	print("TrainedPolicy: refreshed from the live training pool (%d layers)" % _layers.size())
 
 func load_weights(path: String) -> void:
 	if not FileAccess.file_exists(path):

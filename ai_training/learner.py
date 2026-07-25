@@ -30,6 +30,7 @@ from stable_baselines3 import PPO
 
 import pool_config as cfg
 import pooling
+from export_weights import export_policy
 from tag_env import TagVecEnv
 
 
@@ -141,6 +142,17 @@ def make_handler(state: LearnerState):
     return Handler
 
 
+def _publish_weights(model, path: str) -> None:
+    """Writes to `path` atomically (temp file + os.replace) so a
+    concurrent GET from relay-server -- a separate process, reading this
+    same path to serve /api/ai/policy-weights -- never observes a
+    partially-written file mid-export."""
+    tmp_path = path + ".tmp"
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    export_policy(model.policy, tmp_path)
+    os.replace(tmp_path, path)
+
+
 def run_round(state: LearnerState, env, callback, local_envs: int, round_timeout_sec: float) -> int:
     """Runs one full round: broadcast, collect (local + wait for
     workers), pool, train. Returns the number of envs that contributed
@@ -192,6 +204,10 @@ def main() -> None:
     parser.add_argument("--out", type=str, default="models/pooled")
     parser.add_argument("--rounds", type=int, default=None, help="stop after N rounds instead of running forever -- mainly for testing")
     parser.add_argument("--round-timeout", type=float, default=cfg.ROUND_TIMEOUT_SEC, help="override pool_config.ROUND_TIMEOUT_SEC -- mainly for fast local testing")
+    parser.add_argument("--publish-weights", type=str, default=None,
+                         help="also export the policy to this JSON path every checkpoint (same cadence as --out's .zip) -- "
+                              "e.g. relay-server/data/ai_policy_weights.json, so GET /api/ai/policy-weights can serve "
+                              "the live pool's current model to game clients. Omit to only checkpoint the .zip, same as before.")
     args = parser.parse_args()
 
     env = TagVecEnv(max(args.local_envs, 1))  # PPO._setup_learn() requires a real VecEnv even if local_envs contributes nothing
@@ -233,9 +249,15 @@ def main() -> None:
             if contributed and round_num % cfg.CHECKPOINT_EVERY_N_ROUNDS == 0:
                 model.save(args.out)
                 print(f"checkpoint saved to {args.out}.zip")
+                if args.publish_weights:
+                    _publish_weights(model, args.publish_weights)
+                    print(f"published weights to {args.publish_weights}")
     finally:
         model.save(args.out)
         print(f"final checkpoint saved to {args.out}.zip")
+        if args.publish_weights:
+            _publish_weights(model, args.publish_weights)
+            print(f"published weights to {args.publish_weights}")
         server.shutdown()
 
 

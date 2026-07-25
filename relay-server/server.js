@@ -809,6 +809,21 @@ app.get('/api/game-assets/manifest', (req, res) => {
   res.json(gameAssetsManifest);
 });
 
+// ─── AI training: latest pooled-training policy weights ────────────────────────
+// Written by ai_training/learner.py (running as the tag-trainer service on
+// this same host) every few checkpoint rounds -- see that script's
+// --publish-weights flag. Lets a game client fetch the model the live pool
+// is currently training instead of relying solely on whatever was bundled
+// into its own build at export time (see game/npc/trained_policy.gd),
+// so bots keep improving as the pool trains without a new game release.
+const AI_POLICY_WEIGHTS_PATH = path.join(DATA_DIR, 'ai_policy_weights.json');
+app.get('/api/ai/policy-weights', (req, res) => {
+  if (!fs.existsSync(AI_POLICY_WEIGHTS_PATH)) return res.status(404).json({ error: 'no published weights yet' });
+  res.set('Content-Type', 'application/json');
+  res.set('Cache-Control', 'no-cache'); // small file, always want whatever the pool most recently published
+  fs.createReadStream(AI_POLICY_WEIGHTS_PATH).pipe(res);
+});
+
 // Shared by every MULTI_KEY_CATEGORIES entry -- each publishes as a set of
 // independent named images (one file per key) rather than a single shared
 // atlas the way icons does. Returns an error string, or null on success.
