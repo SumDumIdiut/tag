@@ -7,16 +7,18 @@ extends Control
 # /api/auth/* endpoints on the relay (relay-server/server.js) added
 # alongside this screen.
 #
-# Session persistence: a bearer token in user://session_token.txt. On launch
-# (_ready), if a token exists, it's validated against /api/auth/me; on
-# success PlayerIdentity.override_client_id() adopts the account's real
-# clientId (see net/player_identity.gd) so progress follows the account
-# across devices. Any failure (expired token, relay unreachable) just falls
-# back to showing the login form -- never blocks getting back to the main menu.
+# Session persistence/restore itself lives in PlayerIdentity (an autoload),
+# not here -- it runs the instant the app boots, before any scene including
+# this one even exists, so account-keyed features (friends, party, display
+# name) don't silently stay on this device's local id for the whole session
+# just because the player never happened to open this screen. This screen
+# just reflects whatever PlayerIdentity.logged_in_username already is (the
+# common case by the time anyone could navigate here) and listens for
+# account_restored in case it's still in flight, or fires fresh right after
+# a login/register submitted from here.
 
 const UIStyle := preload("res://ui/ui_style.gd")
-const AUTH_BASE := "https://codecade.co.za/tag/api/auth"
-const SESSION_TOKEN_PATH := "user://session_token.txt"
+const AUTH_BASE := PlayerIdentity.AUTH_BASE
 const ACCENT := UIStyle.COLOR_ACCENT
 
 var _status_label: Label
@@ -25,11 +27,10 @@ var _form_box: VBoxContainer
 var _username_edit: LineEdit
 var _password_edit: LineEdit
 var _account_label: Label
-var _token := ""
 
 func _ready() -> void:
 	UIStyle.add_background(self, "login_screen")
-	_token = _load_token()
+	PlayerIdentity.account_restored.connect(_show_logged_in)
 
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -59,10 +60,10 @@ func _ready() -> void:
 	back_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://main/main_menu.tscn"))
 	vbox.add_child(back_btn)
 
-	if _token.is_empty():
+	if PlayerIdentity.logged_in_username.is_empty():
 		_show_form()
 	else:
-		_check_session()
+		_show_logged_in(PlayerIdentity.logged_in_username)
 
 func _build_form_box(parent: VBoxContainer) -> void:
 	_form_box = VBoxContainer.new()
@@ -129,47 +130,6 @@ func _show_logged_in(username: String) -> void:
 	_form_box.visible = false
 	_logged_in_box.visible = true
 
-func _load_token() -> String:
-	if not FileAccess.file_exists(SESSION_TOKEN_PATH):
-		return ""
-	var f := FileAccess.open(SESSION_TOKEN_PATH, FileAccess.READ)
-	if not f:
-		return ""
-	return f.get_as_text().strip_edges()
-
-func _save_token(token: String) -> void:
-	var f := FileAccess.open(SESSION_TOKEN_PATH, FileAccess.WRITE)
-	if f:
-		f.store_string(token)
-
-func _clear_token() -> void:
-	_token = ""
-	if FileAccess.file_exists(SESSION_TOKEN_PATH):
-		DirAccess.remove_absolute(SESSION_TOKEN_PATH)
-
-func _check_session() -> void:
-	var req := HTTPRequest.new()
-	add_child(req)
-	req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
-		req.queue_free()
-		if response_code != 200:
-			_clear_token()
-			_show_form()
-			return
-		var parsed = JSON.parse_string(body.get_string_from_utf8())
-		if typeof(parsed) != TYPE_DICTIONARY:
-			_clear_token()
-			_show_form()
-			return
-		PlayerIdentity.override_client_id(str(parsed.get("primaryClientId", "")))
-		var confirmed_username := str(parsed.get("username", ""))
-		GameSettings.save_username(confirmed_username)
-		_show_logged_in(confirmed_username)
-	)
-	var err := req.request("%s/me" % AUTH_BASE, ["Authorization: Bearer %s" % _token])
-	if err != OK:
-		_show_form()
-
 func _on_login_pressed() -> void:
 	_status_label.text = ""
 	var username := _username_edit.text.strip_edges()
@@ -209,21 +169,18 @@ func _send_auth_request(url: String, body: String) -> void:
 		if token.is_empty():
 			_status_label.text = "Unexpected response from server."
 			return
-		_token = token
-		_save_token(token)
-		PlayerIdentity.override_client_id(str(parsed.get("primaryClientId", "")))
+		PlayerIdentity.save_token(token)
 		_password_edit.text = ""
-		var confirmed_username := _username_edit.text.strip_edges()
-		GameSettings.save_username(confirmed_username)
-		_show_logged_in(confirmed_username)
+		# set_logged_in() emits account_restored, which _ready() already
+		# connected to _show_logged_in -- no need to call it directly here too.
+		PlayerIdentity.set_logged_in(_username_edit.text.strip_edges(), str(parsed.get("primaryClientId", "")))
 	)
 	var err := req.request(url, ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
 	if err != OK:
 		_status_label.text = "Couldn't start the request."
 
 func _on_logout_pressed() -> void:
-	_clear_token()
-	PlayerIdentity.override_client_id(PlayerIdentity.get_local_device_client_id())
+	PlayerIdentity.log_out()
 	_username_edit.text = ""
 	_password_edit.text = ""
 	_status_label.text = ""
