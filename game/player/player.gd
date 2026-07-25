@@ -149,6 +149,19 @@ var _pre_dash_speed := 0.0
 var speed_boost_active := false
 var landed_grace_timer := 0.0
 var _was_on_floor_physics := false
+# Safety net, not a normal gameplay timer: speed_boost_active is only ever
+# meant to survive one jump arc plus the brief landed_grace_timer window
+# that follows (a few hundred ms total) -- reported live as a Twin Towers
+# floor going permanently frictionless after a dash-jump, which requires
+# this flag getting stuck true with no landing edge left to clear it.
+# Every path that sets it also launches a real vertical jump, so the
+# landing-edge clear (see apply_input's on_floor/_was_on_floor_physics
+# check) should always eventually fire again -- the exact stuck sequence
+# wasn't pinned down, but capping how long the flag can survive
+# regardless of cause means it can't leave a player frictionless for the
+# rest of a match even if some sequence still finds a way around that.
+const SPEED_BOOST_MAX_DURATION_SEC := 3.0
+var _speed_boost_timer := 0.0
 
 var stamina := STAMINA_MAX
 var is_climbing := false
@@ -379,6 +392,7 @@ func _tick_timers(delta: float) -> void:
 	wall_jump_lock_timer = maxf(wall_jump_lock_timer - delta, 0.0)
 	var_jump_timer = maxf(var_jump_timer - delta, 0.0)
 	landed_grace_timer = maxf(landed_grace_timer - delta, 0.0)
+	_speed_boost_timer = maxf(_speed_boost_timer - delta, 0.0)
 	dash_cooldown_timer = maxf(dash_cooldown_timer - delta, 0.0)
 	dash_jump_grace_timer = maxf(dash_jump_grace_timer - delta, 0.0)
 	climb_exhausted_timer = maxf(climb_exhausted_timer - delta, 0.0)
@@ -424,6 +438,8 @@ func _process_horizontal(move_dir: Vector2, delta: float, on_floor: bool) -> voi
 	# Dash-jump speed boost: fully retained (no accel/friction at all) while
 	# airborne, and for a few frames after landing, before normal ground
 	# control resumes.
+	if speed_boost_active and _speed_boost_timer <= 0.0:
+		speed_boost_active = false # safety-net timeout -- see var declaration comment
 	if speed_boost_active:
 		if not on_floor or landed_grace_timer > 0.0:
 			return
@@ -629,6 +645,7 @@ func _try_dash_jump_boost() -> void:
 		# on top of it either.
 		velocity.x = _speed_floor(velocity.x, signf(dash_direction.x), DASH_JUMP_SPEED)
 		speed_boost_active = true
+		_speed_boost_timer = SPEED_BOOST_MAX_DURATION_SEC
 	_trigger_action("dash_jump")
 
 ## Jump pressed WHILE still dashing: cuts the dash short right there and
@@ -655,6 +672,7 @@ func _dash_jump_cancel(wall_jump_normal: Vector2) -> void:
 			# but shouldn't stack DASH_JUMP_SPEED on top of it either.
 			velocity.x = _speed_floor(velocity.x, signf(dash_direction.x), DASH_JUMP_SPEED)
 			speed_boost_active = true
+			_speed_boost_timer = SPEED_BOOST_MAX_DURATION_SEC
 		velocity.y = JUMP_VELOCITY
 		_start_jump_hold(JUMP_VELOCITY)
 		coyote_timer = 0.0
