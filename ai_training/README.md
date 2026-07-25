@@ -131,8 +131,51 @@ next to `worker.py` -- printed to stdout on startup.) LAN-only by design,
 no auth -- this is meant to run on a home network between machines you
 already trust, not to be exposed publicly.
 
-Currently local-only (a learner + worker can run on any two machines on
-the LAN today) -- not yet wired up as a persistent terraserver service or
-exposed via a dev-panel toggle; see `tests/test_pooling.py` for the
-correctness checks (`python tests/test_pooling.py`) covering the pooling
-math, the wire format, and the round/timeout/stale-rejection protocol.
+See `tests/test_pooling.py` for the correctness checks (`python
+tests/test_pooling.py`) covering the pooling math, the wire format, and
+the round/timeout/stale-rejection protocol.
+
+### Hosted on terraserver
+
+The learner runs persistently on terraserver as the `tag-trainer` service
+(`install.sh start tag-trainer` / `stop tag-trainer` / `install.sh
+status`, wired via `codecade-install`'s `start_tag_trainer()` --
+mirrors `start_tag_relay()`'s own start/stop/pidfile pattern exactly).
+Two things worth knowing if you're setting this up fresh on a new
+machine:
+
+- **The venv can't live under the portable USB drive** if that drive is
+  exFAT/FAT32 (confirmed live on terraserver) -- those filesystems don't
+  support symlinks, and Debian/Ubuntu's `python3-venv` unconditionally
+  creates one (`lib64 -> lib`) regardless of `--copies`. `install.sh`
+  looks for the venv at `$HOME/tag-trainer-venv` (overridable via
+  `TAG_TRAINER_VENV`), not under the drive. One-time manual setup:
+  ```
+  python3 -m venv ~/tag-trainer-venv
+  ~/tag-trainer-venv/bin/pip install -r requirements.txt
+  ```
+  (Debian/Ubuntu also splits `ensurepip` into a separate
+  `python3.<minor>-venv` apt package -- `python3 -m venv` fails with a
+  clear message telling you to install it if it's missing.)
+- `models/` is gitignored (checkpoints are real binary state, not
+  source), so a trained baseline (e.g. `npc_v1.zip`) has to be copied to
+  the host manually before `start_tag_trainer()` will start -- it
+  refuses to start with a clear warning if it finds no checkpoint under
+  `tag/ai_training/models/`. Once pooled training has produced its own
+  `pooled.zip` checkpoint, restarts resume from that automatically
+  instead of the original baseline.
+
+### Auto-starting a worker on your own machine
+
+`run_worker.ps1` (Windows) launches `worker.py` pointed at a learner and
+logs to `worker.log` next to it -- edit its `--learner`/`--envs` args for
+your setup. To have it start automatically at login, drop a shortcut to
+it in the Startup folder (`shell:startup`, i.e.
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`) rather than a
+Scheduled Task -- Task Scheduler's `AtLogon` trigger can fail silently
+(exit code 1, no process, no log) under some session/permission
+configurations that are hard to diagnose without admin rights to enable
+its own diagnostic event log, whereas a Startup-folder shortcut is
+launched directly by the shell and isn't subject to that. The worker
+defaults to idle (polling only) until dedicated via `/dedicate` --
+auto-starting it costs near-zero CPU until then.
