@@ -19,21 +19,16 @@ Usage:
 import argparse
 import json
 
-import numpy as np
-from stable_baselines3 import PPO
+from stable_baselines3.common.policies import ActorCriticPolicy
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("model_path", type=str, help="trained model .zip from train.py")
-    parser.add_argument("--out", type=str, default=None, help="output JSON path (defaults to <model_path without .zip>_weights.json)")
-    args = parser.parse_args()
-
-    out_path = args.out or args.model_path.replace(".zip", "") + "_weights.json"
-
-    model = PPO.load(args.model_path)
-    policy = model.policy
-
+def export_policy(policy: ActorCriticPolicy, out_path: str) -> int:
+    """Writes `policy`'s weights to `out_path` as plain JSON. Takes an
+    already-loaded policy object (not a model path) so a caller that
+    already has one in memory -- e.g. learner.py, publishing a fresh
+    export periodically during a live pooled-training run -- doesn't need
+    to round-trip through disk (save then immediately reload) just to
+    export it. Returns the number of layers written."""
     layers = []
     # SB3's default MlpExtractor policy net -- mlp_extractor.policy_net is
     # the shared trunk, action_net is the final linear layer to logits.
@@ -57,7 +52,21 @@ def main() -> None:
 
     with open(out_path, "w") as f:
         json.dump({"layers": layers, "action_dims": action_dims}, f)
-    print(f"Exported {len(layers)} layers to {out_path}")
+    return len(layers)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("model_path", type=str, help="trained model .zip from train.py")
+    parser.add_argument("--out", type=str, default=None, help="output JSON path (defaults to <model_path without .zip>_weights.json)")
+    args = parser.parse_args()
+
+    out_path = args.out or args.model_path.replace(".zip", "") + "_weights.json"
+
+    from stable_baselines3 import PPO
+    model = PPO.load(args.model_path)
+    n_layers = export_policy(model.policy, out_path)
+    print(f"Exported {n_layers} layers to {out_path}")
 
 
 if __name__ == "__main__":
