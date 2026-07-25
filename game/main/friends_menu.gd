@@ -276,7 +276,17 @@ func _build_friend_row(entry: Dictionary) -> Control:
 	row.add_child(name_label)
 
 	var status_label := Label.new()
-	status_label.text = ("Playing: %s" % str(entry.get("serverName", ""))) if online else "Offline"
+	# "online" only means their app is open (see server.js's playerSockets-
+	# based check) -- serverName is null whenever they're just sitting in
+	# menus rather than actually in a match, which str()'d straight into the
+	# label used to show the literal text "Playing: <null>".
+	var server_name: String = str(entry.get("serverName", ""))
+	if not online:
+		status_label.text = "Offline"
+	elif server_name.is_empty() or server_name == "null":
+		status_label.text = "Online"
+	else:
+		status_label.text = "Playing: %s" % server_name
 	status_label.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
 	status_label.add_theme_font_size_override("font_size", 12)
 	row.add_child(status_label)
