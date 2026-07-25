@@ -48,6 +48,16 @@ var max_players: int
 var local_port: int
 var ranked: bool
 var playlist: String
+## A private match (server_main.gd's --private) still registers with the
+## relay like any other server -- otherwise a party member on a different
+## network than the host could never reach it, LAN sharing being the only
+## alternative -- it just never appears in /api/servers, so it can't be
+## publicly browsed or auto-picked by casual/ranked matchmaking. See
+## relay-server/server.js's own registration handler and its
+## handlePartyQueueStart, which is how a following party member still
+## reaches this exact server despite the public directory staying blind
+## to it.
+var unlisted: bool
 
 var _control: WebSocketPeer = null
 var _server_id: String = ""
@@ -62,13 +72,14 @@ class _BridgePair:
 	var local_leg: WebSocketPeer
 	var closing := false
 
-func _init(p_relay_url: String, p_name: String, p_max_players: int, p_local_port: int, p_ranked: bool = false, p_playlist: String = "") -> void:
+func _init(p_relay_url: String, p_name: String, p_max_players: int, p_local_port: int, p_ranked: bool = false, p_playlist: String = "", p_unlisted: bool = false) -> void:
 	relay_url = p_relay_url
 	server_name = p_name
 	max_players = p_max_players
 	local_port = p_local_port
 	ranked = p_ranked
 	playlist = p_playlist
+	unlisted = p_unlisted
 
 func _ready() -> void:
 	_heartbeat_timer = Timer.new()
@@ -118,7 +129,7 @@ func _poll_control() -> void:
 			# one of those frames and the relay ends up with a pile of
 			# duplicate registrations for what's really one server.
 			_register_sent = true
-			_send_json(_control, {"type": "register", "name": server_name, "maxPlayers": max_players, "ranked": ranked, "playlist": playlist})
+			_send_json(_control, {"type": "register", "name": server_name, "maxPlayers": max_players, "ranked": ranked, "playlist": playlist, "unlisted": unlisted})
 		while _control.get_available_packet_count() > 0:
 			_handle_control_message(_control.get_packet())
 	elif state == WebSocketPeer.STATE_CLOSED:
