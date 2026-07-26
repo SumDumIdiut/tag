@@ -51,6 +51,7 @@ class LearnerState:
         self.contributions: list[dict] = []  # [{worker_id, arrays}] for the CURRENTLY open round only
         self.dedicate_flags: dict[str, bool] = {}
         self.last_seen: dict[str, dict] = {}  # worker_id -> {"time": epoch, "envs": int}
+        self.total_episodes = 0  # cumulative completed matches across every contributor, local + workers
 
 
 def make_handler(state: LearnerState):
@@ -90,6 +91,7 @@ def make_handler(state: LearnerState):
                     self._json({
                         "round_id": state.round_id,
                         "num_timesteps": int(state.model.num_timesteps),
+                        "total_episodes": state.total_episodes,
                         "workers": {
                             wid: {
                                 "last_seen": info["time"],
@@ -131,6 +133,10 @@ def make_handler(state: LearnerState):
                         return
                     state.contributions.append({"worker_id": worker_id, "arrays": arrays})
                     state.last_seen[worker_id] = {"time": time.time(), "envs": n_envs}
+                    try:
+                        state.total_episodes += int(qs.get("episodes", ["0"])[0])
+                    except ValueError:
+                        pass
                 self._json({"accepted": True})
             elif parsed.path == "/dedicate":
                 worker_id = qs.get("worker_id", [""])[0]
@@ -173,6 +179,8 @@ def run_round(state: LearnerState, env, callback, local_envs: int, round_timeout
     local_contribution = None
     if local_envs > 0:
         local_contribution = pooling.collect_local_rollout(model, env, callback, n_steps=cfg.N_STEPS)
+        with state.lock:
+            state.total_episodes += int(local_contribution["episode_starts"].sum())
 
     deadline = time.monotonic() + round_timeout_sec
     while time.monotonic() < deadline:
