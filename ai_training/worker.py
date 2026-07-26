@@ -121,9 +121,10 @@ def main() -> None:
 
             local_rollout = pooling.collect_local_rollout(model, env, callback, n_steps=info["n_steps"])
             payload = pooling.serialize_contribution(local_rollout)
+            n_episodes = int(local_rollout["episode_starts"].sum())
 
             status, resp_body = _post(
-                f"{args.learner}/contribute?round_id={round_id}&worker_id={worker_id}",
+                f"{args.learner}/contribute?round_id={round_id}&worker_id={worker_id}&episodes={n_episodes}",
                 payload,
             )
             if status == 200:
