@@ -289,17 +289,20 @@ func start_client_direct(address: String, display_name: String) -> void:
 		return
 	multiplayer.multiplayer_peer = peer
 
-# ==================== WebRTC (migration in progress -- loopback only so far) ====================
+# ==================== WebRTC (migration in progress) ====================
 #
 # See C:\Users\Flipped\.claude\plans\humming-coalescing-otter.md for the
-# full migration plan. This is Phase 1: same-machine hosting only, over a
-# WebRTCSignalingChannel/WebRTCLoopbackListener pair on 127.0.0.1 -- proves
-# the WebRTCPeerConnection/WebRTCMultiplayerPeer plumbing and RPC dispatch
-# work end to end before Phase 2 wires the same signaling message shape
-# through relay-server.js for real relay-routed and party-follow joins,
-# which is the case that actually fixes the SA<->NL latency bug this
-# migration exists for. Not yet reachable from any menu -- start_server()/
-# start_client() (WebSocket) stay the default until Phase 2+ land.
+# full migration plan. Phase 1 proved the WebRTCPeerConnection/
+# WebRTCMultiplayerPeer plumbing and RPC dispatch work end to end over a
+# same-machine WebRTCLoopbackListener. Phase 2 (this) adds the relay
+# -routed path real remote players actually need -- accept_webrtc_peer()
+# below is the shared entry point both the loopback listener AND
+# relay_client.gd (for real, possibly-remote joins routed through
+# relay-server.js) feed a freshly-connected WebRTCSignalingChannel into,
+# so the actual offer/answer/candidate negotiation is written once
+# regardless of which transport carried it. Not yet reachable from any
+# menu -- start_server()/start_client() (WebSocket) stay the default
+# until this is proven live over the real relay path.
 #
 # The connecting peer always creates the offer and picks its own peer id
 # (a large random int, sent as part of the offer) -- deterministic, and
@@ -318,7 +321,14 @@ var _webrtc_listener: WebRTCLoopbackListener
 ## below does that.
 var _webrtc_pending_peers := {}
 
-func start_server_webrtc_loopback(port: int) -> bool:
+## Starts this dedicated server's WebRTCMultiplayerPeer and a loopback
+## signaling listener on `port`, for the host's own client to join itself
+## exactly like LocalServerSpawner's existing WS-based loopback connect
+## does. This does NOT by itself make the server reachable to anyone else
+## -- a real remote join arrives via relay_client.gd calling
+## accept_webrtc_peer() directly with its own relay-routed channel,
+## independent of this listener.
+func start_server_webrtc(port: int) -> bool:
 	var mp := WebRTCMultiplayerPeer.new()
 	var err := mp.create_server()
 	if err != OK:
@@ -327,22 +337,26 @@ func start_server_webrtc_loopback(port: int) -> bool:
 	multiplayer.multiplayer_peer = mp
 	is_server = true
 	my_peer_id = 1
+	if not multiplayer.peer_disconnected.is_connected(_on_webrtc_peer_disconnected):
+		multiplayer.peer_disconnected.connect(_on_webrtc_peer_disconnected)
 	_webrtc_listener = WebRTCLoopbackListener.new()
 	add_child(_webrtc_listener)
 	var listen_err := _webrtc_listener.listen(port)
 	if listen_err != OK:
 		push_error("NetworkManager: WebRTC signaling listener failed on port %d (%s)" % [port, listen_err])
 		return false
-	_webrtc_listener.channel_connected.connect(_on_webrtc_signaling_channel_connected)
-	if not multiplayer.peer_disconnected.is_connected(_on_webrtc_peer_disconnected):
-		multiplayer.peer_disconnected.connect(_on_webrtc_peer_disconnected)
-	print("NetworkManager: WebRTC (loopback) server listening, signaling on port %d" % port)
+	_webrtc_listener.channel_connected.connect(accept_webrtc_peer)
+	print("NetworkManager: WebRTC server listening, loopback signaling on port %d" % port)
 	return true
 
-func _on_webrtc_signaling_channel_connected(channel: WebRTCSignalingChannel) -> void:
-	# The offer (see start_client_webrtc_loopback) carries the peer id the
-	# connecting client already picked for itself -- nothing to assign
-	# here, just wait for it.
+## Shared entry point for a freshly-connected signaling channel, whichever
+## transport it came from (loopback listener above, or relay_client.gd's
+## own relay-routed channel for a real remote join) -- waits for the one
+## "offer" message the connecting peer sends (see
+## _start_client_webrtc_negotiation below), then negotiates.
+func accept_webrtc_peer(channel: WebRTCSignalingChannel) -> void:
+	if channel.get_parent() == null:
+		add_child(channel) # not yet in the tree -- WebRTCLoopbackListener already parents its own channels, relay_client.gd's don't
 	channel.message_received.connect(func(msg: Dictionary):
 		if msg.get("type", "") != "offer":
 			return # a stray candidate/answer arriving before the offer shouldn't happen, but ignore rather than crash if it does
@@ -369,10 +383,20 @@ func _accept_webrtc_offer(channel: WebRTCSignalingChannel, offer_msg: Dictionary
 	)
 	pc.set_remote_description("offer", str(offer_msg.get("sdp", "")))
 
+## Only "answer"/"candidate" -- never "offer" here, deliberately. The
+## initial offer is handled exclusively by _accept_webrtc_offer (server)
+## via the one-shot listener in accept_webrtc_peer(); a client never
+## receives one at all (see the file header: the connecting peer always
+## offers, the server always answers). WebRTCSignalingChannel's own
+## resend-until-acknowledged logic (see its header comment) can legitimately
+## redeliver the SAME offer more than once while waiting for the far side's
+## data leg to finish connecting -- routing a duplicate through here into
+## pc.set_remote_description("offer", ...) a second time would hit
+## WebRTCPeerConnection in the wrong signaling state (it's not "stable"
+## anymore after the first one), instead of the harmless no-op a resend is
+## supposed to be.
 func _handle_webrtc_signal(pc: WebRTCPeerConnection, msg: Dictionary) -> void:
 	match msg.get("type", ""):
-		"offer":
-			pc.set_remote_description("offer", str(msg.get("sdp", "")))
 		"answer":
 			pc.set_remote_description("answer", str(msg.get("sdp", "")))
 		"candidate":
@@ -384,7 +408,21 @@ func _on_webrtc_peer_disconnected(id: int) -> void:
 		(entry["channel"] as WebRTCSignalingChannel).close()
 	_webrtc_pending_peers.erase(id)
 
+## Loopback (host joining their own freshly-spawned server, same as
+## LocalServerSpawner's existing WS-based connect) -- port must match
+## whatever start_server_webrtc() above was given.
 func start_client_webrtc_loopback(port: int, display_name: String) -> void:
+	_start_client_webrtc(WebRTCSignalingChannel.for_loopback_client(port), display_name)
+
+## Relay-routed (a real, possibly-remote join -- Casual/Ranked/Party
+## -follow all converge on this). `address` is the same full
+## RELAY_JOIN_BASE + id URL start_client() (WebSocket) already accepts --
+## this is a drop-in alternative to that function, not a different
+## addressing scheme.
+func start_client_webrtc_relay(address: String, display_name: String) -> void:
+	_start_client_webrtc(WebRTCSignalingChannel.for_url(_normalize_address(address)), display_name)
+
+func _start_client_webrtc(channel: WebRTCSignalingChannel, display_name: String) -> void:
 	username = display_name
 	is_server = false
 	_pending_as_spectator = false
@@ -399,7 +437,6 @@ func start_client_webrtc_loopback(port: int, display_name: String) -> void:
 	var pc := WebRTCPeerConnection.new()
 	pc.initialize({})
 	mp.add_peer(pc, 1) # the server is always peer 1
-	var channel := WebRTCSignalingChannel.for_loopback_client(port)
 	add_child(channel)
 	pc.session_description_created.connect(func(type: String, sdp: String):
 		pc.set_local_description(type, sdp)

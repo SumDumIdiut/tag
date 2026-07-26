@@ -29,6 +29,9 @@ var _retry_timer: Timer
 ## process itself already knows to use ENet from the --direct flag in
 ## extra_args.
 var _use_direct := false
+## See use_direct's own comment -- same idea, WebRTC loopback instead
+## (C:\Users\Flipped\.claude\plans\humming-coalescing-otter.md, Phase 2).
+var _use_webrtc := false
 
 func _ready() -> void:
 	_retry_timer = Timer.new()
@@ -57,7 +60,7 @@ func _ready() -> void:
 ## start_client -- only multiplayer_connect.gd's Host button sets this;
 ## every other caller (Quick Play, ranked auto-host, regular Private
 ## hosting) leaves it false and behaves exactly as before.
-func spawn(server_name: String, username: String, extra_args: PackedStringArray = PackedStringArray(), use_direct: bool = false) -> void:
+func spawn(server_name: String, username: String, extra_args: PackedStringArray = PackedStringArray(), use_direct: bool = false, use_webrtc: bool = false) -> void:
 	var self_exe := OS.get_executable_path()
 	if not FileAccess.file_exists(self_exe):
 		failed.emit("Couldn't find this client's own executable -- can't host.")
@@ -84,6 +87,8 @@ func spawn(server_name: String, username: String, extra_args: PackedStringArray 
 	args.append_array(extra_args)
 	if use_direct:
 		args.append("--direct")
+	if use_webrtc:
+		args.append("--webrtc")
 	_child_pid = OS.create_process(self_exe, args)
 	if _child_pid == -1:
 		failed.emit("Failed to launch a local server.")
@@ -92,6 +97,7 @@ func spawn(server_name: String, username: String, extra_args: PackedStringArray 
 	_username = username
 	_pending_port = port
 	_use_direct = use_direct
+	_use_webrtc = use_webrtc
 	_attempts = 0
 	_pending = true
 	_retry_timer.start()
@@ -142,6 +148,8 @@ func _try_connect() -> void:
 	var loopback := "127.0.0.1:%d" % _pending_port
 	if _use_direct:
 		NetworkManager.start_client_direct(loopback, _username)
+	elif _use_webrtc:
+		NetworkManager.start_client_webrtc_loopback(_pending_port, _username)
 	else:
 		NetworkManager.start_client(loopback, _username)
 

@@ -58,6 +58,18 @@ var playlist: String
 ## reaches this exact server despite the public directory staying blind
 ## to it.
 var unlisted: bool
+## See C:\Users\Flipped\.claude\plans\humming-coalescing-otter.md, Phase 2.
+## When true, _start_bridge() below hands each incoming join straight to
+## NetworkManager.accept_webrtc_peer() as a signaling channel instead of
+## opening a second (local_port) WebSocketPeer leg and blind-forwarding
+## bytes between the two -- the whole point of WebRTC is that real
+## gameplay traffic never flows through this process at all once
+## negotiated, only the small offer/answer/candidate exchange does. Set
+## by server_main.gd's --webrtc flag; NetworkManager itself must already
+## be running start_server_webrtc() (not start_server()) for this to make
+## sense, since accept_webrtc_peer() assumes a WebRTCMultiplayerPeer is
+## already the active multiplayer_peer.
+var use_webrtc: bool
 
 var _control: WebSocketPeer = null
 var _server_id: String = ""
@@ -72,7 +84,7 @@ class _BridgePair:
 	var local_leg: WebSocketPeer
 	var closing := false
 
-func _init(p_relay_url: String, p_name: String, p_max_players: int, p_local_port: int, p_ranked: bool = false, p_playlist: String = "", p_unlisted: bool = false) -> void:
+func _init(p_relay_url: String, p_name: String, p_max_players: int, p_local_port: int, p_ranked: bool = false, p_playlist: String = "", p_unlisted: bool = false, p_use_webrtc: bool = false) -> void:
 	relay_url = p_relay_url
 	server_name = p_name
 	max_players = p_max_players
@@ -80,6 +92,7 @@ func _init(p_relay_url: String, p_name: String, p_max_players: int, p_local_port
 	ranked = p_ranked
 	playlist = p_playlist
 	unlisted = p_unlisted
+	use_webrtc = p_use_webrtc
 
 func _ready() -> void:
 	_heartbeat_timer = Timer.new()
@@ -195,10 +208,22 @@ func _send_json(peer: WebSocketPeer, data: Dictionary) -> void:
 func _start_bridge(token: String) -> void:
 	if token.is_empty():
 		return
+	var data_url := relay_url.replace("/relay/host", "/relay/data/" + token)
+	if use_webrtc:
+		# No local_leg, no byte-bridging at all -- this WS is purely a
+		# signaling channel now (see WebRTCSignalingChannel's own header
+		# comment: relay-server.js's splice() forwards these same bytes
+		# without caring that they're JSON instead of raw multiplayer
+		# packets). Real gameplay traffic goes directly between the
+		# joining player and this process's WebRTCPeerConnection once
+		# negotiated -- this process is never in that path again.
+		var channel := WebRTCSignalingChannel.for_url(data_url)
+		NetworkManager.accept_webrtc_peer(channel)
+		return
+
 	var relay_leg := WebSocketPeer.new()
 	relay_leg.inbound_buffer_size = BRIDGE_BUFFER_SIZE
 	relay_leg.outbound_buffer_size = BRIDGE_BUFFER_SIZE
-	var data_url := relay_url.replace("/relay/host", "/relay/data/" + token)
 	if relay_leg.connect_to_url(data_url) != OK:
 		push_warning("RelayClient: failed to open data leg for token %s" % token)
 		return
