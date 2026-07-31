@@ -160,7 +160,13 @@ var _was_on_floor_physics := false
 # wasn't pinned down, but capping how long the flag can survive
 # regardless of cause means it can't leave a player frictionless for the
 # rest of a match even if some sequence still finds a way around that.
-const SPEED_BOOST_MAX_DURATION_SEC := 3.0
+# Was 3.0 -- with every map now carrying a real death plane just past the
+# edge of the fixed camera's view (see fixed_view.gd), 3 real seconds of
+# zero-friction sliding at DASH_JUMP_SPEED is more than enough to rocket a
+# stuck player clean off almost any of the new, smaller maps. Tightened to
+# comfortably cover the intended handful-of-hundred-ms lifetime with margin,
+# not the old "basically unbounded" one.
+const SPEED_BOOST_MAX_DURATION_SEC := 0.6
 var _speed_boost_timer := 0.0
 
 var stamina := STAMINA_MAX

@@ -20,10 +20,16 @@ const OUT_DIR := "res://levels/online_maps"
 const TILESET := preload("res://levels/tag_tileset.tres")
 const Catalog := preload("res://levels/online_maps/catalog.gd")
 const BackgroundScript := preload("res://levels/map_background.gd")
+const FixedView := preload("res://levels/fixed_view.gd")
 const FALLBACK_COLOR := Color(0.6, 0.6, 0.65) # matches build_tileset.gd's own fallback; defensive only
-const BG_MARGIN := 150.0
+const BG_MARGIN := 150.0 # padding around the platforms before fitting to the fixed camera's aspect -- see FixedView.compute()
 
-const SPAWN_FLOOR_Y := 420
+# Relative to each map's own lowest platform, not a fixed world-Y constant
+# -- see generate_local_maps.gd's identical SPAWN_FLOOR_TOLERANCE comment
+# for why: the fixed-camera redesign re-centers every map's platforms
+# around y=0 with a layout-dependent range, so a fixed absolute cutoff
+# would silently leave most maps with zero spawn-eligible platforms.
+const SPAWN_FLOOR_TOLERANCE := 10.0
 const WALL_THICKNESS := 20
 const CEILING_CLEARANCE := 300
 
@@ -42,7 +48,7 @@ func _build_map(id: String, def: Dictionary, tile_index: int) -> void:
 	background.name = "Background"
 	background.theme_color = def.get("theme_color", FALLBACK_COLOR)
 	background.theme_shape = def.get("theme_shape", "rect")
-	background.bounds = _compute_bounds(def.platforms).grow(BG_MARGIN)
+	background.bounds = FixedView.compute(_compute_bounds(def.platforms), BG_MARGIN)
 	arena.add_child(background)
 	background.owner = arena
 
@@ -63,6 +69,7 @@ func _build_map(id: String, def: Dictionary, tile_index: int) -> void:
 	arena.add_child(tiles_layer)
 	tiles_layer.owner = arena
 
+	var floor_y := _max_y0(def.platforms)
 	var spawn_i := 0
 	var waypoint_i := 0
 	for plat in def.platforms:
@@ -73,7 +80,7 @@ func _build_map(id: String, def: Dictionary, tile_index: int) -> void:
 		_fill_tiles(tiles_layer, x0, y0, x1, y1, tile_index)
 		_add_waypoints(waypoints, waypoint_i, x0, y0, x1)
 		waypoint_i += 100
-		if y0 >= SPAWN_FLOOR_Y:
+		if y0 >= floor_y - SPAWN_FLOOR_TOLERANCE:
 			spawn_i = _add_spawns(spawn_points, spawn_i, x0, y0, x1)
 
 	_add_boundary_box(tiles_layer, def.platforms, tile_index)
@@ -83,6 +90,12 @@ func _build_map(id: String, def: Dictionary, tile_index: int) -> void:
 	var out_path := "%s/%s.tscn" % [OUT_DIR, id]
 	var err := ResourceSaver.save(packed, out_path)
 	print("wrote map: ", id, " err=", err)
+
+func _max_y0(platforms: Array) -> float:
+	var m := -INF
+	for plat in platforms:
+		m = maxf(m, plat.y0)
+	return m
 
 func _compute_bounds(platforms: Array) -> Rect2:
 	var min_v := Vector2(INF, INF)
