@@ -38,10 +38,10 @@ const MAPS := {
 		"theme_color": Color(0.55, 0.58, 0.62),
 		"theme_shape": "rect",
 		"platforms": [
-			{"x0": -450, "y0": 420, "x1": 450, "y1": 480},
-			{"x0": -300, "y0": 220, "x1": -100, "y1": 240},
-			{"x0": 100, "y0": 220, "x1": 300, "y1": 240},
-			{"x0": -120, "y0": 40, "x1": 120, "y1": 60},
+			{"x0": -420, "y0": -198, "x1": 420, "y1": -156},
+			{"x0": -135, "y0": -80, "x1": 135, "y1": -38},
+			{"x0": -135, "y0": 38, "x1": 135, "y1": 80},
+			{"x0": -162, "y0": 156, "x1": 162, "y1": 198},
 		],
 	},
 	"floating_platforms": {
@@ -50,10 +50,10 @@ const MAPS := {
 		"theme_color": Color(0.45, 0.68, 0.85),
 		"theme_shape": "circle",
 		"platforms": [
-			{"x0": -500, "y0": 420, "x1": 500, "y1": 480},
-			{"x0": -400, "y0": 260, "x1": -220, "y1": 280},
-			{"x0": 220, "y0": 260, "x1": 400, "y1": 280},
-			{"x0": -100, "y0": 100, "x1": 100, "y1": 120},
+			{"x0": -420, "y0": -198, "x1": 420, "y1": -156},
+			{"x0": -122, "y0": -80, "x1": 122, "y1": -38},
+			{"x0": -122, "y0": 38, "x1": 122, "y1": 80},
+			{"x0": -135, "y0": 156, "x1": 135, "y1": 198},
 		],
 	},
 	"split_level": {
@@ -113,18 +113,18 @@ const MAP_ORDER: Array[String] = [
 ]
 
 ## Tile-atlas column for a map id, valid for BOTH local and online ids (see
-## ONLINE_ONLY_MAP_ORDER's own comment) -- the single shared source of truth
-## tools/build_tileset.gd, generate_local_maps.gd, and generate_online_maps.gd
-## all call into, so a map's painted tile color can never drift from which
-## atlas slot actually holds it. -1 for an unknown id (caller's problem --
-## every id actually in either catalog resolves).
+## ONLINE_ONLY_MAP_ORDER's own comment). Every map shares one plain flat
+## tile now (see build_tileset.gd -- reverted from a per-map theme_color'd
+## one), so every known id resolves to that same single atlas slot; -1 for
+## an unknown id (caller's problem -- every id actually in either catalog
+## resolves). Kept as a function (not a bare constant) so every call site
+## from before this revert -- and any future one -- still asks "what tile
+## does this map use" rather than assuming 0 directly.
 static func tile_index_for(map_id: String) -> int:
-	var local_idx: int = LocalMapCatalog.MAP_ORDER.find(map_id)
-	if local_idx != -1:
-		return local_idx
-	var online_idx: int = ONLINE_ONLY_MAP_ORDER.find(map_id)
-	if online_idx != -1:
-		return LocalMapCatalog.MAP_ORDER.size() + online_idx
+	if LocalMapCatalog.MAP_ORDER.find(map_id) != -1:
+		return 0
+	if ONLINE_ONLY_MAP_ORDER.find(map_id) != -1:
+		return 0
 	return -1
 
 ## Resolves a map id (including "" -- the "no vote yet"/legacy default) to

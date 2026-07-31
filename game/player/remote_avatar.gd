@@ -11,7 +11,6 @@ class_name RemoteAvatar
 
 @onready var visual: Node2D = $Visual
 @onready var name_label: Label = $NameLabel
-@onready var camera: Camera2D = $Camera2D
 @onready var _body: CharacterBodyRect = $Visual/Body
 @onready var _it_label: Label = $ItLabel
 
@@ -34,10 +33,6 @@ const LERP_WEIGHT := 0.5
 # beyond it we fall back to just trusting the last known position instead of
 # extending the guess further.
 const MAX_EXTRAPOLATION_SEC := 0.15
-
-## Set before _ready() (net_game.gd sets this right after instantiating) --
-## enables this instance's camera.
-var is_local := false
 
 var display_name: String = "":
 	set(value):
@@ -75,9 +70,6 @@ func _ready() -> void:
 		set_color(PlayerColors.DEFAULT_ID)
 	if _body:
 		_ground_line_y = _body.position.y + CharacterBodyRect.TOP_LEFT.y + CharacterBodyRect.SIZE.y
-	if is_local and camera:
-		camera.enabled = true
-		camera.make_current()
 
 func _physics_process(delta: float) -> void:
 	_time_since_update += delta

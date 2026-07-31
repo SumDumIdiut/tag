@@ -13,6 +13,7 @@ class_name ServerMatch
 const PLAYER_SCENE := preload("res://player/player.tscn")
 const NPC_SCENE := preload("res://npc/npc.tscn")
 const OnlineMapCatalog := preload("res://levels/online_maps/catalog.gd")
+const FixedView := preload("res://levels/fixed_view.gd")
 const RANKED_LOOKUP_URL := "https://codecade.co.za/tag/api/ranked/%s"
 const TICK_RATE := 1.0 / 60.0
 
@@ -77,19 +78,17 @@ var _tick := 0
 # timer runs at the same cadence.
 const STATE_SUMMARY_INTERVAL_TICKS := 15
 var _arena_bounds := {"size": Vector2.ZERO, "center": Vector2.ZERO}
-## Any y below this is "fell off the map" -- generous margin below the
-## lowest painted tile row (_arena_bounds' bottom edge) so it only fires
-## once a player is unambiguously off the level, never from an ordinary
-## fall onto a lower platform that's still within bounds. INF (never
-## fires) if the arena has no Tiles node to measure at all, matching
-## _compute_arena_bounds_px's own zero-bounds fallback. Set once in
-## _finish_setup(), below the boundary walls generate_local_maps.gd used
-## to paint around every built-in map -- with those gone (see
-## _add_boundary_box's removal), a player can now walk/dash straight off
-## the side into open space, which is exactly what surfaced this as a
+## Anywhere outside this is "off the map" -- just past what the fixed
+## camera actually shows a spectator/player (see FixedView.death_rect and
+## net_game.gd's identical camera), on every side, not just below. Set once
+## in _finish_setup() from the arena's own Background.bounds -- the same
+## rect the backdrop and the camera are built from, so all three can never
+## drift out of sync. Boundary walls generate_local_maps.gd used to paint
+## around every built-in map are gone (see _add_boundary_box's removal), so
+## a player can walk/dash straight off any side into open space, which is
+## exactly what surfaced the original (bottom-only) version of this as a
 ## real, reachable bug rather than a hypothetical one.
-const DEATH_PLANE_MARGIN_PX := 400.0
-var _death_plane_y := INF
+var _death_rect: Rect2
 var _spawn_points: Array = []
 ## Set once by _finish_setup() and kept for the lifetime of the match --
 ## a late-joining spectator (see NetworkManager._server_register_spectator)
@@ -126,8 +125,7 @@ func _ready() -> void:
 
 func _finish_setup() -> void:
 	_arena_bounds = _compute_arena_bounds_px()
-	if _arena_bounds.size.y > 0.0:
-		_death_plane_y = _arena_bounds.center.y + _arena_bounds.size.y / 2.0 + DEATH_PLANE_MARGIN_PX
+	_death_rect = FixedView.death_rect(_arena.get_node("Background").bounds)
 	_spawn_points = _arena.get_node("SpawnPoints").get_children()
 	_spawn_points.shuffle()
 	var spawn_points := _spawn_points
@@ -385,14 +383,15 @@ func _physics_process(delta: float) -> void:
 
 	# Checked every tick for every player, bots included -- a stray dash or
 	# knockback off an edge is exactly as reachable for an NPC as a real
-	# player now that maps have no boundary walls (see _death_plane_y's own
-	# comment). Falling off is a real penalty: the faller becomes "it" for
-	# their own team-bucket (see TagMode.force_it -- same immunity/color/
-	# signal handling as a normal tag, so it reads identically on the HUD),
-	# THEN respawns like the match's own opening placement.
+	# player now that maps have no boundary walls (see _death_rect's own
+	# comment). Going off the fixed camera's visible frame is a real
+	# penalty: the faller becomes "it" for their own team-bucket (see
+	# TagMode.force_it -- same immunity/color/signal handling as a normal
+	# tag, so it reads identically on the HUD), THEN respawns like the
+	# match's own opening placement.
 	for peer_id in _players.keys():
 		var p: Player = _players[peer_id]
-		if p.global_position.y > _death_plane_y:
+		if not _death_rect.has_point(p.global_position):
 			_tag_mode.force_it(p)
 			_respawn_player(p)
 

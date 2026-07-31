@@ -70,6 +70,7 @@ class TagVecEnv(VecEnv):
         self._actions = None
         self._episode_reward = np.zeros(num_envs, dtype=np.float32)
         self._episode_len = np.zeros(num_envs, dtype=np.int64)
+        self._prev_potential = np.zeros(num_envs, dtype=np.float32)
 
     def _obs(self) -> np.ndarray:
         s = self.sim
@@ -92,10 +93,29 @@ class TagVecEnv(VecEnv):
             (s.time_remaining[:, None] / ROUND_DURATION_SEC),
         ], axis=-1).astype(np.float32)
 
+    # Potential-based distance shaping (Ng et al. 1999 -- adding
+    # gamma*Phi(s') - Phi(s) to the reward never changes which policy is
+    # optimal, unlike an arbitrary "closer = more reward" bonus would). The
+    # sparse reward above (only the per-tick trickle plus the instant of an
+    # actual tag) gives almost no signal about HOW to close in or evade --
+    # a policy has to stumble into a tag by luck before it learns anything
+    # directional. Phi is defined so gamma~=1 (dense per-tick shaping, not
+    # worth carrying PPO's real discount factor through here) makes
+    # Phi(s')-Phi(s) positive exactly when the agent moved the "right" way
+    # for its current role: closing distance while it, opening it while not.
+    DIST_NORM = 700.0  # normalizes the shaping term to roughly the same per-tick magnitude as the base reward above
+    SHAPING_COEF = 0.3
+
+    def _potential(self) -> np.ndarray:
+        s = self.sim
+        dist = np.linalg.norm(s.pos[:, 1, :] - s.pos[:, 0, :], axis=-1) / self.DIST_NORM
+        return np.where(s.is_it[:, 0], -dist, dist).astype(np.float32)
+
     def reset(self):
         self.sim.reset(np.arange(self.num_envs))
         self._episode_reward[:] = 0.0
         self._episode_len[:] = 0
+        self._prev_potential = self._potential()
         return self._obs()
 
     def step_async(self, actions: np.ndarray) -> None:
@@ -121,6 +141,20 @@ class TagVecEnv(VecEnv):
         reward += np.where(tagged_this_step[:, 1], 2.0, 0.0).astype(np.float32)  # WE just tagged them -- good
         reward -= np.where(tagged_this_step[:, 0], 2.0, 0.0).astype(np.float32)  # they just tagged US -- bad
 
+        # Distance shaping (see _potential() above) -- gives an actual
+        # directional signal every tick: chase when it, evade when not,
+        # instead of only ever finding out "good" or "bad" at the sparse
+        # moment of an actual tag. Suppressed on the exact tick a tag lands
+        # -- is_it flips for one or both agents right then, which would
+        # otherwise inject a spurious jump in Phi purely from the role
+        # swap, unrelated to real approach/evade movement; the explicit
+        # +-2.0 above already covers that tick.
+        potential = self._potential()
+        tag_happened = tagged_this_step[:, 0] | tagged_this_step[:, 1]
+        shaping = self.SHAPING_COEF * (potential - self._prev_potential)
+        reward += np.where(tag_happened, 0.0, shaping).astype(np.float32)
+        self._prev_potential = potential
+
         self._episode_reward += reward
         self._episode_len += 1
 
@@ -136,6 +170,7 @@ class TagVecEnv(VecEnv):
             self._episode_reward[done_ids] = 0.0
             self._episode_len[done_ids] = 0
             obs = self._obs()
+            self._prev_potential[done_ids] = self._potential()[done_ids]
 
         return obs, reward, done, infos
 

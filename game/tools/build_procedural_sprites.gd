@@ -6,7 +6,7 @@ extends Node
 # for mode_icon.gd's icon shapes -- "every sprite should be pixel art,
 # nothing made at runtime" per the user's own explicit ask. Covers:
 #   - rank_badge.gd's 6 tier badges (5 named tiers + the unranked default)
-#   - local_map_icon.gd's 6 fixed local-map preview silhouettes
+#   - local_map_icon.gd's per-map, theme-colored preview silhouettes
 #   - ui_style.gd's slider grabber dot (only ever actually called with one
 #     color, COLOR_LOCAL, across every real call site)
 # Run via:
@@ -33,6 +33,15 @@ const SLIDER_GRABBER_OUT := "res://assets/icons/slider_grabber_local.png"
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(RANK_BADGE_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MAP_ICON_OUT_DIR))
+
+	# LocalMapIcon prefers an already-baked PNG over live-drawing (see its
+	# own _try_setup_baked()) -- correct for a runtime display instance, but
+	# fatal for THIS tool re-running after its own prior bake: it would just
+	# recapture whatever's already on disk instead of the current _draw()
+	# output, silently freezing every map's icon at whatever it looked like
+	# the first time this was ever run. Clearing the map icons first forces
+	# every iteration below to genuinely hit the live-draw fallback.
+	_clear_dir(MAP_ICON_OUT_DIR)
 
 	for tier in RANK_TIERS:
 		var img := await _render_rank_badge(tier)
@@ -86,7 +95,6 @@ func _render_map_icon(map_id: String) -> Image:
 
 	var icon := LocalMapIconScene.new()
 	icon.map_id = map_id
-	icon.accent_color = UIStyle.COLOR_LOCAL
 	viewport.add_child(icon)
 	icon.custom_minimum_size = Vector2(MAP_ICON_SIZE)
 	icon.size = Vector2(MAP_ICON_SIZE)
@@ -97,6 +105,19 @@ func _render_map_icon(map_id: String) -> Image:
 	var img := viewport.get_texture().get_image()
 	viewport.queue_free()
 	return img
+
+func _clear_dir(dir_path: String) -> void:
+	var abs_path := ProjectSettings.globalize_path(dir_path)
+	var dir := DirAccess.open(abs_path)
+	if not dir:
+		return
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		if not dir.current_is_dir():
+			dir.remove(entry)
+		entry = dir.get_next()
+	dir.list_dir_end()
 
 ## Pure Image pixel math, same as ui_style.gd's own generation -- no
 ## viewport capture needed here, this was never a _draw()-based Control.
