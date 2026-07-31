@@ -16,24 +16,16 @@ AI never uses any of those three either (it only ever sets move_dir/jump/
 dash), so this simulator's action space already matches everything a Tag
 bot actually needs to decide.
 
-Arenas: every map in the real online pool (game/levels/online_maps/
-catalog.gd / game/levels/local_maps/catalog.gd, both -- every Local map is
-also selectable online, see that commit), all 8 -- copied by hand below,
-same "single source of truth would be nice but these are genuinely
-separate concerns" tradeoff the real catalogs themselves already accept
-for each other. 7 of the 8 are generated from a `platforms` rect list
-already, copied directly; "classic_arena" (game/levels/tag_arena.tscn) is
-hand-built with its collision baked into a TileMapLayer instead, so its
-rect list here was produced by game/tools/extract_arena_rects.gd (a
-greedy solid-cell-merge over that TileMapLayer) rather than copied from a
-catalog -- see that tool if this ever needs regenerating after tag_arena
-changes. Its raw output included a redundant, unreachable outer boundary
-layer (the tile data has two nested walls a couple hundred units apart;
-the inner one already blocks movement, so the outer one is dead
-geometry) -- dropped by hand below, everything else is the tool's output
-verbatim, plus the two static platforms (PlatformGap/PlatformLift's
-replacements, see that commit) it reports separately since they're not
-part of the TileMapLayer at all.
+Arenas: every map actually in the real online pool (game/levels/
+online_maps/catalog.gd's own MAP_ORDER -- NOT every Local map anymore;
+only some of Local's set gets promoted into online rotation now, see that
+catalog's own comments) -- copied by hand below, same "single source of
+truth would be nice but these are genuinely separate concerns" tradeoff
+the real catalogs themselves already accept for each other. All 7 are
+plain `platforms` rect lists, copied directly -- classic_arena (the one
+hand-built exception, tag_arena.tscn) has been removed from the game
+entirely, so there's no more special hand-extracted-from-a-TileMapLayer
+arena here either.
 
 reset() below picks a random arena per episode (domain randomization) so
 a trained policy generalizes across all of them instead of overfitting to
@@ -95,68 +87,48 @@ MAP_PLATFORMS = {
         (220.0, 260.0, 400.0, 280.0),
         (-100.0, 100.0, 100.0, 120.0),
     ],
-    "wide_open": [
-        (-1000.0, 420.0, 1000.0, 480.0),
-        (-320.0, 200.0, -100.0, 220.0),
-        (100.0, 200.0, 320.0, 220.0),
+    "split_level": [
+        (-1050.0, 220.0, 1050.0, 260.0),
+        (-1050.0, 440.0, 1050.0, 480.0),
+        (-300.0, 330.0, -100.0, 370.0),
+        (100.0, 330.0, 300.0, 370.0),
+        (-800.0, 330.0, -600.0, 370.0),
+        (600.0, 330.0, 800.0, 370.0),
     ],
-    "twin_towers": [
-        (-1000.0, 420.0, 1000.0, 480.0),
-        (-900.0, 0.0, -800.0, 420.0),
-        (800.0, 0.0, 900.0, 420.0),
-        (-960.0, -20.0, -740.0, 0.0),
-        (740.0, -20.0, 960.0, 0.0),
-        (-110.0, 150.0, 110.0, 170.0),
+    "twin_peaks": [
+        (-1050.0, 420.0, 1050.0, 480.0),
+        (-850.0, 300.0, -650.0, 420.0),
+        (-750.0, 220.0, -600.0, 300.0),
+        (650.0, 300.0, 850.0, 420.0),
+        (600.0, 220.0, 750.0, 300.0),
+        (-100.0, 360.0, 100.0, 400.0),
     ],
-    "staircase": [
-        (-1050.0, 420.0, -750.0, 500.0),
-        (-700.0, 340.0, -450.0, 500.0),
-        (-400.0, 260.0, -150.0, 500.0),
-        (-100.0, 180.0, 150.0, 500.0),
-        (200.0, 260.0, 450.0, 500.0),
-        (500.0, 340.0, 750.0, 500.0),
-        (800.0, 420.0, 1050.0, 500.0),
+    "the_ladder": [
+        (-1050.0, 460.0, -750.0, 500.0),
+        (-700.0, 380.0, -400.0, 420.0),
+        (-350.0, 300.0, -50.0, 340.0),
+        (0.0, 220.0, 300.0, 260.0),
+        (350.0, 140.0, 650.0, 180.0),
+        (700.0, 60.0, 1000.0, 100.0),
     ],
-    "scattered_islands": [
-        (-1000.0, 380.0, -800.0, 420.0),
-        (-650.0, 280.0, -450.0, 320.0),
-        (-300.0, 380.0, -100.0, 420.0),
-        (50.0, 180.0, 250.0, 220.0),
-        (350.0, 380.0, 550.0, 420.0),
-        (650.0, 280.0, 850.0, 320.0),
-        (900.0, 380.0, 1050.0, 420.0),
-        (-150.0, 60.0, 150.0, 100.0),
+    "sky_islands": [
+        (-1050.0, 200.0, -900.0, 240.0),
+        (-750.0, 320.0, -600.0, 360.0),
+        (-500.0, 140.0, -320.0, 180.0),
+        (-200.0, 400.0, -50.0, 440.0),
+        (50.0, 260.0, 220.0, 300.0),
+        (300.0, 100.0, 460.0, 140.0),
+        (550.0, 380.0, 700.0, 420.0),
+        (800.0, 220.0, 950.0, 260.0),
+        (-100.0, 40.0, 100.0, 80.0),
     ],
-    "pillars_and_ledges": [
-        (-1000.0, 420.0, 1000.0, 480.0),
-        (-700.0, 250.0, -650.0, 420.0),
-        (-250.0, 300.0, -200.0, 420.0),
-        (200.0, 300.0, 250.0, 420.0),
-        (650.0, 250.0, 700.0, 420.0),
-        (-780.0, 230.0, -600.0, 250.0),
-        (600.0, 230.0, 780.0, 250.0),
-        (-320.0, 280.0, -160.0, 300.0),
-        (160.0, 280.0, 320.0, 300.0),
-    ],
-    # Extracted from game/levels/tag_arena.tscn's TileMapLayer via
-    # game/tools/extract_arena_rects.gd -- see the module docstring above
-    # for the redundant-outer-wall-layer it dropped by hand.
-    "classic_arena": [
-        (-1220.0, -480.0, 1220.0, -440.0),
-        (-1220.0, -440.0, -1180.0, 480.0),
-        (1180.0, -440.0, 1220.0, 480.0),
-        (-1040.0, -130.0, -860.0, -110.0),
-        (860.0, -130.0, 1040.0, -110.0),
-        (-140.0, -70.0, 140.0, -50.0),
-        (-760.0, 150.0, -540.0, 170.0),
-        (540.0, 150.0, 760.0, 170.0),
-        (-160.0, 300.0, -140.0, 480.0),
-        (140.0, 300.0, 160.0, 480.0),
-        (-1180.0, 440.0, -160.0, 480.0),
-        (-140.0, 440.0, 140.0, 480.0),
-        (160.0, 440.0, 1180.0, 480.0),
-        (-415.0, 345.0, 415.0, 355.0),  # PlatformGap's static replacement
-        (285.0, 15.0, 315.0, 25.0),     # PlatformLift's static replacement
+    "corner_pockets": [
+        (-1050.0, 440.0, 1050.0, 480.0),
+        (-900.0, 260.0, -700.0, 300.0),
+        (700.0, 260.0, 900.0, 300.0),
+        (-900.0, 100.0, -700.0, 140.0),
+        (700.0, 100.0, 900.0, 140.0),
+        (-150.0, 340.0, 150.0, 380.0),
     ],
 }
 ARENA_IDS = list(MAP_PLATFORMS.keys())
@@ -209,15 +181,12 @@ def _spawn_points(platforms: list) -> list:
     return pts
 
 
-# classic_arena's own rect list already includes its real boundary (see the
-# module docstring -- extracted straight from the TileMapLayer, not just
-# the floor/platforms), so running the generated-boundary formula on top of
-# it would wrap a third, even-more-redundant wall layer around the one
-# that's already there. Every other arena only lists its floor/platforms,
-# same as the real catalogs do, so those still need it computed.
-_ARENAS_WITH_OWN_BOUNDARY = {"classic_arena"}
+# Every arena here only lists its floor/platforms, same as the real
+# catalogs do -- all of them need a generated boundary box (no more
+# hand-built exception with its own baked-in boundary, now that
+# classic_arena has been removed from the game entirely).
 _arena_full_platforms = [
-    MAP_PLATFORMS[aid] if aid in _ARENAS_WITH_OWN_BOUNDARY else MAP_PLATFORMS[aid] + _boundary_walls(MAP_PLATFORMS[aid])
+    MAP_PLATFORMS[aid] + _boundary_walls(MAP_PLATFORMS[aid])
     for aid in ARENA_IDS
 ]
 _arena_spawns = [_spawn_points(MAP_PLATFORMS[aid]) for aid in ARENA_IDS]
