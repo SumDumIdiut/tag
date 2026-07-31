@@ -76,59 +76,59 @@ TICK_DT = 1.0 / 60.0
 # (world pixels, same convention as both catalogs).
 MAP_PLATFORMS = {
     "square_arena": [
-        (-450.0, 420.0, 450.0, 480.0),
-        (-300.0, 220.0, -100.0, 240.0),
-        (100.0, 220.0, 300.0, 240.0),
-        (-120.0, 40.0, 120.0, 60.0),
+        (-420.0, -198.0, 420.0, -156.0),
+        (-135.0, -80.0, 135.0, -38.0),
+        (-135.0, 38.0, 135.0, 80.0),
+        (-162.0, 156.0, 162.0, 198.0),
     ],
     "floating_platforms": [
-        (-500.0, 420.0, 500.0, 480.0),
-        (-400.0, 260.0, -220.0, 280.0),
-        (220.0, 260.0, 400.0, 280.0),
-        (-100.0, 100.0, 100.0, 120.0),
+        (-420.0, -198.0, 420.0, -156.0),
+        (-122.0, -80.0, 122.0, -38.0),
+        (-122.0, 38.0, 122.0, 80.0),
+        (-135.0, 156.0, 135.0, 198.0),
     ],
     "split_level": [
-        (-1050.0, 220.0, 1050.0, 260.0),
-        (-1050.0, 440.0, 1050.0, 480.0),
-        (-300.0, 330.0, -100.0, 370.0),
-        (100.0, 330.0, 300.0, 370.0),
-        (-800.0, 330.0, -600.0, 370.0),
-        (600.0, 330.0, 800.0, 370.0),
+        (-630.0, -316.0, 630.0, -274.0),
+        (-630.0, -198.0, 630.0, -156.0),
+        (-135.0, -80.0, 135.0, -38.0),
+        (-135.0, 38.0, 135.0, 80.0),
+        (-135.0, 156.0, 135.0, 198.0),
+        (-135.0, 274.0, 135.0, 316.0),
     ],
     "twin_peaks": [
-        (-1050.0, 420.0, 1050.0, 480.0),
-        (-850.0, 300.0, -650.0, 420.0),
-        (-750.0, 220.0, -600.0, 300.0),
-        (650.0, 300.0, 850.0, 420.0),
-        (600.0, 220.0, 750.0, 300.0),
-        (-100.0, 360.0, 100.0, 400.0),
+        (-630.0, 274.0, 630.0, 316.0),
+        (-135.0, 156.0, 135.0, 198.0),
+        (-101.0, 38.0, 101.0, 80.0),
+        (-135.0, -80.0, 135.0, -38.0),
+        (-101.0, -198.0, 101.0, -156.0),
+        (-135.0, -316.0, 135.0, -274.0),
     ],
     "the_ladder": [
-        (-1050.0, 460.0, -750.0, 500.0),
-        (-700.0, 380.0, -400.0, 420.0),
-        (-350.0, 300.0, -50.0, 340.0),
-        (0.0, 220.0, 300.0, 260.0),
-        (350.0, 140.0, 650.0, 180.0),
-        (700.0, 60.0, 1000.0, 100.0),
+        (-493.0, -257.0, -100.0, -215.0),
+        (100.0, -257.0, 493.0, -215.0),
+        (-202.0, -139.0, 202.0, -97.0),
+        (-202.0, -21.0, 202.0, 21.0),
+        (-202.0, 97.0, 202.0, 139.0),
+        (-202.0, 215.0, 202.0, 257.0),
     ],
     "sky_islands": [
-        (-1050.0, 200.0, -900.0, 240.0),
-        (-750.0, 320.0, -600.0, 360.0),
-        (-500.0, 140.0, -320.0, 180.0),
-        (-200.0, 400.0, -50.0, 440.0),
-        (50.0, 260.0, 220.0, 300.0),
-        (300.0, 100.0, 460.0, 140.0),
-        (550.0, 380.0, 700.0, 420.0),
-        (800.0, 220.0, 950.0, 260.0),
-        (-100.0, 40.0, 100.0, 80.0),
+        (-302.0, -257.0, -100.0, -215.0),
+        (100.0, -257.0, 302.0, -215.0),
+        (-323.0, -139.0, -80.0, -97.0),
+        (120.0, -139.0, 323.0, -97.0),
+        (-323.0, -21.0, -93.0, 21.0),
+        (107.0, -21.0, 323.0, 21.0),
+        (-302.0, 97.0, -100.0, 139.0),
+        (100.0, 97.0, 302.0, 139.0),
+        (-135.0, 215.0, 135.0, 257.0),
     ],
     "corner_pockets": [
-        (-1050.0, 440.0, 1050.0, 480.0),
-        (-900.0, 260.0, -700.0, 300.0),
-        (700.0, 260.0, 900.0, 300.0),
-        (-900.0, 100.0, -700.0, 140.0),
-        (700.0, 100.0, 900.0, 140.0),
-        (-150.0, 340.0, 150.0, 380.0),
+        (-630.0, -316.0, 630.0, -274.0),
+        (-135.0, -198.0, 135.0, -156.0),
+        (-135.0, -80.0, 135.0, -38.0),
+        (-135.0, 38.0, 135.0, 80.0),
+        (-135.0, 156.0, 135.0, 198.0),
+        (-202.0, 274.0, 202.0, 316.0),
     ],
 }
 ARENA_IDS = list(MAP_PLATFORMS.keys())
@@ -139,19 +139,13 @@ PLAYER_HALF_SIZE = np.array([13.0, 23.5], dtype=np.float32)  # half of (26, 47)
 
 # ─── Derived per-arena boundary walls + spawn points -- ports
 # game/tools/generate_online_maps.gd's own _add_boundary_box()/_add_spawns().
-# SPAWN_FLOOR_Y specifically uses generate_LOCAL_maps.gd's threshold (360),
-# not the online generator's own 420 -- the two real tools actually disagree
-# (confirmed by reading both), and every arena here except square_arena/
-# floating_platforms was actually built by the LOCAL generator (every Local
-# map is also in the online pool now, reusing those exact .tscn files
-# rather than regenerating them -- see that commit). 360 is a strict
-# superset of what 420 would catch (checked directly against every arena's
-# own platform list: nothing between 360-420 exists anywhere except
-# scattered_islands' y0=380 floor tier, which is exactly the one that needs
-# it -- its real .tscn does have working spawn points, generated with 360),
-# so using it for every arena here is safe, not just a special case for
-# that one map.
-SPAWN_FLOOR_Y = 360.0
+# Spawn-eligible platforms are whichever ones sit at (or within
+# SPAWN_FLOOR_TOLERANCE of) THIS arena's own lowest platform, not a fixed
+# world-Y cutoff -- see generate_local_maps.gd's identical comment: the
+# fixed-camera map redesign re-centers every arena's platforms around y=0
+# with a layout-dependent range, so a single absolute cutoff (the old
+# value, 360) would silently leave most arenas with zero spawn points.
+SPAWN_FLOOR_TOLERANCE = 10.0
 WALL_THICKNESS = 20.0
 CEILING_CLEARANCE = 300.0
 
@@ -170,9 +164,10 @@ def _boundary_walls(platforms: list) -> list:
 
 
 def _spawn_points(platforms: list) -> list:
+    floor_y = max(p[1] for p in platforms)
     pts = []
     for (x0, y0, x1, y1) in platforms:
-        if y0 >= SPAWN_FLOOR_Y:
+        if y0 >= floor_y - SPAWN_FLOOR_TOLERANCE:
             width = x1 - x0
             count = max(2, round(width / 260.0))
             for i in range(count):

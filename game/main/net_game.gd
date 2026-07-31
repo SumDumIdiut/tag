@@ -5,6 +5,7 @@ const MATCH_RESULTS_SCENE := preload("res://main/match_results.tscn")
 const OnlineMapCatalog := preload("res://levels/online_maps/catalog.gd")
 const UIStyle := preload("res://ui/ui_style.gd")
 const RankBadgeScene := preload("res://ui/rank_badge.gd")
+const FixedView := preload("res://levels/fixed_view.gd")
 
 # Leaderboard panel sizing -- see _build_leaderboard()/_render_leaderboard().
 # Header is the "LEAST TIME AS IT WINS" title + its separation from the row
@@ -47,6 +48,11 @@ func _ready() -> void:
 	# network fetch here anymore either.
 	arena = load(OnlineMapCatalog.scene_path_for(level_id)).instantiate()
 	add_child(arena)
+	# Same fixed, non-following camera local/bot play uses (see game.gd) --
+	# every player, spectator included, sees the whole map at once, so
+	# there's no per-avatar "whose camera is active" logic needed here
+	# anymore at all.
+	add_child(FixedView.make_camera(arena.get_node("Background").bounds))
 
 	_ui_layer = CanvasLayer.new()
 	add_child(_ui_layer)
@@ -76,12 +82,12 @@ func _ready() -> void:
 
 	# Every player, yours included, is a RemoteAvatar -- there's no local
 	# prediction anywhere anymore, so no reason for your own avatar to be
-	# built any differently from everyone else's. Only difference is which
-	# one owns the active camera.
+	# built any differently from everyone else's, and (now that the camera
+	# is fixed on the whole map, not following any one avatar) no reason to
+	# track which peer is "you" for rendering purposes at all.
 	for peer_id in roster.keys():
 		var info: Dictionary = roster[peer_id]
 		var avatar: RemoteAvatar = REMOTE_AVATAR_SCENE.instantiate()
-		avatar.is_local = (peer_id == my_peer_id)
 		add_child(avatar)
 		avatar.display_name = info.username
 		avatars[peer_id] = avatar
@@ -89,13 +95,9 @@ func _ready() -> void:
 		avatar.set_rank_tier(info.get("tier", ""))
 
 	# my_peer_id == -1 means we're spectating (see NetworkManager.start_
-	# spectator) -- there's no local avatar to own the camera, so fall back
-	# to following whichever roster entry came first instead of leaving no
-	# camera active at all.
-	if my_peer_id == -1 and not avatars.is_empty():
-		var followed: RemoteAvatar = avatars[avatars.keys()[0]]
-		followed.camera.enabled = true
-		followed.camera.make_current()
+	# spectator) -- the fixed camera already shows the whole match either
+	# way, so the only spectator-specific thing left is the HUD label.
+	if my_peer_id == -1:
 		hud.text = "Spectating"
 
 func _apply_color(peer_id: int) -> void:
