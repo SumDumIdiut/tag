@@ -21,17 +21,22 @@ const TILESET := preload("res://levels/tag_tileset.tres")
 const Catalog := preload("res://levels/local_maps/catalog.gd")
 const OnlineMapCatalog := preload("res://levels/online_maps/catalog.gd") # tile_index_for() only -- see its own comment
 const BackgroundScript := preload("res://levels/map_background.gd")
+const FixedView := preload("res://levels/fixed_view.gd")
 const FALLBACK_COLOR := Color(0.6, 0.6, 0.65) # matches build_tileset.gd's own fallback; defensive only
-const BG_MARGIN := 150.0 # background extends this far past the outermost platform on every side
+const BG_MARGIN := 150.0 # padding around the platforms before fitting to the fixed camera's aspect -- see FixedView.compute()
 
 # Ground-floor platforms get spawns spread along their top surface --
 # matches tag_arena's own all-spawns-on-the-floor layout. Catalog.gd's
 # platform rects don't carry a "spawns" flag themselves (generation-only,
-# not needed by the picker's preview icon), so it's derived here instead:
-# 360 sits strictly between the highest non-floor platform's y0 (340, in
-# staircase's middle steps) and the lowest actual floor's y0 (380, in
-# scattered_islands) across every map in the catalog.
-const SPAWN_FLOOR_Y := 360
+# not needed by the picker's preview icon), so it's derived here instead.
+# Relative to each map's own lowest platform (not a fixed world-Y constant)
+# -- maps used to all share roughly the same absolute Y range (floors
+# around 400-500), which a single cutoff like 360 could straddle safely,
+# but the fixed-camera redesign re-centers every map's platforms around
+# y=0 with a layout-dependent range, so a fixed cutoff would silently
+# leave most maps with zero spawn-eligible platforms (confirmed: 25 of 27
+# maps would get none under the old constant 360).
+const SPAWN_FLOOR_TOLERANCE := 10.0
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
@@ -51,7 +56,7 @@ func _build_map(id: String, def: Dictionary, tile_index: int) -> void:
 	background.name = "Background"
 	background.theme_color = def.get("theme_color", FALLBACK_COLOR)
 	background.theme_shape = def.get("theme_shape", "rect")
-	background.bounds = _compute_bounds(def.platforms).grow(BG_MARGIN)
+	background.bounds = FixedView.compute(_compute_bounds(def.platforms), BG_MARGIN)
 	arena.add_child(background)
 	background.owner = arena
 
@@ -78,6 +83,7 @@ func _build_map(id: String, def: Dictionary, tile_index: int) -> void:
 	arena.add_child(tiles_layer)
 	tiles_layer.owner = arena
 
+	var floor_y := _max_y0(def.platforms)
 	var spawn_i := 0
 	var waypoint_i := 0
 	for plat_index in def.platforms.size():
@@ -89,7 +95,7 @@ func _build_map(id: String, def: Dictionary, tile_index: int) -> void:
 		_fill_tiles(tiles_layer, x0, y0, x1, y1, tile_index)
 		_add_waypoints(waypoints, waypoint_i, x0, y0, x1)
 		waypoint_i += 100 # keep names unique; exact numbering doesn't matter
-		if y0 >= SPAWN_FLOOR_Y:
+		if y0 >= floor_y - SPAWN_FLOOR_TOLERANCE:
 			spawn_i = _add_spawns(spawn_points, spawn_i, x0, y0, x1, plat_index, def.platforms)
 
 	var packed := PackedScene.new()
@@ -97,6 +103,12 @@ func _build_map(id: String, def: Dictionary, tile_index: int) -> void:
 	var out_path := "%s/%s.tscn" % [OUT_DIR, id]
 	var err := ResourceSaver.save(packed, out_path)
 	print("wrote map: ", id, " err=", err)
+
+func _max_y0(platforms: Array) -> float:
+	var m := -INF
+	for plat in platforms:
+		m = maxf(m, plat.y0)
+	return m
 
 func _compute_bounds(platforms: Array) -> Rect2:
 	var min_v := Vector2(INF, INF)
