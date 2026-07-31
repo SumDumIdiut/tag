@@ -16,12 +16,16 @@ from stable_baselines3.common.vec_env import VecEnv
 from sim import TagSim, ROUND_DURATION_SEC, MAX_FALL_SPEED, DASH_SPEED
 
 # Normalizes position obs -- generous enough to cover the largest of
-# sim.py's now-multiple arenas (classic_arena, its own extracted boundary
-# spans roughly x:[-1220,1220] y:[-480,480]; staircase reaches y=500) with
-# margin, not just whichever single arena used to be the only one. Smaller
+# sim.py's arenas (the widest reach x:[-1070,1070] once boundary walls are
+# added; the_ladder's own floor tier reaches y=500) with margin. Smaller
 # arenas just end up using a smaller fraction of the [-1, 1] range -- same
 # shared scale for every arena, same reasoning game/npc/trained_policy.gd's
-# copy of this constant needs to match exactly (see that file).
+# copy of this constant needs to match exactly (see that file). Left at its
+# existing value rather than tightened to the new (smaller, since
+# classic_arena's own larger bounds are gone) actual maximum -- shrinking
+# it would rescale what every position observation numerically means,
+# which the already-trained pool's weights don't expect; margin costs
+# nothing, a rescale would cost real accumulated training.
 ARENA_HALF_EXTENT = np.array([1250.0, 550.0], dtype=np.float32)
 
 
