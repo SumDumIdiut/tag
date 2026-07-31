@@ -81,9 +81,9 @@ func _draw() -> void:
 	var def: Dictionary = Catalog.MAPS.get(map_id, {})
 	var platforms: Array = def.get("platforms", [])
 	if platforms.is_empty():
-		# classic_arena (or any map missing preview data) -- a simple
-		# crossed-pillars glyph stands in for the original hand-built arena
-		# rather than an empty box.
+		# Any map missing preview data (none currently do -- defensive
+		# fallback) -- a simple crossed-pillars glyph stands in rather than
+		# an empty box.
 		var c := size * 0.5
 		draw_rect(Rect2(c.x - size.x * 0.4, c.y + size.y * 0.15, size.x * 0.8, size.y * 0.12), accent_color)
 		draw_rect(Rect2(c.x - size.x * 0.32, c.y - size.y * 0.3, size.x * 0.1, size.y * 0.5), accent_color)

@@ -26,7 +26,7 @@ const RANK_TIERS := ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Master"
 
 const MAP_ICON_SIZE := Vector2i(208, 110) # source resolution; LocalMapIcon stretches the baked PNG to whatever size a caller actually displays it at
 const MAP_ICON_OUT_DIR := "res://assets/icons/local_map_icons"
-const MAP_IDS := ["classic_arena", "wide_open", "twin_towers", "staircase", "scattered_islands", "pillars_and_ledges"]
+const MAP_IDS := LocalMapCatalog.MAP_ORDER # reads the catalog directly so this can never drift out of sync with it again
 
 const SLIDER_GRABBER_OUT := "res://assets/icons/slider_grabber_local.png"
 
