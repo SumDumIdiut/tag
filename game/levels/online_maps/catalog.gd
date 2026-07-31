@@ -35,6 +35,8 @@ const MAPS := {
 	"square_arena": {
 		"name": "Square Arena",
 		"scene": "res://levels/online_maps/square_arena.tscn",
+		"theme_color": Color(0.55, 0.58, 0.62),
+		"theme_shape": "rect",
 		"platforms": [
 			{"x0": -450, "y0": 420, "x1": 450, "y1": 480},
 			{"x0": -300, "y0": 220, "x1": -100, "y1": 240},
@@ -45,6 +47,8 @@ const MAPS := {
 	"floating_platforms": {
 		"name": "Floating Platforms",
 		"scene": "res://levels/online_maps/floating_platforms.tscn",
+		"theme_color": Color(0.45, 0.68, 0.85),
+		"theme_shape": "circle",
 		"platforms": [
 			{"x0": -500, "y0": 420, "x1": 500, "y1": 480},
 			{"x0": -400, "y0": 260, "x1": -220, "y1": 280},
@@ -52,36 +56,49 @@ const MAPS := {
 			{"x0": -100, "y0": 100, "x1": 100, "y1": 120},
 		],
 	},
-	"classic_arena": {
-		"name": "Classic Arena",
-		"scene": "res://levels/tag_arena.tscn",
+	"split_level": {
+		"name": "Split Level",
+		"scene": "res://levels/local_maps/split_level.tscn",
+		"theme_color": LocalMapCatalog.MAPS["split_level"]["theme_color"],
+		"theme_shape": LocalMapCatalog.MAPS["split_level"]["theme_shape"],
+		"platforms": LocalMapCatalog.MAPS["split_level"]["platforms"],
 	},
-	"wide_open": {
-		"name": "Wide Open",
-		"scene": "res://levels/local_maps/wide_open.tscn",
-		"platforms": LocalMapCatalog.MAPS["wide_open"]["platforms"],
+	"twin_peaks": {
+		"name": "Twin Peaks",
+		"scene": "res://levels/local_maps/twin_peaks.tscn",
+		"theme_color": LocalMapCatalog.MAPS["twin_peaks"]["theme_color"],
+		"theme_shape": LocalMapCatalog.MAPS["twin_peaks"]["theme_shape"],
+		"platforms": LocalMapCatalog.MAPS["twin_peaks"]["platforms"],
 	},
-	"twin_towers": {
-		"name": "Twin Towers",
-		"scene": "res://levels/local_maps/twin_towers.tscn",
-		"platforms": LocalMapCatalog.MAPS["twin_towers"]["platforms"],
+	"the_ladder": {
+		"name": "The Ladder",
+		"scene": "res://levels/local_maps/the_ladder.tscn",
+		"theme_color": LocalMapCatalog.MAPS["the_ladder"]["theme_color"],
+		"theme_shape": LocalMapCatalog.MAPS["the_ladder"]["theme_shape"],
+		"platforms": LocalMapCatalog.MAPS["the_ladder"]["platforms"],
 	},
-	"staircase": {
-		"name": "Staircase",
-		"scene": "res://levels/local_maps/staircase.tscn",
-		"platforms": LocalMapCatalog.MAPS["staircase"]["platforms"],
+	"sky_islands": {
+		"name": "Sky Islands",
+		"scene": "res://levels/local_maps/sky_islands.tscn",
+		"theme_color": LocalMapCatalog.MAPS["sky_islands"]["theme_color"],
+		"theme_shape": LocalMapCatalog.MAPS["sky_islands"]["theme_shape"],
+		"platforms": LocalMapCatalog.MAPS["sky_islands"]["platforms"],
 	},
-	"scattered_islands": {
-		"name": "Scattered Islands",
-		"scene": "res://levels/local_maps/scattered_islands.tscn",
-		"platforms": LocalMapCatalog.MAPS["scattered_islands"]["platforms"],
-	},
-	"pillars_and_ledges": {
-		"name": "Pillars & Ledges",
-		"scene": "res://levels/local_maps/pillars_and_ledges.tscn",
-		"platforms": LocalMapCatalog.MAPS["pillars_and_ledges"]["platforms"],
+	"corner_pockets": {
+		"name": "Corner Pockets",
+		"scene": "res://levels/local_maps/corner_pockets.tscn",
+		"theme_color": LocalMapCatalog.MAPS["corner_pockets"]["theme_color"],
+		"theme_shape": LocalMapCatalog.MAPS["corner_pockets"]["theme_shape"],
+		"platforms": LocalMapCatalog.MAPS["corner_pockets"]["platforms"],
 	},
 }
+
+## Maps not carried over from LocalMapCatalog (square_arena, floating_platforms)
+## get their own dedicated tile-atlas slots, appended after every local map's
+## own slot -- see tools/build_tileset.gd. Anything reused from local instead
+## shares that map's existing slot (index into LocalMapCatalog.MAP_ORDER), so
+## the SAME map looks the same whether played online or offline.
+const ONLINE_ONLY_MAP_ORDER := ["square_arena", "floating_platforms"]
 
 ## Explicitly typed (not just := inferring from the literal) -- an untyped
 ## Array here silently failed to assign into map_vote_view.gd's
@@ -92,8 +109,23 @@ const MAPS := {
 ## vote popup never showing any map choices at all.
 const MAP_ORDER: Array[String] = [
 	"square_arena", "floating_platforms",
-	"classic_arena", "wide_open", "twin_towers", "staircase", "scattered_islands", "pillars_and_ledges",
+	"split_level", "twin_peaks", "the_ladder", "sky_islands", "corner_pockets",
 ]
+
+## Tile-atlas column for a map id, valid for BOTH local and online ids (see
+## ONLINE_ONLY_MAP_ORDER's own comment) -- the single shared source of truth
+## tools/build_tileset.gd, generate_local_maps.gd, and generate_online_maps.gd
+## all call into, so a map's painted tile color can never drift from which
+## atlas slot actually holds it. -1 for an unknown id (caller's problem --
+## every id actually in either catalog resolves).
+static func tile_index_for(map_id: String) -> int:
+	var local_idx: int = LocalMapCatalog.MAP_ORDER.find(map_id)
+	if local_idx != -1:
+		return local_idx
+	var online_idx: int = ONLINE_ONLY_MAP_ORDER.find(map_id)
+	if online_idx != -1:
+		return LocalMapCatalog.MAP_ORDER.size() + online_idx
+	return -1
 
 ## Resolves a map id (including "" -- the "no vote yet"/legacy default) to
 ## its scene path, falling back to the default map for anything unknown.

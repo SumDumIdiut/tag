@@ -386,12 +386,14 @@ func _physics_process(delta: float) -> void:
 	# Checked every tick for every player, bots included -- a stray dash or
 	# knockback off an edge is exactly as reachable for an NPC as a real
 	# player now that maps have no boundary walls (see _death_plane_y's own
-	# comment). Falling off just respawns like the match's own opening
-	# placement; no time/score penalty -- "it" status and it_time are
-	# untouched either way, same as any other reposition.
+	# comment). Falling off is a real penalty: the faller becomes "it" for
+	# their own team-bucket (see TagMode.force_it -- same immunity/color/
+	# signal handling as a normal tag, so it reads identically on the HUD),
+	# THEN respawns like the match's own opening placement.
 	for peer_id in _players.keys():
 		var p: Player = _players[peer_id]
 		if p.global_position.y > _death_plane_y:
+			_tag_mode.force_it(p)
 			_respawn_player(p)
 
 	# Every client renders every player -- their own included -- purely from

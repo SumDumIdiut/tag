@@ -24,10 +24,10 @@ const WEIGHTS_PATH := "res://assets/ai/npc_policy_weights.json"
 # project already follows (see e.g. game/net/update_checker.gd).
 const POLICY_WEIGHTS_URL := "https://codecade.co.za/tag/api/ai/policy-weights"
 
-# Mirrors ai_training/tag_env.py's own constant exactly -- sim.py now trains
+# Mirrors ai_training/tag_env.py's own constant exactly -- sim.py trains
 # across every map in the online pool (domain randomization, not one fixed
-# arena), so this covers the largest of them (classic_arena) with margin,
-# not just whichever single arena used to be the only one. IMPORTANT: the
+# arena), so this covers the largest of them with margin, not just
+# whichever single arena used to be the only one. IMPORTANT: the
 # currently-bundled npc_policy_weights.json was trained against the OLD
 # single-arena (600, 650) scale -- it's now out of sync with this constant
 ## until a model trained against the new multi-arena sim.py is re-exported

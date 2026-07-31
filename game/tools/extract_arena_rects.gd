@@ -23,10 +23,14 @@ extends Node
 const TILE_SIZE := 10.0
 
 func _ready() -> void:
-	var scene_path := "res://levels/tag_arena.tscn"
+	var scene_path := ""
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--scene="):
 			scene_path = arg.substr(8)
+	if scene_path.is_empty():
+		print("ERROR: --scene=res://... is required (no default hand-built arena exists anymore)")
+		get_tree().quit(1)
+		return
 
 	var arena = load(scene_path).instantiate()
 	add_child(arena)
