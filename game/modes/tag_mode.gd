@@ -182,11 +182,21 @@ func _physics_process(delta: float) -> void:
 			if p == it or (it.team != -1 and p.team == it.team):
 				continue
 			if it.global_position.distance_to(p.global_position) < TAG_DISTANCE:
-				_it_by_team[p.team] = p
-				_immunity_timers[p.team] = IMMUNITY_TIME
-				_apply_it_color()
-				it_changed.emit(p, p.team)
+				_force_it(p)
 				break
+
+## Shared by a normal tag-collision (above) and server_match.gd's death-plane
+## check -- falling off the map makes the faller "it" for their own
+## team-bucket, same immunity/color/signal handling as any other tag so it
+## reads identically to a real tag on both the HUD and any listener.
+func force_it(p: Node) -> void:
+	_force_it(p)
+
+func _force_it(p: Node) -> void:
+	_it_by_team[p.team] = p
+	_immunity_timers[p.team] = IMMUNITY_TIME
+	_apply_it_color()
+	it_changed.emit(p, p.team)
 
 func _apply_it_color() -> void:
 	for p in participants:
