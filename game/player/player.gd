@@ -89,11 +89,16 @@ const DIAGONAL_DASH_Y_THRESHOLD := -0.3
 const UP_DASH_JUMP_H_SUPPRESS := 0.35
 
 # Jumping mid-dash (a flat/horizontal one, not an up-dash) doesn't just keep
-# the dash's own speed -- it boosts past it to this flat speed, and that
-# boosted speed is fully retained (no ground friction) through landing and
-# for this many frames afterward, before normal ground control resumes.
+# the dash's own speed -- it boosts past it to this flat speed, fully
+# retained (no friction at all) through the rest of the airborne arc. Once
+# grounded, it bleeds off fast under LANDING_FRICTION (stronger than normal
+# GROUND_FRICTION) for this many frames, instead of either staying frozen
+# at full speed (read as ice/no control) or cutting to normal friction
+# immediately (erased the whole point of the boost) -- see
+# _process_horizontal's landed_grace_timer branch.
 const DASH_JUMP_SPEED := 900.0
-const DASH_JUMP_LANDING_RETENTION_FRAMES := 6.0
+const DASH_JUMP_LANDING_RETENTION_FRAMES := 5.0
+const LANDING_FRICTION := GROUND_FRICTION * 4.0
 # When a boost/kick's target speed is already exceeded by current speed, this
 # fraction of it is still added on top as a smaller top-up -- some reward for
 # chaining, but not the full value stacking on top of an already-high speed.
@@ -456,12 +461,20 @@ func _process_horizontal(move_dir: Vector2, delta: float, on_floor: bool) -> voi
 	if wall_jump_lock_timer > 0.0:
 		return
 	# Dash-jump speed boost: fully retained (no accel/friction at all) while
-	# airborne, and for a few frames after landing, before normal ground
-	# control resumes.
+	# still airborne mid-arc -- that's the actual point of the move, covering
+	# real distance. LANDING_FRICTION below is what changed.
 	if speed_boost_active and _speed_boost_timer <= 0.0:
 		speed_boost_active = false # safety-net timeout -- see var declaration comment
 	if speed_boost_active:
-		if not on_floor or landed_grace_timer > 0.0:
+		if not on_floor:
+			return
+		if landed_grace_timer > 0.0:
+			# Just landed still carrying the boost -- bleed it off under
+			# stronger-than-normal friction for DASH_JUMP_LANDING_RETENTION_FRAMES
+			# instead of staying frozen at full speed (read as ice) or dropping
+			# straight to normal ground friction (erased the landing-carry feel
+			# entirely).
+			velocity.x = move_toward(velocity.x, 0.0, LANDING_FRICTION * delta)
 			return
 		speed_boost_active = false
 	var target := move_dir.x * MOVE_SPEED
