@@ -6,7 +6,9 @@ extends Node
 # for mode_icon.gd's icon shapes -- "every sprite should be pixel art,
 # nothing made at runtime" per the user's own explicit ask. Covers:
 #   - rank_badge.gd's 6 tier badges (5 named tiers + the unranked default)
-#   - local_map_icon.gd's per-map, theme-colored preview silhouettes
+#   - local_map_icon.gd's fixed local-map preview silhouettes
+#   - achievement_icon.gd's 8 non-tier achievement icons (the 10 "reach this
+#     rank" achievements reuse the rank badges above directly instead)
 #   - ui_style.gd's slider grabber dot (only ever actually called with one
 #     color, COLOR_LOCAL, across every real call site)
 # Run via:
@@ -18,6 +20,8 @@ const UIStyle := preload("res://ui/ui_style.gd")
 const RankBadgeScene := preload("res://ui/rank_badge.gd")
 const LocalMapIconScene := preload("res://ui/local_map_icon.gd")
 const LocalMapCatalog := preload("res://levels/local_maps/catalog.gd")
+const AchievementIconScene := preload("res://ui/achievement_icon.gd")
+const AchievementCatalog := preload("res://cosmetics/achievement_catalog.gd")
 
 const RANK_BADGE_SIZE := Vector2i(44, 52) # 2x rank_badge.gd's real 22x26 render size
 const RANK_BADGE_OUT_DIR := "res://assets/icons/rank_badges"
@@ -28,20 +32,26 @@ const MAP_ICON_SIZE := Vector2i(208, 110) # source resolution; LocalMapIcon stre
 const MAP_ICON_OUT_DIR := "res://assets/icons/local_map_icons"
 const MAP_IDS := LocalMapCatalog.MAP_ORDER # reads the catalog directly so this can never drift out of sync with it again
 
+const ACHIEVEMENT_ICON_SIZE := Vector2i(88, 88) # 2x achievements_menu.gd's NODE_SIZE
+const ACHIEVEMENT_ICON_OUT_DIR := "res://assets/icons/achievement_icons"
+
 const SLIDER_GRABBER_OUT := "res://assets/icons/slider_grabber_local.png"
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(RANK_BADGE_OUT_DIR))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MAP_ICON_OUT_DIR))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(ACHIEVEMENT_ICON_OUT_DIR))
 
-	# LocalMapIcon prefers an already-baked PNG over live-drawing (see its
-	# own _try_setup_baked()) -- correct for a runtime display instance, but
-	# fatal for THIS tool re-running after its own prior bake: it would just
-	# recapture whatever's already on disk instead of the current _draw()
-	# output, silently freezing every map's icon at whatever it looked like
-	# the first time this was ever run. Clearing the map icons first forces
-	# every iteration below to genuinely hit the live-draw fallback.
+	# LocalMapIcon/AchievementIcon both prefer an already-baked PNG over
+	# live-drawing (see their own _try_setup_baked()) -- correct for a
+	# runtime display instance, but fatal for THIS tool re-running after its
+	# own prior bake: it would just recapture whatever's already on disk
+	# instead of the current _draw() output, silently freezing every icon at
+	# whatever it looked like the first time this was ever run. Clearing
+	# both dirs first forces every iteration below to genuinely hit the
+	# live-draw fallback.
 	_clear_dir(MAP_ICON_OUT_DIR)
+	_clear_dir(ACHIEVEMENT_ICON_OUT_DIR)
 
 	for tier in RANK_TIERS:
 		var img := await _render_rank_badge(tier)
@@ -53,6 +63,14 @@ func _ready() -> void:
 		var img := await _render_map_icon(map_id)
 		img.save_png("%s/%s.png" % [MAP_ICON_OUT_DIR, map_id])
 		print("baked local map icon: ", map_id)
+
+	for a in AchievementCatalog.ACHIEVEMENTS:
+		if String(a.get("category", "")) == "tier":
+			continue # reuses a rank badge above instead -- see achievements_menu.gd
+		var achievement_id: String = String(a.id)
+		var img := await _render_achievement_icon(achievement_id)
+		img.save_png("%s/%s.png" % [ACHIEVEMENT_ICON_OUT_DIR, achievement_id])
+		print("baked achievement icon: ", achievement_id)
 
 	_bake_slider_grabber()
 
@@ -95,9 +113,31 @@ func _render_map_icon(map_id: String) -> Image:
 
 	var icon := LocalMapIconScene.new()
 	icon.map_id = map_id
+	icon.accent_color = UIStyle.COLOR_LOCAL
 	viewport.add_child(icon)
 	icon.custom_minimum_size = Vector2(MAP_ICON_SIZE)
 	icon.size = Vector2(MAP_ICON_SIZE)
+	icon.queue_redraw()
+
+	for i in 8:
+		await get_tree().process_frame
+	var img := viewport.get_texture().get_image()
+	viewport.queue_free()
+	return img
+
+func _render_achievement_icon(achievement_id: String) -> Image:
+	var viewport := SubViewport.new()
+	viewport.size = ACHIEVEMENT_ICON_SIZE
+	viewport.transparent_bg = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(viewport)
+	await get_tree().process_frame
+
+	var icon := AchievementIconScene.new()
+	icon.achievement_id = achievement_id
+	viewport.add_child(icon)
+	icon.custom_minimum_size = Vector2(ACHIEVEMENT_ICON_SIZE)
+	icon.size = Vector2(ACHIEVEMENT_ICON_SIZE)
 	icon.queue_redraw()
 
 	for i in 8:
