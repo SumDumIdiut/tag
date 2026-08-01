@@ -24,12 +24,6 @@ const FixedView := preload("res://levels/fixed_view.gd")
 const FALLBACK_COLOR := Color(0.6, 0.6, 0.65) # matches build_tileset.gd's own fallback; defensive only
 const BG_MARGIN := 150.0 # padding around the platforms before fitting to the fixed camera's aspect -- see FixedView.compute()
 
-# Relative to each map's own lowest platform, not a fixed world-Y constant
-# -- see generate_local_maps.gd's identical SPAWN_FLOOR_TOLERANCE comment
-# for why: the fixed-camera redesign re-centers every map's platforms
-# around y=0 with a layout-dependent range, so a fixed absolute cutoff
-# would silently leave most maps with zero spawn-eligible platforms.
-const SPAWN_FLOOR_TOLERANCE := 10.0
 const WALL_THICKNESS := 20
 const CEILING_CLEARANCE := 300
 
@@ -69,7 +63,14 @@ func _build_map(id: String, def: Dictionary, tile_index: int) -> void:
 	arena.add_child(tiles_layer)
 	tiles_layer.owner = arena
 
-	var floor_y := _max_y0(def.platforms)
+	# Every platform gets spawns now, not just the bottom floor tier -- with
+	# private matches able to size a lobby to a full 16-person party (see
+	# network_manager.gd's _create_lobby_internal), floor-tier-only spawning
+	# left most of these compact, multi-tier redesigned maps with as few as
+	# 3 spawn points total, nowhere near enough (players would double/triple
+	# up on the same handful of points). Spreading spawns across every tier
+	# also just reads better for a big free-for-all generally, not only the
+	# 16-player case -- less predictable camping on one fixed floor.
 	var spawn_i := 0
 	var waypoint_i := 0
 	for plat in def.platforms:
@@ -80,8 +81,7 @@ func _build_map(id: String, def: Dictionary, tile_index: int) -> void:
 		_fill_tiles(tiles_layer, x0, y0, x1, y1, tile_index)
 		_add_waypoints(waypoints, waypoint_i, x0, y0, x1)
 		waypoint_i += 100
-		if y0 >= floor_y - SPAWN_FLOOR_TOLERANCE:
-			spawn_i = _add_spawns(spawn_points, spawn_i, x0, y0, x1)
+		spawn_i = _add_spawns(spawn_points, spawn_i, x0, y0, x1)
 
 	_add_boundary_box(tiles_layer, def.platforms, tile_index)
 
@@ -90,12 +90,6 @@ func _build_map(id: String, def: Dictionary, tile_index: int) -> void:
 	var out_path := "%s/%s.tscn" % [OUT_DIR, id]
 	var err := ResourceSaver.save(packed, out_path)
 	print("wrote map: ", id, " err=", err)
-
-func _max_y0(platforms: Array) -> float:
-	var m := -INF
-	for plat in platforms:
-		m = maxf(m, plat.y0)
-	return m
 
 func _compute_bounds(platforms: Array) -> Rect2:
 	var min_v := Vector2(INF, INF)
@@ -147,7 +141,13 @@ func _add_waypoints(parent: Node2D, start_index: int, x0: int, y0: int, x1: int)
 
 func _add_spawns(parent: Node2D, start_index: int, x0: int, y0: int, x1: int) -> int:
 	var width := x1 - x0
-	var count := maxi(2, int(round(float(width) / 260.0)))
+	# Was maxi(2, width/260) -- fine for a handful of players, but the two
+	# smallest online maps (square_arena, floating_platforms, 4 short
+	# platforms each) only reached ~10 total spawns even spread across
+	# every tier, short of the 16 a full party can now fill a private
+	# lobby with. Denser spacing (still ~3-4x a player's own width, no real
+	# overlap risk) gets every map comfortably past 16.
+	var count := maxi(3, int(round(float(width) / 90.0)))
 	for i in count:
 		var t := (i + 0.5) / float(count)
 		var sx := x0 + t * width
