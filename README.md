@@ -14,13 +14,16 @@ A multiplayer Tag game built in Godot 4.7, with Celeste-style platforming moveme
 Open `game/` in the Godot 4.7 editor, or run one of the exported executables from a
 [Release](../../releases) (built automatically on every push to `main`):
 
-- **`Tag.exe`** - the client. The main menu offers two destinations: Online and
-  Local, plus a Customize button for skins/hats. It's also the server: Host
-  Server, Quick Play, and Ranked auto-host all just spawn a second headless copy of
-  this same exe with `--server` (see `game/net/local_server_spawner.gd`), a fully
-  authoritative dedicated server over WebSockets (chosen so it can be reached through
-  a Cloudflare Tunnel without requiring players to install anything extra). Nothing
-  else to download for hosting.
+- **`Tag-Windows.zip`** - extract, then run `Tag.exe` inside -- the client. The
+  main menu offers two destinations: Online and Local, plus a Customize button
+  for skins/hats. It's also the server: Host Server, Quick Play, and Ranked
+  auto-host all just spawn a second headless copy of this same exe with
+  `--server` (see `game/net/local_server_spawner.gd`), a fully authoritative
+  dedicated server over WebSockets (chosen so it can be reached through a
+  Cloudflare Tunnel without requiring players to install anything extra).
+  Nothing else to download for hosting. Zipped (rather than a loose exe)
+  because it needs its `addons/webrtc_native/` folder alongside it -- see
+  "Building" below.
 - **`TagArtTool.exe`** - paint over the game's character/hat art, no source repo
   needed. See [ART_GUIDE.md](ART_GUIDE.md).
 
@@ -50,3 +53,11 @@ publishes the results as a GitHub Release. Before exporting, it also re-bakes th
 character/hat art from whatever's currently in `game/assets/character_templates/`
 (see [ART_GUIDE.md](ART_GUIDE.md)) -- so a merged art edit is already in the very
 next build with no extra steps.
+
+Godot's export step copies the WebRTC GDExtension's `.dll` (declared in
+`game/addons/webrtc_native/webrtc_native.gdextension`) flat into `builds/`,
+but the runtime loader looks for it back at the nested
+`addons/webrtc_native/lib/` path the `.gdextension` file declares -- so it
+has to be copied into that nested path too before Tag.exe will actually find
+it (`.github/workflows/build.yml`'s "Fix WebRTC native library placement"
+step does this for CI builds; do the same by hand after a local export).
