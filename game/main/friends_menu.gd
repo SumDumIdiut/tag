@@ -41,9 +41,27 @@ func _ready() -> void:
 	vbox.add_child(UIStyle.title_label("Friends", 32))
 	vbox.add_child(UIStyle.subtitle_label("Optional -- add friends by code, see who's online, join with one click."))
 
+	# Everything between the header and Back scrolls as one unit -- a party
+	# panel (with members + Leave Party), a requests panel, and a friends
+	# list are each individually unbounded in height (more members/requests/
+	# friends just keeps growing them), and the three of them stacked could
+	# already push past a 648px-tall screen with nothing but an empty
+	# friends list. Without this, Back itself got pushed below the visible
+	# area and was unreachable -- confirmed live on the party+no-requests
+	# state. Back stays outside/below this scroll so it's always visible
+	# regardless of how much content is above it.
+	var content_scroll := ScrollContainer.new()
+	content_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vbox.add_child(content_scroll)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 14)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_scroll.add_child(content)
+
 	var code_panel := PanelContainer.new()
 	code_panel.add_theme_stylebox_override("panel", UIStyle.panel_box(ACCENT))
-	vbox.add_child(code_panel)
+	content.add_child(code_panel)
 	var code_box := VBoxContainer.new()
 	code_box.add_theme_constant_override("separation", 6)
 	code_panel.add_child(code_box)
@@ -68,7 +86,7 @@ func _ready() -> void:
 
 	var party_panel := PanelContainer.new()
 	party_panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_ACCENT))
-	vbox.add_child(party_panel)
+	content.add_child(party_panel)
 	var party_outer := VBoxContainer.new()
 	party_outer.add_theme_constant_override("separation", 6)
 	party_panel.add_child(party_outer)
@@ -89,7 +107,7 @@ func _ready() -> void:
 	# doubles as the visible result of one just accepted/declined here.
 	var requests_panel := PanelContainer.new()
 	requests_panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_ACCENT))
-	vbox.add_child(requests_panel)
+	content.add_child(requests_panel)
 	var requests_outer := VBoxContainer.new()
 	requests_outer.add_theme_constant_override("separation", 6)
 	requests_panel.add_child(requests_outer)
@@ -101,7 +119,7 @@ func _ready() -> void:
 
 	var add_row := HBoxContainer.new()
 	add_row.add_theme_constant_override("separation", 10)
-	vbox.add_child(add_row)
+	content.add_child(add_row)
 	_add_edit = LineEdit.new()
 	_add_edit.placeholder_text = "Friend's code"
 	_add_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -116,15 +134,15 @@ func _ready() -> void:
 	_status_label = Label.new()
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status_label.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
-	vbox.add_child(_status_label)
+	content.add_child(_status_label)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(scroll)
+	# No longer its own separate ScrollContainer -- it's already inside the
+	# outer content_scroll above (nesting two scrollables here fought over
+	# mouse-wheel input), just a plain section within it now.
 	_list_box = VBoxContainer.new()
 	_list_box.add_theme_constant_override("separation", 8)
 	_list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_list_box)
+	content.add_child(_list_box)
 
 	var back_btn := Button.new()
 	back_btn.text = "Back"
@@ -375,13 +393,18 @@ func _build_friend_row(entry: Dictionary) -> Control:
 
 	var status_label := Label.new()
 	# "online" only means their app is open (see server.js's playerSockets-
-	# based check) -- serverName is null whenever they're just sitting in
-	# menus rather than actually in a match, which str()'d straight into the
-	# label used to show the literal text "Playing: <null>".
-	var server_name: String = str(entry.get("serverName", ""))
+	# based check) -- serverName is JSON null whenever they're just sitting
+	# in menus rather than actually in a match. GDScript's str(null) is the
+	# literal text "<null>" (angle brackets, not the bare word "null") --
+	# checking the stringified value against "null" here never actually
+	# matched, so this fell through to the else branch and showed
+	# "Playing: <null>" regardless. Checking the raw value for null BEFORE
+	# ever stringifying it sidesteps the whole fragile string comparison.
+	var server_name_val = entry.get("serverName", null)
+	var server_name: String = str(server_name_val) if server_name_val != null else ""
 	if not online:
 		status_label.text = "Offline"
-	elif server_name.is_empty() or server_name == "null":
+	elif server_name.is_empty():
 		status_label.text = "Online"
 	else:
 		status_label.text = "Playing: %s" % server_name
