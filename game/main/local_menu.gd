@@ -110,6 +110,7 @@ func _build_map_thumb(id: String) -> Button:
 
 	var preview := LocalMapIconScene.new()
 	preview.map_id = id
+	preview.accent_color = UIStyle.COLOR_LOCAL
 	preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	preview.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 6)
 	btn.add_child(preview)
