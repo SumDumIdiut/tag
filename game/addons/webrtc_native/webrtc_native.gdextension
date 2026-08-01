@@ -13,5 +13,14 @@ compatibility_minimum = 4.3
 ; down -- re-extract the full godot-extension-webrtc_native.zip release
 ; from github.com/godotengine/webrtc-native if a non-Windows target is
 ; ever needed.
+; Must stay "lib/..." (not a bare filename) -- the export step resolves
+; this SAME string both to find the source .dll to copy (breaks export
+; entirely if wrong, confirmed) and, at runtime, as the res:// path
+; open_dynamic_library() looks for. Export's own copy step drops the "lib/"
+; nesting and places the .dll flat next to the built .exe though (confirmed
+; by inspecting builds/ after export), so the runtime lookup at
+; res://addons/webrtc_native/lib/... never finds it there -- see the
+; post-export fixup this project's build step now does to reconcile the two
+; (copies the flat .dll into builds/addons/webrtc_native/lib/ afterward).
 windows.debug.x86_64 = "lib/libwebrtc_native.windows.template_debug.x86_64.dll"
 windows.release.x86_64 = "lib/libwebrtc_native.windows.template_release.x86_64.dll"
