@@ -142,7 +142,7 @@ func _poll_control() -> void:
 			# one of those frames and the relay ends up with a pile of
 			# duplicate registrations for what's really one server.
 			_register_sent = true
-			_send_json(_control, {"type": "register", "name": server_name, "maxPlayers": max_players, "ranked": ranked, "playlist": playlist, "unlisted": unlisted})
+			_send_json(_control, {"type": "register", "name": server_name, "maxPlayers": max_players, "ranked": ranked, "playlist": playlist, "unlisted": unlisted, "webrtc": use_webrtc})
 		while _control.get_available_packet_count() > 0:
 			_handle_control_message(_control.get_packet())
 	elif state == WebSocketPeer.STATE_CLOSED:

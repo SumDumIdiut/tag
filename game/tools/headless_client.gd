@@ -25,10 +25,20 @@ extends Node
 #     --playlist=1v1 --duration=15
 #
 # Args (all optional except --relay):
-#   --relay=<url>       WebSocket URL to connect to (a resolved join address,
-#                        NOT a server name -- resolve that separately, e.g.
-#                        via the existing party_harness.py's directory/party
-#                        flow, same as a real client would).
+#   --relay=<url>       URL to connect to (a resolved join address, NOT a
+#                        server name -- resolve that separately, e.g. via
+#                        the existing party_harness.py's directory/party
+#                        flow, same as a real client would). Same address
+#                        works for either --transport value below --
+#                        start_client_auto() derives the right peer type
+#                        from --transport, not from the URL itself.
+#   --transport=<kind>  "ws" (default) or "webrtc" -- which
+#                        NetworkManager.start_client_auto() path to take.
+#                        Must match whatever transport the target server is
+#                        actually running (--webrtc/--ws on server_main.gd),
+#                        same requirement a real client has, just picked
+#                        explicitly here instead of read from a directory
+#                        listing.
 #   --username=<name>   Display name (default: whatever GameSettings/session already has).
 #   --playlist=<id>     Passed to quick_join_lobby() once connected -- empty
 #                        string (default) means Free-for-all/private (no
@@ -52,6 +62,13 @@ extends Node
 const RELAY_JOIN_BASE := "wss://codecade.co.za/tag/relay/join/"
 
 var _relay_url := ""
+## "ws" (default) or "webrtc" -- which NetworkManager.start_client_auto()
+## path to take, same as what a real client picks based on a matched
+## server's directory-reported transport. Exists so this framework can
+## actually exercise the WebRTC connect path directly (a specific server's
+## transport is known up front here, unlike a real matchmaking client)
+## instead of only ever testing WebSocket.
+var _transport := "ws"
 var _playlist_id := ""
 var _duration_sec := 10.0
 var _move_pattern := "idle"
@@ -82,8 +99,8 @@ func _ready() -> void:
 
 	var username: String = GameSettings.saved_username if GameSettings.saved_username != "" else "HeadlessBot"
 	NetworkManager.set_username(username)
-	_log("CONNECTING", {"relay": _relay_url, "username": username})
-	NetworkManager.start_client(_relay_url, username)
+	_log("CONNECTING", {"relay": _relay_url, "username": username, "transport": _transport})
+	NetworkManager.start_client_auto(_relay_url, username, _transport)
 
 func _parse_args() -> void:
 	for arg in OS.get_cmdline_user_args():
@@ -99,6 +116,8 @@ func _parse_args() -> void:
 			_move_pattern = arg.substr(7)
 		elif arg.begins_with("--auto-start="):
 			_auto_start_sec = arg.substr(13).to_float()
+		elif arg.begins_with("--transport="):
+			_transport = arg.substr(12)
 
 func _on_connected() -> void:
 	_log("CONNECTED", {"peer_id": multiplayer.get_unique_id()})

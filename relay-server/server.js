@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -11,6 +12,12 @@ const realApp = express();
 const app = express.Router();
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, '');
 const PORT = parseInt(process.env.PORT || '3002', 10);
+// Cloudflare Realtime TURN key -- set on terraserver only (start_tag_relay()
+// sources it from $HOME/.tag-secrets.env, never from anything git-tracked).
+// Lets game clients get real STUN+TURN ICE servers without this process
+// ever handing out the long-lived API token itself -- see /api/webrtc/turn-credentials.
+const TURN_KEY_ID = process.env.TURN_KEY_ID || '';
+const TURN_API_TOKEN = process.env.TURN_API_TOKEN || '';
 
 const HEARTBEAT_TIMEOUT_MS = 20_000;
 const SWEEP_INTERVAL_MS = 5_000;
@@ -739,6 +746,7 @@ function handlePartyQueueStart(fromId, msg, attempt = 0) {
   if (!party || party.leaderId !== fromId) return;
   const mode = String(msg.mode || '').slice(0, 16);
   let serverAddress = String(msg.serverAddress || '').slice(0, 256);
+  let transport = null;
   if (mode === 'private') {
     const match = [...servers.values()].find(s => s.unlisted && s.name === serverAddress);
     if (!match) {
@@ -748,12 +756,17 @@ function handlePartyQueueStart(fromId, msg, attempt = 0) {
       return;
     }
     serverAddress = match.id;
+    transport = match.transport || 'ws';
   }
+  // Private is the only mode resolved server-side (see above) -- ranked/
+  // casual followers re-resolve via /api/servers themselves (already
+  // carries transport), so transport is only meaningful/sent for private.
   const payload = {
     type: 'party_connect_now',
     serverAddress,
     mode,
     playlist: String(msg.playlist || '').slice(0, 16),
+    transport,
   };
   for (const memberId of party.members) {
     if (memberId !== fromId) sendToPlayer(memberId, payload);
@@ -835,7 +848,7 @@ setInterval(() => {
 app.get('/api/servers', (req, res) => {
   res.json([...servers.values()].filter(s => !s.unlisted).map(s => ({
     id: s.id, name: s.name, playerCount: s.playerCount, maxPlayers: s.maxPlayers, createdAt: s.createdAt, ranked: !!s.ranked,
-    playlist: s.playlist || '',
+    playlist: s.playlist || '', transport: s.transport || 'ws',
   })));
 });
 
@@ -984,6 +997,54 @@ app.get('/api/ai/policy-weights', (req, res) => {
   res.set('Content-Type', 'application/json');
   res.set('Cache-Control', 'no-cache'); // small file, always want whatever the pool most recently published
   fs.createReadStream(AI_POLICY_WEIGHTS_PATH).pipe(res);
+});
+
+// Short-lived (1hr -- comfortably longer than any single connection
+// negotiation, short enough to limit exposure if a client process gets
+// compromised) STUN+TURN credentials from Cloudflare Realtime, generated
+// fresh per request. The long-lived TURN_API_TOKEN never leaves this
+// process -- only the short-lived generated credential set does. See
+// network_manager.gd's WebRTC connect path, which fetches this right
+// before creating its RTCPeerConnection.
+const TURN_CREDENTIAL_TTL_SEC = 3600;
+function fetchTurnCredentials() {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ ttl: TURN_CREDENTIAL_TTL_SEC });
+    const req = https.request({
+      hostname: 'rtc.live.cloudflare.com',
+      path: `/v1/turn/keys/${encodeURIComponent(TURN_KEY_ID)}/credentials/generate-ice-servers`,
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${TURN_API_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+      timeout: 8000,
+    }, res => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode !== 201) return reject(new Error(`Cloudflare TURN API returned ${res.statusCode}: ${data}`));
+        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('Cloudflare TURN API timed out')));
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+app.get('/api/webrtc/turn-credentials', async (req, res) => {
+  if (!TURN_KEY_ID || !TURN_API_TOKEN) return res.status(503).json({ error: 'TURN not configured on this server' });
+  if (!withinRateLimit('connect', clientIpFor(req), RATE_LIMIT_CONNECT_MAX)) return res.status(429).json({ error: 'slow down' });
+  try {
+    const creds = await fetchTurnCredentials();
+    res.set('Cache-Control', 'no-store'); // credentials are per-request, never cache/reuse across clients
+    res.json(creds);
+  } catch (e) {
+    console.error('TURN credential generation failed:', e.message);
+    res.status(502).json({ error: 'TURN credential generation failed' });
+  }
 });
 
 // Shared by every MULTI_KEY_CATEGORIES entry -- each publishes as a set of
@@ -1230,6 +1291,7 @@ app.get('/api/friends/:clientId', (req, res) => {
       online: playerSockets.has(friendId) || !!server,
       serverId: server ? server.id : null,
       serverName: server ? server.name : null,
+      serverTransport: server ? (server.transport || 'ws') : null,
     };
   });
   res.json(out);
@@ -1423,6 +1485,12 @@ function handleHostControl(ws) {
         // instead of relying on the (deliberately blind to it) public
         // directory endpoint.
         unlisted: !!msg.unlisted,
+        // Set once at registration from server_main.gd's --webrtc flag
+        // (RelayClient's register message) -- never changes for this
+        // server's lifetime, so a joining client always knows up front
+        // which NetworkManager.start_client*() variant to call instead of
+        // guessing and silently failing to connect.
+        transport: msg.webrtc ? 'webrtc' : 'ws',
         createdAt: Date.now(),
         lastHeartbeat: Date.now(),
         controlSocket: ws,

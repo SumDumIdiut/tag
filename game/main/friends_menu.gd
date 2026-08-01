@@ -416,7 +416,7 @@ func _build_friend_row(entry: Dictionary) -> Control:
 		var join_btn := Button.new()
 		join_btn.text = "Join"
 		UIStyle.style_button(join_btn, UIStyle.COLOR_ONLINE, 8)
-		join_btn.pressed.connect(_on_join_pressed.bind(entry.get("serverId", "")))
+		join_btn.pressed.connect(_on_join_pressed.bind(entry.get("serverId", ""), str(entry.get("serverTransport", "ws"))))
 		row.add_child(join_btn)
 
 		var friend_id: String = str(entry.get("clientId", ""))
@@ -440,12 +440,12 @@ func _is_in_my_party(client_id: String) -> bool:
 			return true
 	return false
 
-func _on_join_pressed(server_id: String) -> void:
+func _on_join_pressed(server_id: String, transport: String) -> void:
 	if server_id.is_empty():
 		return
 	_status_label.text = "Connecting..."
 	NetworkManager.set_username(GameSettings.saved_username)
-	NetworkManager.start_client(RELAY_JOIN_BASE + server_id, GameSettings.saved_username)
+	NetworkManager.start_client_auto(RELAY_JOIN_BASE + server_id, GameSettings.saved_username, transport)
 
 func _on_connected() -> void:
 	if _cancelled:

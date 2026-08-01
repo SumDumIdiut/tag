@@ -29,9 +29,10 @@ var _retry_timer: Timer
 ## process itself already knows to use ENet from the --direct flag in
 ## extra_args.
 var _use_direct := false
-## See use_direct's own comment -- same idea, WebRTC loopback instead
-## (C:\Users\Flipped\.claude\plans\humming-coalescing-otter.md, Phase 2).
-var _use_webrtc := false
+## See use_direct's own comment -- same idea, WebRTC loopback instead. True
+## by default (matches server_main.gd's own default) since WebRTC is now
+## the default transport for every hosting path.
+var _use_webrtc := true
 
 func _ready() -> void:
 	_retry_timer = Timer.new()
@@ -60,7 +61,7 @@ func _ready() -> void:
 ## start_client -- only multiplayer_connect.gd's Host button sets this;
 ## every other caller (Quick Play, ranked auto-host, regular Private
 ## hosting) leaves it false and behaves exactly as before.
-func spawn(server_name: String, username: String, extra_args: PackedStringArray = PackedStringArray(), use_direct: bool = false, use_webrtc: bool = false) -> void:
+func spawn(server_name: String, username: String, extra_args: PackedStringArray = PackedStringArray(), use_direct: bool = false, use_webrtc: bool = true) -> void:
 	var self_exe := OS.get_executable_path()
 	if not FileAccess.file_exists(self_exe):
 		failed.emit("Couldn't find this client's own executable -- can't host.")
@@ -85,10 +86,13 @@ func spawn(server_name: String, username: String, extra_args: PackedStringArray 
 		"--quit-when-empty",
 	])
 	args.append_array(extra_args)
+	# use_direct always wins if a caller somehow passes both -- --direct is
+	# real UDP/ENet, a completely different peer type than WebRTC, so
+	# there's nothing for --webrtc to mean alongside it.
 	if use_direct:
 		args.append("--direct")
-	if use_webrtc:
-		args.append("--webrtc")
+	elif not use_webrtc:
+		args.append("--ws") # opt out of server_main.gd's own webrtc-by-default
 	_child_pid = OS.create_process(self_exe, args)
 	if _child_pid == -1:
 		failed.emit("Failed to launch a local server.")
@@ -97,7 +101,7 @@ func spawn(server_name: String, username: String, extra_args: PackedStringArray 
 	_username = username
 	_pending_port = port
 	_use_direct = use_direct
-	_use_webrtc = use_webrtc
+	_use_webrtc = use_webrtc and not use_direct
 	_attempts = 0
 	_pending = true
 	_retry_timer.start()

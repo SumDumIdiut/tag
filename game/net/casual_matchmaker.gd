@@ -81,7 +81,7 @@ func _on_directory_response(result: int, response_code: int, _headers: PackedStr
 		return
 	status_changed.emit("Joining %s..." % best.name)
 	NetworkManager.set_username(_username)
-	NetworkManager.start_client(RELAY_JOIN_BASE + str(best.id), _username)
+	NetworkManager.start_client_auto(RELAY_JOIN_BASE + str(best.id), _username, str(best.get("transport", "ws")))
 
 func _on_join_existing_failed() -> void:
 	if _cancelled:
