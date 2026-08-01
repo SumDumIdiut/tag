@@ -39,6 +39,18 @@ const DEFAULT_PORT := 9000
 const MAX_LOBBY_PLAYERS := 8
 const MIN_RANKED_PLAYERS := 2
 const RANKED_REPORT_URL := "https://codecade.co.za/tag/api/ranked/report-result"
+const TURN_CREDENTIALS_URL := "https://codecade.co.za/tag/api/webrtc/turn-credentials"
+## Only used if the relay's own TURN credential endpoint itself is
+## unreachable (relay down, Cloudflare outage) -- keeps a WebRTC connection
+## attempt able to at least try STUN-only rather than having no ICE servers
+## configured at all. Not a substitute for TURN: a peer behind a hard
+## NAT/CGNAT still won't connect in that degraded case.
+const FALLBACK_STUN_SERVERS: Array = [{"urls": ["stun:stun.cloudflare.com:3478"]}]
+## How often a long-running dedicated server re-fetches TURN credentials --
+## comfortably under the 1hr TTL relay-server.js requests from Cloudflare
+## (see relay-server/server.js's TURN_CREDENTIAL_TTL_SEC) so a server that's
+## been up for hours never hands a newly-joining peer an expired credential.
+const WEBRTC_ICE_REFRESH_SEC := 1800.0
 ## How long the map-vote popup stays open, and how long the "starting
 ## in..." countdown after it runs, before the match actually begins (see
 ## _begin_match_sequence()/_on_map_vote_timeout()) -- map selection is now
@@ -289,20 +301,29 @@ func start_client_direct(address: String, display_name: String) -> void:
 		return
 	multiplayer.multiplayer_peer = peer
 
-# ==================== WebRTC (migration in progress) ====================
+# ==================== WebRTC ====================
 #
-# See C:\Users\Flipped\.claude\plans\humming-coalescing-otter.md for the
-# full migration plan. Phase 1 proved the WebRTCPeerConnection/
-# WebRTCMultiplayerPeer plumbing and RPC dispatch work end to end over a
-# same-machine WebRTCLoopbackListener. Phase 2 (this) adds the relay
-# -routed path real remote players actually need -- accept_webrtc_peer()
-# below is the shared entry point both the loopback listener AND
-# relay_client.gd (for real, possibly-remote joins routed through
-# relay-server.js) feed a freshly-connected WebRTCSignalingChannel into,
-# so the actual offer/answer/candidate negotiation is written once
-# regardless of which transport carried it. Not yet reachable from any
-# menu -- start_server()/start_client() (WebSocket) stay the default
-# until this is proven live over the real relay path.
+# Now the default transport for every real hosting/joining path (see
+# server_main.gd's use_webrtc default and NetworkManager.start_client_auto,
+# which every join call site -- casual/ranked matchmaking, party-follow, a
+# friend's Join button -- routes through instead of calling start_client()
+# directly). Phase 1 proved the WebRTCPeerConnection/WebRTCMultiplayerPeer
+# plumbing and RPC dispatch work end to end over a same-machine
+# WebRTCLoopbackListener. Phase 2 added the relay-routed path real remote
+# players actually need -- accept_webrtc_peer() below is the shared entry
+# point both the loopback listener AND relay_client.gd (for real,
+# possibly-remote joins routed through relay-server.js) feed a freshly
+# -connected WebRTCSignalingChannel into, so the actual offer/answer/
+# candidate negotiation is written once regardless of which transport
+# carried it. Phase 3 (this) adds real STUN+TURN (Cloudflare Realtime,
+# see _fetch_turn_credentials/relay-server.js's /api/webrtc/turn-credentials)
+# so peers behind NAT/CGNAT -- the common case for real home connections,
+# not just the loopback/same-LAN cases the first two phases could prove
+# live with -- can actually complete negotiation, and wires the whole path
+# into every real menu flow instead of leaving it opt-in-only. start_client()
+# (WebSocket) stays available as an explicit fallback (--ws on a spawned
+# server, or a server registered before this migration reporting
+# transport: "ws"), just no longer the default.
 #
 # The connecting peer always creates the offer and picks its own peer id
 # (a large random int, sent as part of the offer) -- deterministic, and
@@ -320,6 +341,17 @@ var _webrtc_listener: WebRTCLoopbackListener
 ## nothing frees this bookkeeping on its own -- _on_webrtc_peer_disconnected
 ## below does that.
 var _webrtc_pending_peers := {}
+## Server-side cache of the current STUN+TURN ice server list, shared by
+## every peer that connects while it's valid -- fetching fresh credentials
+## per incoming peer would add a real HTTP round trip to every join for no
+## benefit (Cloudflare's own credentials are meant to be reused for a
+## while, see TURN_CREDENTIAL_TTL_SEC server-side). Starts as STUN-only so
+## a peer connecting in the first instant after start_server_webrtc() still
+## gets a usable (if TURN-less) config rather than an empty one; the real
+## fetch below upgrades it as soon as it lands, and _webrtc_ice_refresh_timer
+## keeps it from ever going stale on a long-lived server.
+var _webrtc_ice_servers: Array = FALLBACK_STUN_SERVERS
+var _webrtc_ice_refresh_timer: Timer
 
 ## Starts this dedicated server's WebRTCMultiplayerPeer and a loopback
 ## signaling listener on `port`, for the host's own client to join itself
@@ -346,8 +378,71 @@ func start_server_webrtc(port: int) -> bool:
 		push_error("NetworkManager: WebRTC signaling listener failed on port %d (%s)" % [port, listen_err])
 		return false
 	_webrtc_listener.channel_connected.connect(accept_webrtc_peer)
+	_fetch_turn_credentials(func(ice_servers: Array): _webrtc_ice_servers = ice_servers)
+	_webrtc_ice_refresh_timer = Timer.new()
+	_webrtc_ice_refresh_timer.wait_time = WEBRTC_ICE_REFRESH_SEC
+	_webrtc_ice_refresh_timer.timeout.connect(func(): _fetch_turn_credentials(func(ice_servers: Array): _webrtc_ice_servers = ice_servers))
+	add_child(_webrtc_ice_refresh_timer)
+	_webrtc_ice_refresh_timer.start()
 	print("NetworkManager: WebRTC server listening, loopback signaling on port %d" % port)
 	return true
+
+## Fetches short-lived STUN+TURN credentials from this project's own relay
+## (which holds the actual Cloudflare API token -- see relay-server/server.js's
+## /api/webrtc/turn-credentials, never exposed to this client directly).
+## Always calls on_done exactly once, with FALLBACK_STUN_SERVERS if anything
+## goes wrong (relay unreachable, bad response) rather than leaving the
+## caller hanging.
+func _fetch_turn_credentials(on_done: Callable) -> void:
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
+		req.queue_free()
+		if response_code == 200:
+			var parsed = JSON.parse_string(body.get_string_from_utf8())
+			if typeof(parsed) == TYPE_DICTIONARY and parsed.get("iceServers") is Array:
+				on_done.call(_filter_ice_servers_for_libjuice(parsed["iceServers"]))
+				return
+		push_warning("NetworkManager: TURN credential fetch failed (code %d) -- falling back to STUN-only" % response_code)
+		on_done.call(FALLBACK_STUN_SERVERS)
+	)
+	if req.request(TURN_CREDENTIALS_URL) != OK:
+		req.queue_free()
+		on_done.call(FALLBACK_STUN_SERVERS)
+
+## Godot's WebRTC GDExtension backend (libjuice) only supports TURN over
+## UDP -- confirmed live: handing it Cloudflare's full ice server list
+## as-is (which also includes turn:...?transport=tcp and turns:...?transport=tcp
+## entries, for browser clients that need those) logs
+## "TURN transports TCP and TLS are not supported with libjuice" and then
+## negotiation never completes at all, not even for the valid UDP entries
+## alongside them -- libjuice's addIceServer appears to leave the whole ICE
+## agent unable to gather any candidates rather than just skipping the
+## unsupported entry. Stripping non-UDP TURN urls (STUN entries are
+## untouched, they have no transport param to filter) before they ever
+## reach pc.initialize() avoids tripping that path at all.
+func _filter_ice_servers_for_libjuice(ice_servers: Array) -> Array:
+	var filtered: Array = []
+	for entry in ice_servers:
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var raw_urls = entry.get("urls", [])
+		var urls: Array = raw_urls if raw_urls is Array else [raw_urls]
+		var kept: Array = []
+		for url in urls:
+			var url_str := str(url)
+			if url_str.begins_with("turns:") or url_str.contains("transport=tcp"):
+				continue
+			kept.append(url_str)
+		if kept.is_empty():
+			continue
+		var new_entry := {"urls": kept}
+		if entry.has("username"):
+			new_entry["username"] = entry["username"]
+		if entry.has("credential"):
+			new_entry["credential"] = entry["credential"]
+		filtered.append(new_entry)
+	return filtered
 
 ## Shared entry point for a freshly-connected signaling channel, whichever
 ## transport it came from (loopback listener above, or relay_client.gd's
@@ -357,18 +452,33 @@ func start_server_webrtc(port: int) -> bool:
 func accept_webrtc_peer(channel: WebRTCSignalingChannel) -> void:
 	if channel.get_parent() == null:
 		add_child(channel) # not yet in the tree -- WebRTCLoopbackListener already parents its own channels, relay_client.gd's don't
-	channel.message_received.connect(func(msg: Dictionary):
+	# NOT one-shot -- deliberately keeps listening until a message actually
+	# typed "offer" arrives, rather than assuming the first message received
+	# is it. Confirmed live this assumption breaks once real STUN/TURN
+	# candidates are in play: gathering those takes real network round
+	# trips of varying length, so a "candidate" send can genuinely arrive
+	# before the offer does through relay-server.js's own documented
+	# pre-splice message-loss gap (see WebRTCSignalingChannel's header
+	# comment) -- a naive one-shot listener burns its single trigger on
+	# that stray candidate and the real offer, even though the channel's
+	# own resend logic guarantees it eventually arrives, is never handled.
+	# This stayed invisible before TURN was added: with no ICE servers
+	# configured, gathering was fast enough (host candidates only, no
+	# network round trip) that the offer always won the race in practice.
+	var listener: Callable
+	listener = func(msg: Dictionary):
 		if msg.get("type", "") != "offer":
-			return # a stray candidate/answer arriving before the offer shouldn't happen, but ignore rather than crash if it does
+			return # not it yet -- keep waiting, don't consume this connection's one useful trigger on it
+		channel.message_received.disconnect(listener)
 		_accept_webrtc_offer(channel, msg)
-	, CONNECT_ONE_SHOT)
+	channel.message_received.connect(listener)
 
 func _accept_webrtc_offer(channel: WebRTCSignalingChannel, offer_msg: Dictionary) -> void:
 	var peer_id := int(offer_msg.get("peerId", 0))
 	if peer_id <= 1 or _webrtc_pending_peers.has(peer_id):
 		return # 0/1 are reserved (invalid/server); a collision just drops this attempt rather than crashing
 	var pc := WebRTCPeerConnection.new()
-	pc.initialize({})
+	pc.initialize({"iceServers": _webrtc_ice_servers})
 	(multiplayer.multiplayer_peer as WebRTCMultiplayerPeer).add_peer(pc, peer_id)
 	_webrtc_pending_peers[peer_id] = {"pc": pc, "channel": channel}
 	pc.session_description_created.connect(func(type: String, sdp: String):
@@ -422,10 +532,32 @@ func start_client_webrtc_loopback(port: int, display_name: String) -> void:
 func start_client_webrtc_relay(address: String, display_name: String) -> void:
 	_start_client_webrtc(WebRTCSignalingChannel.for_url(_normalize_address(address)), display_name)
 
+## Every real "join a specific already-running server" call site (casual/
+## ranked matchmaking, party-follow, a friend's Join button) ends up here
+## instead of calling start_client()/start_client_webrtc_relay() directly --
+## a joining client can't know in advance which transport a given server
+## is actually running (see relay-server.js's per-server `transport` field,
+## set once at that server's own registration from its --webrtc flag), so
+## guessing wrong would just silently fail to connect. `transport` is
+## whatever the matched server's directory/friend/party-follow record
+## reported ("webrtc" or anything else, including missing/null, treated as
+## "ws" -- the long-standing default, and what any pre-migration server
+## still reports).
+func start_client_auto(address: String, display_name: String, transport: String) -> void:
+	if transport == "webrtc":
+		start_client_webrtc_relay(address, display_name)
+	else:
+		start_client(address, display_name)
+
 func _start_client_webrtc(channel: WebRTCSignalingChannel, display_name: String) -> void:
 	username = display_name
 	is_server = false
 	_pending_as_spectator = false
+	_fetch_turn_credentials(func(ice_servers: Array):
+		_start_client_webrtc_with_ice(channel, ice_servers)
+	)
+
+func _start_client_webrtc_with_ice(channel: WebRTCSignalingChannel, ice_servers: Array) -> void:
 	var my_id := randi_range(2, 2147483647)
 	var mp := WebRTCMultiplayerPeer.new()
 	var create_err := mp.create_client(my_id)
@@ -435,7 +567,7 @@ func _start_client_webrtc(channel: WebRTCSignalingChannel, display_name: String)
 		return
 	multiplayer.multiplayer_peer = mp
 	var pc := WebRTCPeerConnection.new()
-	pc.initialize({})
+	pc.initialize({"iceServers": ice_servers})
 	mp.add_peer(pc, 1) # the server is always peer 1
 	add_child(channel)
 	pc.session_description_created.connect(func(type: String, sdp: String):
