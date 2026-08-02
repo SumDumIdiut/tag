@@ -34,7 +34,7 @@ var _cancelled := false
 
 func _ready() -> void:
 	_playlist_id = GameSettings.selected_ranked_playlist
-	UIStyle.add_background(self, "ranked_queue")
+	UIStyle.add_glow_background(self, UIStyle.COLOR_RANKED)
 	$VBox/StatusPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_RANKED))
 	UIStyle.style_back_button(back_button)
 	if PlaylistCatalog.is_team_mode(_playlist_id):

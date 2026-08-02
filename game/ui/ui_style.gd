@@ -70,6 +70,48 @@ static func add_background(root: Control, _screen_key: String = "") -> void:
 	root.add_child(grad_rect)
 	root.move_child(grad_rect, 0)
 
+## Same dark base + soft alpha-blended-circle glow technique as
+## team_lobby_view.gd's own _SplitBackground/_VsBadge (see those for the
+## original), just one centered glow in a single accent color instead of
+## a two-team split -- for screens with no "other side" yet (matchmaking/
+## queue screens) that still want the same moody, energetic look the VS
+## reveal has, instead of the plain flat gradient add_background() gives.
+## Call once from a screen's _ready(), same as add_background().
+static func add_glow_background(root: Control, accent_color: Color) -> void:
+	var glow := _GlowBackground.new()
+	glow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	glow.accent_color = accent_color
+	root.add_child(glow)
+	root.move_child(glow, 0)
+
+class _GlowBackground extends Control:
+	const BG_COLOR := Color(0.06, 0.065, 0.095)
+	var accent_color: Color = Color(0.91, 0.29, 0.35)
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		resized.connect(queue_redraw)
+
+	func _draw() -> void:
+		var w: float = size.x
+		var h: float = size.y
+		draw_rect(Rect2(Vector2.ZERO, size), BG_COLOR)
+		# One big centered glow (the screen's main mood lighting) plus a
+		# smaller, brighter one riding on top -- reads as a single richer
+		# light source rather than two competing evenly-matched ones, which
+		# a flat single-radius glow at this scale looked flat/dim.
+		var big_radius := minf(w * 0.75, h * 1.1)
+		_draw_glow(Vector2(w * 0.5, h * 0.42), big_radius, accent_color)
+		_draw_glow(Vector2(w * 0.5, h * 0.42), big_radius * 0.4, accent_color)
+
+	func _draw_glow(center: Vector2, max_radius: float, color: Color) -> void:
+		var steps := 28
+		for i in steps:
+			var t := float(steps - i) / float(steps)
+			var radius := max_radius * t
+			var alpha := 0.006 + 0.02 * (1.0 - t)
+			draw_circle(center, radius, Color(color.r, color.g, color.b, alpha))
+
 const CHROME_DIR := "res://assets/icons/chrome"
 
 ## Loads a baked 9-patch chrome sprite (see tools/build_chrome_art.gd) as a
