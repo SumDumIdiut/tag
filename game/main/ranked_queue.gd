@@ -37,7 +37,13 @@ func _ready() -> void:
 	UIStyle.add_glow_background(self, UIStyle.COLOR_RANKED)
 	$VBox/StatusPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_RANKED))
 	UIStyle.style_back_button(back_button)
-	if PlaylistCatalog.is_team_mode(_playlist_id):
+	# team_count == 2, not is_team_mode() -- is_team_mode() is keyed on
+	# team_SIZE > 1 (players per side), which is false for 1v1 (team_size
+	# 1, team_count 2) even though it's just as "2-sided" as 2v2 and reads
+	# identically in TeamLobbyView's red/blue split. Using team_size here
+	# meant 1v1 queueing never got this view at all, only the plain status
+	# text -- confirmed live, comparing screenshots of the two side by side.
+	if PlaylistCatalog.team_count(_playlist_id) == 2:
 		_build_team_view()
 	# Built AFTER _build_team_view() -- a later sibling draws on top, and
 	# _team_view is a full-rect background (see team_lobby_view.gd's split

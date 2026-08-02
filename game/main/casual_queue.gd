@@ -37,7 +37,10 @@ func _ready() -> void:
 	UIStyle.add_glow_background(self, UIStyle.COLOR_QUICKPLAY)
 	$VBox/StatusPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_QUICKPLAY))
 	UIStyle.style_back_button(back_button)
-	if PlaylistCatalog.is_team_mode(_playlist_id):
+	# See ranked_queue.gd's identical fix for why team_count == 2 (not
+	# is_team_mode()) is the right check here -- 1v1 is just as "2-sided"
+	# as 2v2 despite team_size being 1, not >1.
+	if PlaylistCatalog.team_count(_playlist_id) == 2:
 		_build_team_view()
 	_map_vote_popup = MapVotePopupScene.new()
 	add_child(_map_vote_popup)
