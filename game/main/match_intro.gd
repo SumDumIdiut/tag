@@ -55,18 +55,30 @@ func setup(my_id: int, roster: Dictionary, level_id: String = "", ranked: bool =
 func _ready() -> void:
 	# A playlist id tells us exactly how many sides there are (team_count);
 	# without one (an older/undifferentiated ranked match, or a private
-	# party match, which never carries one), fall back to the original
-	# heuristic -- ranked and exactly 2 in the roster.
+	# party match, which never carries one -- private matches are never
+	# ranked and never carry a playlist_id at all), there's no team info to
+	# read, so fall back to roster size alone: 2 reads as a natural "VS", 3
+	# or 4 as a natural 3-/4-way split -- the exact same reveals ranked/
+	# casual get for those same headcounts, just without any team-color
+	# meaning (see _build_vs_layout's own playlist_id fallback to "1v1" for
+	# the no-teams case). Previously gated on `_ranked`, which meant a
+	# private match's own 2/3/4-player games never got ANY of these reveals
+	# at all (fell straight to the plain roster list) -- confirmed by
+	# reading through this dispatch, not just the >4 circle-reveal case
+	# private matches already had.
 	if not _playlist_id.is_empty():
 		_vs_mode = PlaylistCatalog.team_count(_playlist_id) == 2
 		_columns_mode = PlaylistCatalog.team_count(_playlist_id) == 3
 		_corners_mode = PlaylistCatalog.team_count(_playlist_id) == 4
 	else:
-		_vs_mode = _ranked and _roster.size() == 2
-	# Private matches are never ranked, and every casual/ranked playlist
-	# caps at 4 total players -- so ">4 and not ranked" can only ever be a
-	# private match, no separate "is this a party match" flag needed.
-	_circle_mode = not _ranked and _roster.size() > 4
+		match _roster.size():
+			2:
+				_vs_mode = true
+			3:
+				_columns_mode = true
+			4:
+				_corners_mode = true
+	_circle_mode = not (_vs_mode or _columns_mode or _corners_mode) and _roster.size() > 4
 
 	if _vs_mode:
 		_time_left = VS_INTRO_DURATION_SEC

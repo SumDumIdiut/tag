@@ -40,6 +40,21 @@ func _ready() -> void:
 	## party auto-join -- the other side connects with a manually-shared
 	## address instead).
 	var is_direct := false
+	## Real WebRTC with real NAT traversal (STUN + Cloudflare Realtime TURN,
+	## see NetworkManager._fetch_turn_credentials), relay-routed the same
+	## way a normal server is -- unlike --direct, this DOES keep relay
+	## registration/party auto-join working, it just changes what
+	## RelayClient does with an incoming join (see its own use_webrtc
+	## comment) and what NetworkManager listens with. Now the default for
+	## every hosting path (Quick Play/Ranked auto-host, Host Server, Private)
+	## -- gameplay traffic goes peer-to-peer between client and this process
+	## once negotiated instead of riding the relay's WebSocket the whole
+	## match, fixing real cross-region latency (see start_client's own
+	## comment on the South Africa <-> Netherlands case this exists for).
+	## --ws forces the old WebSocket path back for a given server process
+	## (debugging/rollback without a new build); --direct (real UDP,
+	## unrelated to this) always wins if both are somehow given.
+	var use_webrtc := true
 	var quit_when_empty := false
 	var is_ranked := false
 	var level_id := ""
@@ -62,12 +77,22 @@ func _ready() -> void:
 			is_private = true
 		elif arg == "--direct":
 			is_direct = true
+		elif arg == "--webrtc":
+			use_webrtc = true
+		elif arg == "--ws":
+			use_webrtc = false
 		elif arg == "--quit-when-empty":
 			quit_when_empty = true
 		elif arg == "--ranked":
 			is_ranked = true
 
-	var ok := NetworkManager.start_server_direct(port) if is_direct else NetworkManager.start_server(port)
+	var ok := true
+	if is_direct:
+		ok = NetworkManager.start_server_direct(port)
+	elif use_webrtc:
+		ok = NetworkManager.start_server_webrtc(port)
+	else:
+		ok = NetworkManager.start_server(port)
 	if not ok:
 		push_error("Server failed to start -- exiting.")
 		get_tree().quit(1)
@@ -90,7 +115,7 @@ func _ready() -> void:
 	# connects with a manually-shared address, so there's nothing for the
 	# relay to help with here.
 	if not is_direct:
-		_relay_client = RelayClient.new(relay_url, server_name, max_players, port, is_ranked, playlist_id, is_private)
+		_relay_client = RelayClient.new(relay_url, server_name, max_players, port, is_ranked, playlist_id, is_private, use_webrtc)
 		add_child(_relay_client)
 
 	# Godot has no native "die with parent". This used to poll

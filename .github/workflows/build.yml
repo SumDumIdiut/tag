@@ -83,6 +83,29 @@ jobs:
           }
           if (-not (Test-Path "builds\Tag.exe")) { throw "Tag.exe still missing after $maxAttempts attempts" }
 
+      # The WebRTC GDExtension (game/addons/webrtc_native/webrtc_native.gdextension)
+      # declares its library at "lib/libwebrtc_native...dll" relative to itself --
+      # that path has to stay as-is, since Godot's export step uses that same
+      # relative path to find the source file to copy in the first place. But
+      # export's own copy step drops the "lib/" nesting and lands the .dll flat
+      # next to Tag.exe, while the runtime GDExtension loader looks for it back
+      # at the original nested res://addons/webrtc_native/lib/... path -- so
+      # without this, every build fails to load the extension (Error 126) even
+      # though the .dll is right there, just in the wrong spot. Mirroring it
+      # into the nested path it actually gets looked up at reconciles the two.
+      - name: Fix WebRTC native library placement
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "builds\addons\webrtc_native\lib" | Out-Null
+          Copy-Item "builds\libwebrtc_native.windows.*.dll" "builds\addons\webrtc_native\lib\" -Force
+
+      # Tag.exe can no longer be shipped as a single loose file now that it
+      # needs the WebRTC .dll sitting beside it at a specific relative path --
+      # zip the two together so extracting preserves that layout.
+      - name: Package client as zip
+        shell: pwsh
+        run: Compress-Archive -Path "builds\Tag.exe","builds\addons" -DestinationPath "builds\Tag-Windows.zip" -Force
+
       - name: Export art tool
         shell: pwsh
         run: |
@@ -107,6 +130,6 @@ jobs:
         shell: pwsh
         run: |
           $tag = "build-$($env:GITHUB_RUN_NUMBER)"
-          gh release create $tag "builds/Tag.exe" "builds/TagArtTool.exe" `
+          gh release create $tag "builds/Tag-Windows.zip" "builds/TagArtTool.exe" `
             --title "Build $($env:GITHUB_RUN_NUMBER)" `
-            --notes "Automated build from commit $($env:GITHUB_SHA). Download Tag.exe to play -- it hosts too (Casual/Private/Ranked all just spawn a second copy of itself as a local server, nothing extra to download). Download TagArtTool.exe to paint levels and menu chrome/icons -- see ART_GUIDE.md."
+            --notes "Automated build from commit $($env:GITHUB_SHA). Download and extract Tag-Windows.zip to play -- it hosts too (Casual/Private/Ranked all just spawn a second copy of itself as a local server, nothing extra to download). Download TagArtTool.exe to paint levels and menu chrome/icons -- see ART_GUIDE.md."

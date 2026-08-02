@@ -17,7 +17,14 @@ const UIStyle := preload("res://ui/ui_style.gd")
 const OnlineMapCatalog := preload("res://levels/online_maps/catalog.gd")
 const OnlineMapIconScene := preload("res://ui/online_map_icon.gd")
 
-const TILE_SIZE := Vector2(150, 150)
+# 7 tiles at the old 150px + 20px separation totaled 1170px -- wider than
+# the game's own locked 1152px viewport (see project.godot's window/stretch
+# settings), so the row overflowed off the edge of the screen with no way
+# to reach the last tile or two. Shrunk to comfortably fit all 7 with
+# margin to spare regardless of how many real online maps ever end up in
+# OnlineMapCatalog.MAP_ORDER.
+const TILE_SIZE := Vector2(136, 136)
+const TILE_SEPARATION := 10
 const PREVIEW_MARGIN := 8.0
 const BALLOT_SIZE := Vector2(32, 32)
 
@@ -39,7 +46,7 @@ func _ready() -> void:
 	_tile_row = HBoxContainer.new()
 	_tile_row.mouse_filter = Control.MOUSE_FILTER_PASS
 	_tile_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_tile_row.add_theme_constant_override("separation", 20)
+	_tile_row.add_theme_constant_override("separation", TILE_SEPARATION)
 	_tile_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	add_child(_tile_row)
 
