@@ -34,7 +34,7 @@ var _cancelled := false
 
 func _ready() -> void:
 	_playlist_id = GameSettings.selected_casual_playlist
-	UIStyle.add_glow_background(self, UIStyle.COLOR_QUICKPLAY)
+	UIStyle.add_glow_background(self, UIStyle.COLOR_QUICKPLAY, PlaylistCatalog.team_count(_playlist_id))
 	$VBox/StatusPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_QUICKPLAY))
 	UIStyle.style_back_button(back_button)
 	# See ranked_queue.gd's identical fix for why team_count == 2 (not

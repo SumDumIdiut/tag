@@ -72,21 +72,27 @@ static func add_background(root: Control, _screen_key: String = "") -> void:
 
 ## Same dark base + soft alpha-blended-circle glow technique as
 ## team_lobby_view.gd's own _SplitBackground/_VsBadge (see those for the
-## original), just one centered glow in a single accent color instead of
-## a two-team split -- for screens with no "other side" yet (matchmaking/
-## queue screens) that still want the same moody, energetic look the VS
-## reveal has, instead of the plain flat gradient add_background() gives.
-## Call once from a screen's _ready(), same as add_background().
-static func add_glow_background(root: Control, accent_color: Color) -> void:
+## original) -- one centered glow in a single accent color for a 2-sided
+## screen with no "other side" yet (matchmaking/queue screens), or, when
+## `sections` > 1, that many evenly-spaced glows with a thin vertical
+## divider between each (a 1v1v1 queue gets 3, 1v1v1v1 gets 4) -- same
+## same-color-FFA idea TeamLobbyView's own two-color split represents for
+## an actual 2-team match, just generalized past 2 without needing a
+## second color (every side in a free-for-all playlist is equally "no
+## team," so there's no second color to split against). Call once from a
+## screen's _ready(), same as add_background().
+static func add_glow_background(root: Control, accent_color: Color, sections: int = 1) -> void:
 	var glow := _GlowBackground.new()
 	glow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	glow.accent_color = accent_color
+	glow.sections = maxi(1, sections)
 	root.add_child(glow)
 	root.move_child(glow, 0)
 
 class _GlowBackground extends Control:
 	const BG_COLOR := Color(0.06, 0.065, 0.095)
 	var accent_color: Color = Color(0.91, 0.29, 0.35)
+	var sections: int = 1
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -96,13 +102,24 @@ class _GlowBackground extends Control:
 		var w: float = size.x
 		var h: float = size.y
 		draw_rect(Rect2(Vector2.ZERO, size), BG_COLOR)
-		# One big centered glow (the screen's main mood lighting) plus a
-		# smaller, brighter one riding on top -- reads as a single richer
-		# light source rather than two competing evenly-matched ones, which
-		# a flat single-radius glow at this scale looked flat/dim.
-		var big_radius := minf(w * 0.75, h * 1.1)
-		_draw_glow(Vector2(w * 0.5, h * 0.42), big_radius, accent_color)
-		_draw_glow(Vector2(w * 0.5, h * 0.42), big_radius * 0.4, accent_color)
+		if sections <= 1:
+			# One big centered glow (the screen's main mood lighting) plus a
+			# smaller, brighter one riding on top -- reads as a single richer
+			# light source rather than two competing evenly-matched ones,
+			# which a flat single-radius glow at this scale looked flat/dim.
+			var big_radius := minf(w * 0.75, h * 1.1)
+			_draw_glow(Vector2(w * 0.5, h * 0.42), big_radius, accent_color)
+			_draw_glow(Vector2(w * 0.5, h * 0.42), big_radius * 0.4, accent_color)
+			return
+		var section_w := w / float(sections)
+		var glow_radius := minf(section_w * 1.3, h * 0.95)
+		for i in sections:
+			var cx := section_w * (i + 0.5)
+			_draw_glow(Vector2(cx, h * 0.42), glow_radius, accent_color)
+		for i in range(1, sections):
+			var lx := section_w * i
+			draw_line(Vector2(lx, 0), Vector2(lx, h), Color(1, 1, 1, 0.05), 100.0)
+			draw_line(Vector2(lx, 0), Vector2(lx, h), Color(1, 1, 1, 0.25), 1.5)
 
 	func _draw_glow(center: Vector2, max_radius: float, color: Color) -> void:
 		var steps := 28
