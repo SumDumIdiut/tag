@@ -12,7 +12,13 @@ extends Control
 
 const UIStyle := preload("res://ui/ui_style.gd")
 const AchievementCatalog := preload("res://cosmetics/achievement_catalog.gd")
+const RankBadgeScene := preload("res://ui/rank_badge.gd")
+const AchievementIconScene := preload("res://ui/achievement_icon.gd")
 const ACCENT := UIStyle.COLOR_ACCENT
+# Locked icons are tinted toward this (multiplicatively) instead of showing
+# their real color -- cheap "grayed out" without needing a second baked
+# copy of every icon, same trick a locked-out button elsewhere might use.
+const LOCKED_ICON_TINT := Color(0.4, 0.41, 0.45)
 
 const NODE_SIZE := Vector2(44, 44)
 const COL_SPACING := 90.0
@@ -53,7 +59,7 @@ const PROGRESSION_API_BASE := "https://codecade.co.za/tag/api/progression"
 
 var _status_label: Label
 var _canvas: Control
-var _nodes := {} # id -> PanelContainer
+var _nodes := {} # id -> {box: PanelContainer, icon: Control}
 var _unlocked_set := {}
 
 func _ready() -> void:
@@ -120,7 +126,7 @@ func _draw_connections() -> void:
 		var done: bool = _unlocked_set.has(a) and _unlocked_set.has(b)
 		_canvas.draw_line(_node_center(a), _node_center(b), LINE_COLOR_DONE if done else LINE_COLOR_PENDING, 3.0)
 
-func _build_node(a: Dictionary) -> PanelContainer:
+func _build_node(a: Dictionary) -> Dictionary:
 	var pos: Vector2 = NODE_LAYOUT[a.id]
 
 	var col := VBoxContainer.new()
@@ -137,6 +143,21 @@ func _build_node(a: Dictionary) -> PanelContainer:
 	box.mouse_filter = Control.MOUSE_FILTER_STOP
 	col.add_child(box)
 
+	# The 10 "reach this rank" achievements reuse RankBadge directly -- same
+	# art a ranked VS screen already shows for that exact tier, not a
+	# second, different icon meaning the same thing. Everything else gets
+	# its own small themed icon (see achievement_icon.gd).
+	var icon: Control
+	if String(a.get("category", "")) == "tier":
+		icon = RankBadgeScene.new()
+		icon.tier = String(a.get("tier", ""))
+	else:
+		icon = AchievementIconScene.new()
+		icon.achievement_id = String(a.id)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 4)
+	box.add_child(icon)
+
 	var name_label := Label.new()
 	name_label.text = String(a.name)
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -145,7 +166,7 @@ func _build_node(a: Dictionary) -> PanelContainer:
 	name_label.add_theme_font_size_override("font_size", 10)
 	col.add_child(name_label)
 
-	return box
+	return {"box": box, "icon": icon}
 
 func _fetch_progression() -> void:
 	if PlayerIdentity.client_id.is_empty():
@@ -175,10 +196,16 @@ func _render(unlocked_ids: Array) -> void:
 		_unlocked_set[id] = true
 	_status_label.text = "%d / %d unlocked" % [unlocked_ids.size(), AchievementCatalog.ACHIEVEMENTS.size()]
 	for id in _nodes.keys():
-		var box: PanelContainer = _nodes[id]
+		var box: PanelContainer = _nodes[id]["box"]
+		var icon: Control = _nodes[id]["icon"]
 		var unlocked: bool = _unlocked_set.has(id)
+		# The icon itself now carries the achievement's real identity/color --
+		# the panel is just a subtle frame around it, unlocked vs locked shown
+		# by that frame's border plus the icon's own modulate (full color vs
+		# grayed toward LOCKED_ICON_TINT) rather than a big flat color fill
+		# behind it.
 		var style := StyleBoxFlat.new()
-		style.bg_color = UNLOCKED_COLOR if unlocked else LOCKED_COLOR
+		style.bg_color = Color(0, 0, 0, 0.25)
 		style.border_width_left = 2
 		style.border_width_top = 2
 		style.border_width_right = 2
@@ -189,6 +216,7 @@ func _render(unlocked_ids: Array) -> void:
 		style.corner_radius_bottom_right = 6
 		style.corner_radius_bottom_left = 6
 		box.add_theme_stylebox_override("panel", style)
+		icon.modulate = Color.WHITE if unlocked else LOCKED_ICON_TINT
 	_canvas.queue_redraw()
 
 func _on_back_pressed() -> void:

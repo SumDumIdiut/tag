@@ -23,6 +23,14 @@ func _ready() -> void:
 	# throws a spurious "parent node is busy" error otherwise.
 	if OS.has_feature("dedicated_server") or "--server" in OS.get_cmdline_args():
 		get_tree().change_scene_to_file.call_deferred("res://main/server_main.tscn")
+	elif "--headless-client" in OS.get_cmdline_args():
+		# See tools/headless_client.gd -- a real client driven by CLI args
+		# for scripted testing. A plain res://tools/headless_client.tscn
+		# positional override does NOT reliably replace main_scene on an
+		# exported/PCK build (verified: it still loads bootstrap->main_menu
+		# regardless), so this needs its own explicit flag branch, same as
+		# --server above.
+		get_tree().change_scene_to_file.call_deferred("res://tools/headless_client.tscn")
 	elif OS.has_feature("art_tool"):
 		get_tree().change_scene_to_file.call_deferred("res://tools/art_tool.tscn")
 	else:

@@ -14,7 +14,7 @@ signal party_updated(party: Dictionary)
 signal invite_received(party_id: String, from_client_id: String, from_username: String)
 signal invite_declined(target_username: String)
 signal kicked
-signal connect_now(server_address: String, mode: String, playlist: String)
+signal connect_now(server_address: String, mode: String, playlist: String, transport: String)
 signal party_error(reason: String)
 signal friend_request_received(from_client_id: String, from_username: String)
 ## Fired when someone I sent a friend request to responds -- accepted tells
@@ -240,7 +240,14 @@ func _handle_message(raw: PackedByteArray) -> void:
 			current_party = {}
 			kicked.emit()
 		"party_connect_now":
-			connect_now.emit(str(msg.get("serverAddress", "")), str(msg.get("mode", "")), str(msg.get("playlist", "")))
+			# transport is null (not "ws") for ranked/casual -- server.js only
+			# resolves it for private (see handlePartyQueueStart); str(null)
+			# would stringify to the literal "<null>", not "ws", so it needs
+			# the same null-check-before-stringifying fix friends_menu.gd's
+			# "Playing: <null>" bug needed.
+			var raw_transport = msg.get("transport", null)
+			var transport: String = str(raw_transport) if raw_transport != null else "ws"
+			connect_now.emit(str(msg.get("serverAddress", "")), str(msg.get("mode", "")), str(msg.get("playlist", "")), transport)
 		"party_error":
 			party_error.emit(str(msg.get("reason", "")))
 		"friend_request_received":
@@ -350,12 +357,12 @@ func _close_invite_popup(layer: CanvasLayer) -> void:
 ## ourselves, same lookup ranked_queue.gd/casual_queue.gd already do to
 ## find each other, just filtered down to one exact name instead of
 ## picking the fullest match.
-func _on_connect_now(target: String, mode: String, playlist: String) -> void:
+func _on_connect_now(target: String, mode: String, playlist: String, transport: String) -> void:
 	_follow_mode = mode
 	_follow_playlist = playlist
 	_follow_target = target
 	if mode == "private":
-		_connect_to_follow_target(RELAY_JOIN_BASE + target)
+		_connect_to_follow_target(RELAY_JOIN_BASE + target, transport)
 	else:
 		_follow_attempts = 0
 		_search_for_leader_server()
@@ -376,17 +383,17 @@ func _search_for_leader_server() -> void:
 						continue
 					if str(s.get("name", "")) != _follow_target:
 						continue
-					_connect_to_follow_target(RELAY_JOIN_BASE + str(s.id))
+					_connect_to_follow_target(RELAY_JOIN_BASE + str(s.id), str(s.get("transport", "ws")))
 					return
 		if _follow_attempts < FOLLOW_SEARCH_MAX_ATTEMPTS:
 			_follow_search_timer.start()
 	)
 	req.request(DIRECTORY_URL)
 
-func _connect_to_follow_target(address: String) -> void:
+func _connect_to_follow_target(address: String, transport: String) -> void:
 	NetworkManager.connected_to_server.connect(_on_follow_connected, CONNECT_ONE_SHOT)
 	NetworkManager.set_username(GameSettings.saved_username)
-	NetworkManager.start_client(address, GameSettings.saved_username)
+	NetworkManager.start_client_auto(address, GameSettings.saved_username, transport)
 
 ## Mirrors each mode's own queue screen: a ranked server auto-joins a
 ## connecting client into its lobby (see NetworkManager.is_ranked_server /

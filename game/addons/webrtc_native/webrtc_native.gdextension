@@ -1,0 +1,26 @@
+[configuration]
+
+entry_symbol = "webrtc_extension_init"
+compatibility_minimum = 4.3
+
+[libraries]
+
+; Windows x86_64 only -- this project's client and dedicated server are
+; both the same Tag.exe (see local_server_spawner.gd), and terraserver
+; (the only non-Windows machine involved) never runs a Godot process, only
+; the matchmaking/signaling backend. Trimmed from upstream's full release
+; (which also ships Linux/macOS/Android/iOS builds) to keep repo size
+; down -- re-extract the full godot-extension-webrtc_native.zip release
+; from github.com/godotengine/webrtc-native if a non-Windows target is
+; ever needed.
+; Must stay "lib/..." (not a bare filename) -- the export step resolves
+; this SAME string both to find the source .dll to copy (breaks export
+; entirely if wrong, confirmed) and, at runtime, as the res:// path
+; open_dynamic_library() looks for. Export's own copy step drops the "lib/"
+; nesting and places the .dll flat next to the built .exe though (confirmed
+; by inspecting builds/ after export), so the runtime lookup at
+; res://addons/webrtc_native/lib/... never finds it there -- see the
+; post-export fixup this project's build step now does to reconcile the two
+; (copies the flat .dll into builds/addons/webrtc_native/lib/ afterward).
+windows.debug.x86_64 = "lib/libwebrtc_native.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "lib/libwebrtc_native.windows.template_release.x86_64.dll"
