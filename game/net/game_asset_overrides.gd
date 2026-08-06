@@ -25,6 +25,13 @@ static func playlist_thumbnail_override_path(key: String) -> String:
 static func background_override_path(key: String) -> String:
 	return "user://game_assets/backgrounds/%s.png" % key
 
+## `key` here is a full ui-layout "screen.shortkey" string (e.g.
+## "main_menu.online_button"), not a bare identifier like every other
+## category's keys -- deliberately reuses that exact namespace, see
+## GameAssetCategories.BUTTON_ART_KEYS.
+static func button_art_override_path(key: String) -> String:
+	return "user://game_assets/button_art/%s.png" % key
+
 ## Generic form of chrome_override_path() above -- ui_style.gd's
 ## _chrome_stylebox() uses this directly.
 static func bar_override_path(category: String, key: String) -> String:

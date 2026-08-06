@@ -174,6 +174,8 @@ class _GlowBackground extends Control:
 static func apply_layout_override(node: Control, layout_key: String) -> void:
 	if _dump_mode:
 		_record_layout_dump(node, layout_key)
+	if node is Button:
+		_apply_button_art_override(node, layout_key)
 	var o := UILayoutOverrides.get_override(layout_key)
 	if o.is_empty():
 		return
@@ -184,6 +186,47 @@ static func apply_layout_override(node: Control, layout_key: String) -> void:
 		node.custom_minimum_size = Vector2(float(o.get("w", size.x)), float(o.get("h", size.y)))
 	if o.has("x") or o.has("y"):
 		_apply_layout_position_offset(node, float(o.get("x", 0.0)), float(o.get("y", 0.0)))
+
+## Independent of the ui-layout override system above (this checks the
+## "button_art" game-assets category, not UILayoutOverrides) -- every
+## registered button already falls back to the shared chrome "button"
+## texture via button_box(), this just swaps in a per-button image instead
+## when one's been published for this exact layout_key (see
+## GameAssetCategories.BUTTON_ART_KEYS), independent of whether that same
+## key also has a text/position override. A no-op, leaving style_button()'s
+## own chrome-based styleboxes in place, if nothing's been uploaded.
+static func _apply_button_art_override(btn: Button, layout_key: String) -> void:
+	var tex: Texture2D = GameAssetOverrides.load_override_texture(GameAssetOverrides.button_art_override_path(layout_key))
+	if not tex:
+		return
+	# Same texture_margin/content_margin as button_box()'s own chrome path
+	# (see _chrome_stylebox()) so a per-button image reads at the same
+	# scale/padding as every other button rather than looking like a special
+	# case. Distinct per-state modulate (not distinct textures -- the
+	# website only ever publishes one image per button) keeps the same
+	# escalating normal/hover/pressed feedback language button_box() uses,
+	# just applied as a brightness shift on the one uploaded image instead
+	# of an alpha ramp on a tinted chrome texture.
+	var states := {
+		"normal": Color(1, 1, 1, 1),
+		"hover": Color(1.15, 1.15, 1.15, 1),
+		"pressed": Color(0.85, 0.85, 0.85, 1),
+		"hover_pressed": Color(0.85, 0.85, 0.85, 1),
+		"focus": Color(1.15, 1.15, 1.15, 1),
+	}
+	for state in states:
+		var box := StyleBoxTexture.new()
+		box.texture = tex
+		box.texture_margin_left = 12.0
+		box.texture_margin_top = 12.0
+		box.texture_margin_right = 12.0
+		box.texture_margin_bottom = 12.0
+		box.content_margin_left = 16.0
+		box.content_margin_top = 10.0
+		box.content_margin_right = 16.0
+		box.content_margin_bottom = 10.0
+		box.modulate_color = states[state]
+		btn.add_theme_stylebox_override(state, box)
 
 ## Some apply_layout_override() call sites (every dynamically-built playlist
 ## card in casual_playlist_select.gd/ranked_playlist_select.gd, main_menu.gd's
