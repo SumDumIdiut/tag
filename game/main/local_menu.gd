@@ -228,12 +228,20 @@ func _build_map_thumb(id: String, level_name: String) -> Button:
 	btn.add_child(preview)
 
 	# Name is always visible, not just on hover -- a dark backing bar keeps
-	# it legible regardless of the thumbnail underneath.
+	# it legible regardless of the thumbnail underneath. Inset by the same
+	# 6px margin the preview above uses (PRESET_MODE_MINSIZE, 6) -- btn's
+	# clip_contents only clips to its rectangular bounding box, not the
+	# rounded corners style_button()'s own border actually draws, so an
+	# edge-to-edge bar's square corners poked out past the curve at the
+	# bottom-left/bottom-right without this.
 	var name_bar := ColorRect.new()
 	name_bar.color = Color(0, 0, 0, 0.55)
 	name_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	name_bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	name_bar.offset_top = -MAP_NAME_BAR_HEIGHT
+	name_bar.offset_left = 6
+	name_bar.offset_right = -6
+	name_bar.offset_bottom = -6
 	btn.add_child(name_bar)
 
 	var name_label := Label.new()
@@ -246,6 +254,9 @@ func _build_map_thumb(id: String, level_name: String) -> Button:
 	name_label.add_theme_color_override("font_color", Color(0.94, 0.95, 0.98))
 	name_label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	name_label.offset_top = -MAP_NAME_BAR_HEIGHT
+	name_label.offset_left = 6
+	name_label.offset_right = -6
+	name_label.offset_bottom = -6
 	btn.add_child(name_label)
 
 	return btn

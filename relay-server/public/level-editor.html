@@ -1114,24 +1114,38 @@ publishBtn.addEventListener('click', async () => {
     // what actually publishes -- "what you see is what you get," the same
     // convention any layered editor's own export follows.
     //
-    // x/y/width/height are converted from this canvas's own on-screen scale
-    // (CELL_PX per grid cell -- an arbitrary editor rendering choice, not a
-    // real-world unit) into grid-cell-relative units by dividing out
-    // CELL_PX, the same way spawn_points are already grid-relative before
-    // TILE_SIZE_PX converts them to world-pixels. LevelData.gd multiplies
-    // these back out by whatever TILE_SIZE_PX actually is at load time, so
-    // a placement's size/position stays proportionally correct even if
-    // TILE_SIZE_PX itself ever changes again later -- unlike a raw
-    // canvas-px or world-px value baked in at publish time, which would
-    // silently drift.
+    // x/y (WHERE on the grid) and width/height (HOW BIG) are genuinely
+    // different kinds of quantity here, and need different divisors:
+    //
+    // x/y stay CELL_PX-relative -- p.x/p.y are this canvas's own raw pixel
+    // position of where the placement was dragged, and dividing by CELL_PX
+    // (the SAME constant tiles use to paint themselves on this canvas, see
+    // draw()'s own `x * CELL_PX`) converts that into "how many grid-cells
+    // over," the same grid-relative unit tiles/spawn_points already use.
+    // That's correct regardless of CELL_PX's own value, since it's just
+    // this canvas's tile-grid, converted to a scale-independent cell count.
+    //
+    // width/height must be TILE_SIZE_PX-relative instead -- r.w/r.h come
+    // from placedRect()'s own naturalWidth/naturalHeight * scale%, a REAL
+    // PIXEL size with no relationship to CELL_PX at all (placements aren't
+    // grid-snapped the way tiles are). Dividing that by CELL_PX (20) instead
+    // of TILE_SIZE_PX (40) previously saved every placement at exactly
+    // TILE_SIZE_PX/CELL_PX = 2x its real intended size -- confirmed live:
+    // an uploaded 759x329px image at the default 100% scale published as
+    // width=37.95/height=16.45 tile-units, which LevelData.gd then renders
+    // at 37.95*40 x 16.45*40 = 1518x658 real pixels, exactly double the
+    // source image. The editor's own reload of a saved level used the same
+    // wrong constant on the way back in (see the inverse conversion below),
+    // so this never showed up as a mismatch inside the editor itself --
+    // only against the game's own real TILE_SIZE_PX-based rendering.
     body.placements = placed.filter(p => p.visible).map(p => {
       const r = placedRect(p);
       return {
         textureIndex: p.libIndex,
         x: p.x / CELL_PX,
         y: p.y / CELL_PX,
-        width: r.w / CELL_PX,
-        height: r.h / CELL_PX,
+        width: r.w / TILE_SIZE_PX,
+        height: r.h / TILE_SIZE_PX,
       };
     });
   }
@@ -1264,12 +1278,13 @@ async function loadLevelForEdit(entry) {
 
     resetToNewLevel();
 
-    // Inverse of the Publish handler's own conversions (see its comments):
-    // tiles are already grid-cell coordinates, spawn_points are world-pixel
-    // (cell-center * TILE_SIZE_PX), placements are grid-cell-relative
-    // x/y/width/height that need CELL_PX (and, for scale, each texture's own
-    // natural size) multiplied back in to land in this canvas's own
-    // on-screen coordinate space.
+    // Inverse of the Publish handler's own conversions (see its comments
+    // there for why x/y and width/height use different constants): tiles
+    // are already grid-cell coordinates, spawn_points are world-pixel
+    // (cell-center * TILE_SIZE_PX), placements' x/y need CELL_PX multiplied
+    // back in (this canvas's own grid-relative scale) while width/height
+    // (via scale, below) need TILE_SIZE_PX (a real pixel size, unrelated to
+    // CELL_PX) to land back in this canvas's own on-screen coordinate space.
     tiles = new Set((data.tiles || []).map(t => key(t[0], t[1])));
     spawns = (data.spawn_points || []).map(s => ({
       x: s[0] / TILE_SIZE_PX - 0.5,
@@ -1278,7 +1293,7 @@ async function loadLevelForEdit(entry) {
     libTextures = newLibTextures;
     placed = (data.placements || []).map(p => {
       const lib = libTextures[p.textureIndex];
-      const w = p.width * CELL_PX;
+      const w = p.width * TILE_SIZE_PX;
       return {
         id: uid(),
         libIndex: p.textureIndex,
