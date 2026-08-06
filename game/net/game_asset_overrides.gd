@@ -16,6 +16,15 @@ const ICONS_OVERRIDE_PATH := "user://game_assets/icons.png"
 static func chrome_override_path(key: String) -> String:
 	return "user://game_assets/chrome/%s.png" % key
 
+static func platform_override_path(key: String) -> String:
+	return "user://game_assets/platform/%s.png" % key
+
+static func playlist_thumbnail_override_path(key: String) -> String:
+	return "user://game_assets/playlist_thumbnails/%s.png" % key
+
+static func background_override_path(key: String) -> String:
+	return "user://game_assets/backgrounds/%s.png" % key
+
 ## Generic form of chrome_override_path() above -- ui_style.gd's
 ## _chrome_stylebox() uses this directly.
 static func bar_override_path(category: String, key: String) -> String:

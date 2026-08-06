@@ -34,7 +34,7 @@ text = "Lobby"
 
 [node name="RosterList" type="ItemList" parent="VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 160)
+custom_minimum_size = Vector2(600, 160)
 
 [node name="ReadyButton" type="Button" parent="VBox"]
 layout_mode = 2

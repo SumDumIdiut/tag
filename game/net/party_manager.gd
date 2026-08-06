@@ -74,6 +74,11 @@ var _follow_mode := ""
 var _follow_playlist := ""
 var _follow_target := ""
 var _follow_attempts := 0
+## Only meaningful for "private" (see _retry_follow()) -- ranked/casual
+## always re-resolve a fresh address via the directory instead, since the
+## server they're looking for might not be the one they started with.
+var _follow_last_address := ""
+var _follow_last_transport := "ws"
 var _follow_search_timer: Timer
 var _keepalive_timer: Timer
 
@@ -86,7 +91,7 @@ func _ready() -> void:
 	_follow_search_timer = Timer.new()
 	_follow_search_timer.wait_time = FOLLOW_SEARCH_RETRY_SEC
 	_follow_search_timer.one_shot = true
-	_follow_search_timer.timeout.connect(_search_for_leader_server)
+	_follow_search_timer.timeout.connect(_retry_follow)
 	add_child(_follow_search_timer)
 	_keepalive_timer = Timer.new()
 	_keepalive_timer.wait_time = KEEPALIVE_INTERVAL_SEC
@@ -121,6 +126,17 @@ func leave_party() -> void:
 
 func kick(target_client_id: String) -> void:
 	_send({"type": "party_kick", "targetClientId": target_client_id})
+
+## On-demand "what's my real party state right now" -- see server.js's
+## party_resync handler for the full reasoning. Called by friends_menu.gd
+## whenever it opens, so a party UI that silently drifted (a fire-and-
+## forget leave/kick/invite-accept whose _send() landed on a socket that
+## reported OPEN but wasn't really -- the same class of gap
+## KEEPALIVE_INTERVAL_SEC exists for but can't fully close between beats)
+## self-heals the moment you actually look at it, rather than staying wrong
+## until the next full reconnect.
+func request_resync() -> void:
+	_send({"type": "party_resync"})
 
 func accept_friend_request(from_client_id: String) -> void:
 	_send({"type": "friend_request_accept", "fromClientId": from_client_id})
@@ -361,10 +377,21 @@ func _on_connect_now(target: String, mode: String, playlist: String, transport: 
 	_follow_mode = mode
 	_follow_playlist = playlist
 	_follow_target = target
+	_follow_attempts = 0
 	if mode == "private":
-		_connect_to_follow_target(RELAY_JOIN_BASE + target, transport)
+		_follow_last_address = RELAY_JOIN_BASE + target
+		_follow_last_transport = transport
+		_connect_to_follow_target(_follow_last_address, transport)
 	else:
-		_follow_attempts = 0
+		_search_for_leader_server()
+
+## Shared by both the "not found in the directory yet" retry (below) and a
+## failed connect attempt (_on_follow_connect_failed) -- private has no
+## directory to re-search, so it just redials the same resolved address.
+func _retry_follow() -> void:
+	if _follow_mode == "private":
+		_connect_to_follow_target(_follow_last_address, _follow_last_transport)
+	else:
 		_search_for_leader_server()
 
 func _search_for_leader_server() -> void:
@@ -390,10 +417,42 @@ func _search_for_leader_server() -> void:
 	)
 	req.request(DIRECTORY_URL)
 
+## A follower's own client can still be mid-cleanup from the PREVIOUS match
+## (e.g. still sitting on the match-results screen, "Continue" not yet
+## clicked -- see match_results.gd's _on_continue_pressed, the only thing
+## that actually calls NetworkManager.disconnect_from_server() today) when
+## the leader queues again. Reassigning multiplayer.multiplayer_peer to a
+## brand-new peer while the OLD one is still open leaves the new WS/WebRTC
+## handshake racing that old peer's teardown -- confirmed as the live
+## "party comes along fine for match 1, not match 2" cause. Forcing a clean
+## disconnect_from_server() first, unconditionally, means every follow
+## attempt starts from the exact same known-empty state regardless of
+## whatever screen/connection state the follower's client happened to be in
+## -- a no-op on the (normal) case where it was already disconnected.
+##
+## Also guards both one-shot connections against a leftover from an attempt
+## that never fired (retry racing a slow first attempt) -- connecting an
+## already-connected callable is a silent no-op in Godot, which would leave
+## the OLD attempt's context wired up instead of this one.
 func _connect_to_follow_target(address: String, transport: String) -> void:
+	NetworkManager.disconnect_from_server()
+	if NetworkManager.connected_to_server.is_connected(_on_follow_connected):
+		NetworkManager.connected_to_server.disconnect(_on_follow_connected)
+	if NetworkManager.connection_failed.is_connected(_on_follow_connect_failed):
+		NetworkManager.connection_failed.disconnect(_on_follow_connect_failed)
 	NetworkManager.connected_to_server.connect(_on_follow_connected, CONNECT_ONE_SHOT)
+	NetworkManager.connection_failed.connect(_on_follow_connect_failed, CONNECT_ONE_SHOT)
 	NetworkManager.set_username(GameSettings.saved_username)
 	NetworkManager.start_client_auto(address, GameSettings.saved_username, transport)
+
+## A failed connect used to strand the follower silently forever -- no
+## retry, no error, nothing -- while everyone else who made it through went
+## on into the match without them. Retries the same bounded way the initial
+## "not found in the directory yet" case already does.
+func _on_follow_connect_failed() -> void:
+	_follow_attempts += 1
+	if _follow_attempts < FOLLOW_SEARCH_MAX_ATTEMPTS:
+		_follow_search_timer.start()
 
 ## Mirrors each mode's own queue screen: a ranked server auto-joins a
 ## connecting client into its lobby (see NetworkManager.is_ranked_server /

@@ -4,10 +4,11 @@ class_name UpdateChecker
 # Checks the tag repo's GitHub Releases against this build's own stamped
 # version (see build_version.gd) and reports whether a newer build exists,
 # plus the direct download URL for whichever asset this instance was told
-# to care about ("Tag.exe" or "TagArtTool.exe" -- the same release always
-# carries both, see .github/workflows/build.yml). Never fires "update
-# available" for a local/dev build (BUILD_NUMBER == 0, never stamped outside
-# CI) -- there's no sane "newer" comparison to make against that.
+# to care about ("TagSetup.exe", the Inno Setup installer -- see
+# installer/tag.iss -- or "TagArtTool.exe"; the same release always carries
+# both, see .github/workflows/build.yml). Never fires "update available"
+# for a local/dev build (BUILD_NUMBER == 0, never stamped outside CI) --
+# there's no sane "newer" comparison to make against that.
 #
 # Scans /releases (plural, up to RELEASES_PAGE_SIZE most recent) and picks
 # the highest "build-<N>" tag itself, rather than trusting GitHub's own

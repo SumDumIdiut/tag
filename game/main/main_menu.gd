@@ -5,6 +5,8 @@ const UpdateCheckerScript := preload("res://net/update_checker.gd")
 const UpdatePromptScene := preload("res://ui/update_prompt.gd")
 const GameAssetUpdaterScript := preload("res://net/game_asset_updater.gd")
 const GameAssetUpdatePromptScene := preload("res://ui/game_asset_update_prompt.gd")
+const MapsUpdatePromptScene := preload("res://ui/maps_update_prompt.gd")
+const UILayoutUpdaterScript := preload("res://net/ui_layout_updater.gd")
 
 # Two top-level destinations, each fanning out to its own related
 # sub-screens instead of a flat list of unrelated modes: ONLINE covers
@@ -33,8 +35,12 @@ const BAR_SIZE := Vector2(190, 360)
 # enforced.
 static var _checked_for_update_this_session := false
 static var _checked_for_asset_update_this_session := false
+static var _checked_for_maps_this_session := false
+static var _checked_for_layout_update_this_session := false
 
 @onready var mode_bar: HBoxContainer = $VBox/ModeBar
+@onready var title_label: Label = $VBox/Title
+@onready var subtitle_label: Label = $VBox/Subtitle
 
 func _ready() -> void:
 	UIStyle.add_background(self, "main_menu")
@@ -42,14 +48,18 @@ func _ready() -> void:
 		mode_bar.add_child(_build_bar(mode))
 	_build_account_button()
 	_build_achievements_button()
+	UIStyle.apply_layout_override(title_label, "main_menu.title")
+	UIStyle.apply_layout_override(subtitle_label, "main_menu.subtitle")
 	_check_for_update()
 	_check_for_asset_update()
+	_check_for_maps_update()
+	_check_for_layout_update()
 
 func _check_for_update() -> void:
 	if _checked_for_update_this_session:
 		return
 	_checked_for_update_this_session = true
-	var checker := UpdateCheckerScript.new("Tag.exe")
+	var checker := UpdateCheckerScript.new("TagSetup.exe")
 	add_child(checker)
 	checker.check_completed.connect(_on_update_check_completed)
 	checker.check()
@@ -84,6 +94,55 @@ func _on_asset_check_completed(result: Dictionary) -> void:
 	# leaving and coming back to the main menu to pick it up.
 	prompt.applied.connect(_rebuild_mode_bar)
 
+## Unlike _check_for_asset_update() above, no player-facing prompt -- a
+## button/label's position/size/text override (see UIStyle.
+## apply_layout_override(), the website's UI Editor) is treated as part of
+## the base game's own default look, same trust level as chrome/background
+## art, just silently kept current instead of offered as optional content.
+## Whatever this finds only affects screens built AFTER the download lands
+## (same "next visit, not this instant" characteristic _check_for_asset_
+## update() already has before its own prompt is answered) -- acceptable
+## since this is a background check on every launch, not a one-time event.
+func _check_for_layout_update() -> void:
+	if _checked_for_layout_update_this_session:
+		return
+	_checked_for_layout_update_this_session = true
+	var updater := UILayoutUpdaterScript.new()
+	add_child(updater)
+	updater.check_and_apply()
+
+## CustomLevelCache.check() runs on its own at autoload boot (well before
+## this screen even loads), so by the time this connects it may already
+## have resolved -- check_done covers that race the same way is_ready
+## itself already has to for every other consumer of this autoload.
+func _check_for_maps_update() -> void:
+	if _checked_for_maps_this_session:
+		return
+	_checked_for_maps_this_session = true
+	if CustomLevelCache.check_done:
+		_on_maps_check_completed(CustomLevelCache.catalog_count > 0, CustomLevelCache.catalog_count)
+	else:
+		CustomLevelCache.check_completed.connect(_on_maps_check_completed, CONNECT_ONE_SHOT)
+
+func _on_maps_check_completed(available: bool, count: int) -> void:
+	# `available` (backed by CustomLevelCache.catalog_count > 0) already means
+	# "there's something genuinely new-or-edited still pending download" --
+	# that's the whole point of the check, so it's sufficient on its own.
+	# Deliberately NOT also gating on CustomLevelCache.is_ready: that used to
+	# double as "nothing left to ask about" back when is_ready could only
+	# become true once a check()/download cycle fully settled, but
+	# _ready()'s disk-cache fast path can now set is_ready true immediately
+	# at startup while a real pending entry still sits unfetched -- gating on
+	# it here made this prompt silently never appear for exactly the case it
+	# exists for (any level already cached, which is normal after the very
+	# first download ever). _checked_for_maps_this_session (see the caller)
+	# already prevents this from firing more than once per process anyway.
+	if not available:
+		return
+	var prompt := MapsUpdatePromptScene.new()
+	add_child(prompt)
+	prompt.setup(count)
+
 func _rebuild_mode_bar() -> void:
 	for child in mode_bar.get_children():
 		mode_bar.remove_child(child)
@@ -101,6 +160,7 @@ func _build_bar(mode: Dictionary) -> Button:
 	UIStyle.style_button(btn, color, 18)
 	btn.add_theme_font_size_override("font_size", 20)
 	btn.pressed.connect(_on_mode_pressed.bind(mode["scene"]))
+	UIStyle.apply_layout_override(btn, "main_menu.%s_button" % mode["key"])
 	return btn
 
 ## Mirrors the old Customize corner-button treatment, opposite corner --
@@ -117,6 +177,7 @@ func _build_account_button() -> void:
 	btn.position = Vector2(20, 24)
 	btn.pressed.connect(_on_mode_pressed.bind("res://main/login_screen.tscn"))
 	add_child(btn)
+	UIStyle.apply_layout_override(btn, "main_menu.account_button")
 
 ## Opposite corner from Account -- same "always available, doesn't compete
 ## with the mode bars" placement, just top-right instead of top-left.
@@ -130,6 +191,7 @@ func _build_achievements_button() -> void:
 	btn.position = Vector2(-170, 24)
 	btn.pressed.connect(_on_mode_pressed.bind("res://main/achievements_menu.tscn"))
 	add_child(btn)
+	UIStyle.apply_layout_override(btn, "main_menu.achievements_button")
 
 func _on_mode_pressed(scene_path: String) -> void:
 	get_tree().change_scene_to_file(scene_path)

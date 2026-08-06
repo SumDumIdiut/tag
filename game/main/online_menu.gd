@@ -5,10 +5,11 @@ const CasualMatchmakerScene := preload("res://net/casual_matchmaker.gd")
 const ModeIconScene := preload("res://ui/mode_icon.gd")
 
 @onready var bar_row: HBoxContainer = $VBox/BarRow
+@onready var title_label: Label = $VBox/Title
+@onready var subtitle_label: Label = $VBox/Subtitle
 @onready var casual_button: Button = $VBox/BarRow/CasualButton
 @onready var ranked_button: Button = $VBox/BarRow/RankedButton
 @onready var private_button: Button = $VBox/BarRow/PrivateButton
-@onready var direct_connect_button: Button = $VBox/DirectConnectButton
 @onready var back_button: Button = $VBox/BackButton
 
 var _matchmaker: CasualMatchmaker
@@ -22,14 +23,19 @@ func _ready() -> void:
 	_style_bar(ranked_button, UIStyle.COLOR_RANKED, "Ranked")
 	_style_bar(private_button, UIStyle.COLOR_ONLINE, "Private")
 	UIStyle.style_back_button(back_button)
-	UIStyle.style_button(direct_connect_button, UIStyle.COLOR_NEUTRAL, 12)
 
 	casual_button.pressed.connect(_on_casual_pressed)
 	ranked_button.pressed.connect(_on_ranked_pressed)
 	private_button.pressed.connect(_on_private_pressed)
-	direct_connect_button.pressed.connect(_on_direct_connect_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 	_build_friends_bar()
+
+	UIStyle.apply_layout_override(title_label, "online_menu.title")
+	UIStyle.apply_layout_override(subtitle_label, "online_menu.subtitle")
+	UIStyle.apply_layout_override(casual_button, "online_menu.casual_button")
+	UIStyle.apply_layout_override(ranked_button, "online_menu.ranked_button")
+	UIStyle.apply_layout_override(private_button, "online_menu.private_button")
+	UIStyle.apply_layout_override(back_button, "online_menu.back_button")
 
 	PartyManager.party_updated.connect(_update_party_restrictions)
 	_update_party_restrictions(PartyManager.current_party)
@@ -60,12 +66,10 @@ func _build_friends_bar() -> void:
 	friends_button.pressed.connect(func(): get_tree().change_scene_to_file("res://main/friends_menu.tscn"))
 	bar_row.add_child(friends_button)
 	_style_bar(friends_button, UIStyle.COLOR_ACCENT, "Friends")
+	UIStyle.apply_layout_override(friends_button, "online_menu.friends_button")
 
 func _on_ranked_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/ranked_playlist_select.tscn")
-
-func _on_direct_connect_pressed() -> void:
-	get_tree().change_scene_to_file("res://main/multiplayer_connect.tscn")
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://main/main_menu.tscn")

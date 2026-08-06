@@ -16,7 +16,18 @@ class_name LocalMapIcon
 # map under res://assets/icons/local_map_icons/) and only falls back to the
 # original procedural _draw() below if that map's file is missing -- same
 # "never hard-fail on missing custom content" rule mode_icon.gd's atlas
-# check already follows.
+# check already follows. Every real call site (local_menu.gd's inline map
+# row) always uses UIStyle.COLOR_LOCAL, which is what got baked -- a caller
+# passing a different accent_color still falls through to the live _draw()
+# path below and renders correctly, just not from the baked file.
+#
+# A live-published custom level's own uploaded thumbnail (see the web Level
+# Editor's "Level Art" section, fetched via CustomLevelCache) takes priority
+# over both of the above when one exists -- checked regardless of
+# accent_color, unlike the baked-PNG path, since it's a live per-level asset
+# rather than a pre-baked-per-color one. Catalog.MAPS has no entry for a
+# custom level id anyway, so without this a custom level always fell through
+# to the "missing preview data" crossed-pillars glyph in _draw().
 
 const Catalog := preload("res://levels/local_maps/catalog.gd")
 
@@ -27,11 +38,17 @@ const Catalog := preload("res://levels/local_maps/catalog.gd")
 const WORLD_MIN := Vector2(-1000, -550)
 const WORLD_MAX := Vector2(1000, 550)
 const BAKED_DIR := "res://assets/icons/local_map_icons"
+const BAKED_COLOR := Color(0.35, 0.78, 0.98) # UIStyle.COLOR_LOCAL -- the only color ever actually baked
 const FALLBACK_COLOR := Color(0.6, 0.6, 0.65) # matches generate_local_maps.gd's own fallback; defensive only
 
 @export var map_id: String = "":
 	set(value):
 		map_id = value
+		_try_setup_baked()
+		queue_redraw()
+@export var accent_color: Color = Color(0.35, 0.78, 0.98):
+	set(value):
+		accent_color = value
 		_try_setup_baked()
 		queue_redraw()
 
@@ -52,12 +69,22 @@ func _try_setup_baked() -> void:
 	if _baked_rect:
 		_baked_rect.queue_free()
 		_baked_rect = null
+	if map_id.begins_with("level_"):
+		var custom_tex := CustomLevelCache.get_level_thumbnail(map_id)
+		if custom_tex:
+			_set_baked_texture(custom_tex)
+			return
+	if not accent_color.is_equal_approx(BAKED_COLOR):
+		return
 	var path := "%s/%s.png" % [BAKED_DIR, map_id]
 	if not ResourceLoader.exists(path):
 		return
 	var tex: Texture2D = load(path)
 	if not tex:
 		return
+	_set_baked_texture(tex)
+
+func _set_baked_texture(tex: Texture2D) -> void:
 	_baked_rect = TextureRect.new()
 	_baked_rect.texture = tex
 	_baked_rect.stretch_mode = TextureRect.STRETCH_SCALE

@@ -51,6 +51,7 @@ layout_mode = 2
 [node name="MapBox" type="VBoxContainer" parent="VBox/MainRow/MapPanel"]
 layout_mode = 2
 theme_override_constants/separation = 8
+alignment = 1
 
 [node name="MapLabel" type="Label" parent="VBox/MainRow/MapPanel/MapBox"]
 layout_mode = 2
@@ -63,6 +64,7 @@ custom_minimum_size = Vector2(260, 0)
 [node name="SettingsBox" type="VBoxContainer" parent="VBox/MainRow/SettingsPanel"]
 layout_mode = 2
 theme_override_constants/separation = 12
+alignment = 1
 
 [node name="NpcCountRow" type="HBoxContainer" parent="VBox/MainRow/SettingsPanel/SettingsBox"]
 layout_mode = 2

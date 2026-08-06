@@ -1,6 +1,5 @@
 extends Node
 
-const LocalMapCatalog := preload("res://levels/local_maps/catalog.gd")
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 
 # Carries the main menu's chosen match settings into the game scene --
@@ -15,9 +14,11 @@ var round_duration: float = 180.0
 # to come out once there's a real place for it, or the trained policy
 # doesn't need one-off testing anymore.
 var use_trained_ai: bool = false
-# Set by local_menu.gd's inline map row, read right before change_scene_to_file
-# to game.tscn -- see LocalMapCatalog for what this id resolves to.
-var selected_local_map: String = LocalMapCatalog.CLASSIC_ID
+# Set by local_menu.gd's map grid, read right before change_scene_to_file to
+# game.tscn -- a "level_..." id into CustomLevelCache (see that autoload's
+# header); "" means nothing picked/available yet, which local_menu.gd's own
+# Start-button gating never lets through to game.tscn.
+var selected_local_map: String = ""
 # Set by ranked_playlist_select.gd right before change_scene_to_file to
 # ranked_queue.tscn -- see PlaylistCatalog for what this id resolves to.
 var selected_ranked_playlist: String = PlaylistCatalog.PLAYLIST_ORDER[0]

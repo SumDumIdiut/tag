@@ -46,29 +46,197 @@ const RANK_TIER_DEFAULT_COLOR := Color(0.6, 0.63, 0.72)
 static func tier_color(tier: String) -> Color:
 	return RANK_TIER_COLORS.get(tier, RANK_TIER_DEFAULT_COLOR)
 
-## Adds a screen's plain radial-gradient backdrop as the first child of
-## `root` -- call once from a screen's _ready(), before any other setup, so
-## it renders behind everything else without needing every screen's own
-## .tscn to carry a duplicate gradient sub-resource. `screen_key` is kept as
-## a no-op parameter so every existing call site (`add_background(self,
-## "online_menu")` etc.) still compiles unchanged; it no longer selects
-## anything.
-static func add_background(root: Control, _screen_key: String = "") -> void:
-	var grad := Gradient.new()
-	grad.colors = PackedColorArray([BG_TOP, BG_BOTTOM])
-	var grad_tex := GradientTexture2D.new()
-	grad_tex.gradient = grad
-	grad_tex.fill = GradientTexture2D.FILL_RADIAL
-	grad_tex.fill_from = Vector2(0.5, 0.5)
-	grad_tex.fill_to = Vector2(1.0, 1.0)
-	var grad_rect := TextureRect.new()
-	grad_rect.texture = grad_tex
-	grad_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	grad_rect.stretch_mode = TextureRect.STRETCH_SCALE
-	grad_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	grad_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.add_child(grad_rect)
-	root.move_child(grad_rect, 0)
+## Adds a screen's backdrop as the first child of `root` -- call once from a
+## screen's _ready(), before any other setup, so it renders behind
+## everything else without needing every screen's own .tscn to carry a
+## duplicate sub-resource. `screen_key` used to be a no-op (a real per-
+## screen background system existed once, got reverted in favor of the
+## smaller reusable chrome set -- see game_asset_categories.gd's own
+## BACKGROUND_KEYS comment); it's real again now, just sourced from the
+## live-uploadable GameAssetOverrides system (see the website's UI Editor)
+## instead of baked-per-screen assets. If nothing's been uploaded for this
+## key, falls back to the same plain radial gradient every screen always
+## had, so an unconfigured key is never a regression.
+static func add_background(root: Control, screen_key: String = "") -> void:
+	var override_tex := GameAssetOverrides.load_override_texture(GameAssetOverrides.background_override_path(screen_key)) if not screen_key.is_empty() else null
+	var bg_rect := TextureRect.new()
+	if override_tex:
+		bg_rect.texture = override_tex
+	else:
+		var grad := Gradient.new()
+		grad.colors = PackedColorArray([BG_TOP, BG_BOTTOM])
+		var grad_tex := GradientTexture2D.new()
+		grad_tex.gradient = grad
+		grad_tex.fill = GradientTexture2D.FILL_RADIAL
+		grad_tex.fill_from = Vector2(0.5, 0.5)
+		grad_tex.fill_to = Vector2(1.0, 1.0)
+		bg_rect.texture = grad_tex
+	bg_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	bg_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(bg_rect)
+	root.move_child(bg_rect, 0)
+
+## Same dark base + soft alpha-blended-circle glow technique as
+## team_lobby_view.gd's own _SplitBackground/_VsBadge (see those for the
+## original) -- one centered glow in a single accent color for a 2-sided
+## screen with no "other side" yet (matchmaking/queue screens), or, when
+## `sections` > 1, that many evenly-spaced glows with a thin vertical
+## divider between each (a 1v1v1 queue gets 3, 1v1v1v1 gets 4) -- same
+## same-color-FFA idea TeamLobbyView's own two-color split represents for
+## an actual 2-team match, just generalized past 2 without needing a
+## second color (every side in a free-for-all playlist is equally "no
+## team," so there's no second color to split against). Call once from a
+## screen's _ready(), same as add_background().
+##
+## `screen_key` (added alongside add_background()'s own real one) checks the
+## SAME "backgrounds" override category -- casual_queue.gd/ranked_queue.gd
+## pass "casual_queue"/"ranked_queue" specifically so uploading one image
+## for that key covers both this glow screen and casual_playlist_select.gd/
+## ranked_playlist_select.gd's plain-gradient add_background() call with the
+## identical key, matching those two screens already being a matched pair
+## everywhere else (accent color, target scene, restriction messaging).
+static func add_glow_background(root: Control, accent_color: Color, sections: int = 1, screen_key: String = "") -> void:
+	var override_tex := GameAssetOverrides.load_override_texture(GameAssetOverrides.background_override_path(screen_key)) if not screen_key.is_empty() else null
+	if override_tex:
+		var bg_rect := TextureRect.new()
+		bg_rect.texture = override_tex
+		bg_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		bg_rect.stretch_mode = TextureRect.STRETCH_SCALE
+		bg_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bg_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+		root.add_child(bg_rect)
+		root.move_child(bg_rect, 0)
+		return
+	var glow := _GlowBackground.new()
+	glow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	glow.accent_color = accent_color
+	glow.sections = maxi(1, sections)
+	root.add_child(glow)
+	root.move_child(glow, 0)
+
+class _GlowBackground extends Control:
+	const BG_COLOR := Color(0.06, 0.065, 0.095)
+	var accent_color: Color = Color(0.91, 0.29, 0.35)
+	var sections: int = 1
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		resized.connect(queue_redraw)
+
+	func _draw() -> void:
+		var w: float = size.x
+		var h: float = size.y
+		draw_rect(Rect2(Vector2.ZERO, size), BG_COLOR)
+		if sections <= 1:
+			# One big centered glow (the screen's main mood lighting) plus a
+			# smaller, brighter one riding on top -- reads as a single richer
+			# light source rather than two competing evenly-matched ones,
+			# which a flat single-radius glow at this scale looked flat/dim.
+			var big_radius := minf(w * 0.75, h * 1.1)
+			_draw_glow(Vector2(w * 0.5, h * 0.42), big_radius, accent_color)
+			_draw_glow(Vector2(w * 0.5, h * 0.42), big_radius * 0.4, accent_color)
+			return
+		var section_w := w / float(sections)
+		var glow_radius := minf(section_w * 1.3, h * 0.95)
+		for i in sections:
+			var cx := section_w * (i + 0.5)
+			_draw_glow(Vector2(cx, h * 0.42), glow_radius, accent_color)
+		for i in range(1, sections):
+			var lx := section_w * i
+			draw_line(Vector2(lx, 0), Vector2(lx, h), Color(1, 1, 1, 0.05), 100.0)
+			draw_line(Vector2(lx, 0), Vector2(lx, h), Color(1, 1, 1, 0.25), 1.5)
+
+	func _draw_glow(center: Vector2, max_radius: float, color: Color) -> void:
+		var steps := 28
+		for i in steps:
+			var t := float(steps - i) / float(steps)
+			var radius := max_radius * t
+			var alpha := 0.006 + 0.02 * (1.0 - t)
+			draw_circle(center, radius, Color(color.r, color.g, color.b, alpha))
+
+## Applies a live-published layout override (see UILayoutOverrides/
+## UILayoutUpdater and the website's UI Editor) to one Button/Label -- a
+## no-op if nothing's been published for `layout_key`, or for whichever of
+## text/size/position fields weren't set on it. Godot's screens are
+## container-laid-out (VBoxContainer/HBoxContainer/GridContainer), not
+## free-positioned, so this is deliberately NOT true arbitrary placement:
+## `w`/`h` become `custom_minimum_size` (every container here already
+## respects that, leaned on repeatedly this same session fixing dead-space
+## bugs); `x`/`y` are an ADDITIVE pixel offset from wherever the container
+## would normally place the element, applied after one process_frame so it
+## lands after that container's own layout pass -- the container still
+## reserves the element's original slot, so an extreme offset can visually
+## overlap a neighbor (expected for a power-user skinning tool, not a bug).
+## Call once from a screen's _ready(), after its normal layout/styling
+## setup, for every Button/Label that screen wants remotely editable.
+static func apply_layout_override(node: Control, layout_key: String) -> void:
+	if _dump_mode:
+		_record_layout_dump(node, layout_key)
+	var o := UILayoutOverrides.get_override(layout_key)
+	if o.is_empty():
+		return
+	if o.has("text") and (node is Button or node is Label):
+		node.text = String(o.text)
+	if o.has("w") or o.has("h"):
+		var size := node.custom_minimum_size
+		node.custom_minimum_size = Vector2(float(o.get("w", size.x)), float(o.get("h", size.y)))
+	if o.has("x") or o.has("y"):
+		_apply_layout_position_offset(node, float(o.get("x", 0.0)), float(o.get("y", 0.0)))
+
+## Some apply_layout_override() call sites (every dynamically-built playlist
+## card in casual_playlist_select.gd/ranked_playlist_select.gd, main_menu.gd's
+## own mode-bar buttons) run on a freshly-constructed node BEFORE the caller
+## parents it -- node.get_tree() is null at that exact moment, so awaiting
+## its process_frame directly would crash. Waiting on the node's own
+## tree_entered signal first (a no-op wait if it's already in the tree)
+## covers both orderings without the caller needing to care which one it is.
+static func _await_node_in_tree(node: Node) -> void:
+	if not node.is_inside_tree():
+		await node.tree_entered
+
+static func _apply_layout_position_offset(node: Control, dx: float, dy: float) -> void:
+	await _await_node_in_tree(node)
+	if not is_instance_valid(node):
+		return
+	await node.get_tree().process_frame
+	if not is_instance_valid(node):
+		return
+	node.position += Vector2(dx, dy)
+
+## Dev-only "record every apply_layout_override() call site's real on-screen
+## rect instead of applying an override" mode, used by
+## tools/dump_ui_layout.gd to generate the website UI Editor's
+## layout-reference.json (its actual default box positions/sizes, replacing
+## a hand-guessed grid with the real Godot-computed layout). Never turned on
+## during normal play -- only the dump tool ever calls begin_layout_dump().
+static var _dump_mode := false
+static var _dump_data: Dictionary = {}
+
+static func begin_layout_dump() -> void:
+	_dump_mode = true
+	_dump_data.clear()
+
+static func layout_dump_data() -> Dictionary:
+	return _dump_data
+
+## Awaits the same two frames every screen's own layout settles over (this
+## session's established _recenter_vbox()-style pattern) before reading the
+## node's real computed rect, so a node just-added-this-frame's container
+## hasn't necessarily sorted it into its final position yet.
+static func _record_layout_dump(node: Control, layout_key: String) -> void:
+	await _await_node_in_tree(node)
+	if not is_instance_valid(node):
+		return
+	await node.get_tree().process_frame
+	await node.get_tree().process_frame
+	if not is_instance_valid(node):
+		return
+	_dump_data[layout_key] = {
+		"x": node.global_position.x, "y": node.global_position.y,
+		"w": node.size.x, "h": node.size.y,
+	}
 
 const CHROME_DIR := "res://assets/icons/chrome"
 
