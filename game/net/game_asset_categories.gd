@@ -42,3 +42,35 @@ const BACKGROUND_KEYS := [
 	"lobby_room", "achievements_menu", "friends_menu", "login_screen",
 	"match_intro", "match_intro_ranked", "match_results",
 ]
+
+# One optional art override per individually-registered Button (see
+# UIStyle.apply_layout_override()'s own button-art handling) -- the SAME
+# "screen.shortkey" strings the ui-layout override system already uses as
+# layout_key, not a separate namespace, so a button that's already
+# text/position-editable from the website automatically gets its own art
+# slot there too with no extra registration step. Deliberately excludes
+# playlist cards (casual_playlist_select.gd/ranked_playlist_select.gd's
+# `card_<id>` keys) -- those already have their own richer per-id art via
+# PLAYLIST_THUMBNAIL_KEYS above, not the generic per-button chrome system.
+# A button with no entry here (or no art uploaded for its entry) just keeps
+# using the shared "chrome"/"button" texture every button already falls
+# back to -- this list only matters for buttons that get their OWN distinct
+# art, it doesn't gate a button's base styling at all.
+const BUTTON_ART_KEYS := [
+	"main_menu.online_button", "main_menu.local_button",
+	"main_menu.account_button", "main_menu.achievements_button",
+	"online_menu.casual_button", "online_menu.ranked_button",
+	"online_menu.private_button", "online_menu.friends_button", "online_menu.back_button",
+	"local_menu.start_button", "local_menu.back_button",
+	"casual_playlist_select.back_button", "ranked_playlist_select.back_button",
+	"casual_queue.back_button", "casual_queue.cancel_button",
+	"ranked_queue.back_button", "ranked_queue.cancel_button",
+	"lobby_room.ready_button", "lobby_room.start_button", "lobby_room.leave_button",
+	"achievements_menu.back_button",
+	"friends_menu.copy_button", "friends_menu.add_button", "friends_menu.back_button",
+	"login_screen.back_button", "login_screen.login_button",
+	"login_screen.register_button", "login_screen.logout_button",
+	"match_intro.skip_button",
+	"match_results.continue_button",
+	"pause_menu.resume_button", "pause_menu.menu_button",
+]

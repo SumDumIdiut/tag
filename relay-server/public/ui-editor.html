@@ -59,17 +59,6 @@
   .key-status.ok { color: #34d1d4; }
   .key-status.unset { color: #6d7288; }
 
-  /* ─── Top-level tabs ───────────────────────────────────────────────── */
-  .tab-row { display: flex; gap: 8px; margin-bottom: 14px; }
-  .tab-btn {
-    padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
-    border: 1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.03);
-    color: #9095ac; cursor: pointer;
-  }
-  .tab-btn.active { background: rgba(52,209,212,.14); border-color: #34d1d4; color: #34d1d4; }
-  .tab-page { display: none; }
-  .tab-page.active { display: block; }
-
   /* ─── Art slots ────────────────────────────────────────────────────── */
   .slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
   .art-slot {
@@ -159,7 +148,7 @@
   <div class="wrap">
     <header>
       <h1>UI Editor</h1>
-      <p class="sub">Upload art for every button/panel/background, and live-edit any screen's button/label position, size, and text.</p>
+      <p class="sub">Pick a screen below to upload its background/thumbnail art and live-edit its button/label position, size, and text, all in one place. Shared chrome art lives at the top since it isn't tied to any one screen.</p>
       <nav><a href="index.html">&larr; Servers</a> &nbsp; <a href="level-editor.html">Level Editor &rarr;</a></nav>
     </header>
 
@@ -172,44 +161,31 @@
       <p class="hint">This page is not public-facing like the Level Editor -- every publish here is gated by the same server-side key the in-game Art Tool uses. Saved only in this browser's local storage.</p>
     </div>
 
-    <div class="tab-row">
-      <button class="tab-btn active" id="tabArtBtn" type="button">Art</button>
-      <button class="tab-btn" id="tabLayoutBtn" type="button">Layout</button>
+    <div class="card">
+      <div class="card-title">Chrome</div>
+      <p class="hint" style="margin-top:-2px;margin-bottom:10px;">The app's shared panel/slider 9-patch art, plus the default "button" look every button falls back to until it has its own art published on its own screen's page below.</p>
+      <div class="slot-grid" id="chromeSlots"></div>
     </div>
 
-    <div class="tab-page active" id="tabArt">
-      <div class="card">
-        <div class="card-title">Chrome</div>
-        <p class="hint" style="margin-top:-2px;margin-bottom:10px;">The app's shared button/panel/slider 9-patch art -- used everywhere at once.</p>
-        <div class="slot-grid" id="chromeSlots"></div>
+    <div class="card">
+      <div class="card-title">Screen Editor</div>
+      <div class="row-flex" style="margin-bottom:10px;">
+        <select id="screenSelect"></select>
+        <button class="btn small" id="loadCurrentBtn" type="button">Reload from server</button>
+        <span style="flex:1 1 auto"></span>
+        <button class="btn small danger" id="resetAllBtn" type="button">Reset all on this screen</button>
+        <button class="btn primary" id="publishLayoutBtn" type="button">Publish Layout</button>
       </div>
-      <div class="card">
-        <div class="card-title">Backgrounds</div>
-        <p class="hint" style="margin-top:-2px;margin-bottom:10px;">One per menu screen -- replaces that screen's default gradient/glow when set. Stretched to fill the screen.</p>
-        <div class="slot-grid" id="backgroundSlots"></div>
-      </div>
-      <div class="card">
-        <div class="card-title">Playlist Thumbnails</div>
-        <p class="hint" style="margin-top:-2px;margin-bottom:10px;">Shown on the Casual/Ranked playlist cards in place of the plain color fill.</p>
-        <div class="slot-grid" id="playlistSlots"></div>
-      </div>
-    </div>
 
-    <div class="tab-page" id="tabLayout">
-      <div class="card">
-        <div class="card-title">Screen Layout</div>
-        <div class="row-flex" style="margin-bottom:10px;">
-          <select id="screenSelect"></select>
-          <button class="btn small" id="loadCurrentBtn" type="button">Reload from server</button>
-          <span style="flex:1 1 auto"></span>
-          <button class="btn small danger" id="resetAllBtn" type="button">Reset all on this screen</button>
-          <button class="btn primary" id="publishLayoutBtn" type="button">Publish Layout</button>
-        </div>
-        <p class="hint">Drag a box to reposition it (an offset from its normal spot, not an absolute canvas position -- Godot lays these screens out with containers, not free placement), drag its bottom-right corner to resize, edit its text below. Yellow means changed since load/publish.</p>
-        <div class="stage-wrap"><div id="stage"></div></div>
-        <div class="el-list" id="elList"></div>
-        <p class="status" id="layoutStatus"></p>
-      </div>
+      <div class="section-title" style="margin-top:4px;">Art for this screen</div>
+      <p class="hint" style="margin-top:-4px;margin-bottom:10px;" id="screenArtHint"></p>
+      <div class="slot-grid" id="screenArtSlots"></div>
+
+      <div class="section-title" style="margin-top:18px;">Layout</div>
+      <p class="hint" style="margin-top:-4px;">Drag a box to reposition it (an offset from its normal spot, not an absolute canvas position -- Godot lays these screens out with containers, not free placement), drag its bottom-right corner to resize, edit its text below. Yellow means changed since load/publish.</p>
+      <div class="stage-wrap"><div id="stage"></div></div>
+      <div class="el-list" id="elList"></div>
+      <p class="status" id="layoutStatus"></p>
     </div>
 
     <footer>codecade.co.za/tag</footer>
@@ -236,45 +212,31 @@ keyInput.addEventListener('input', () => {
 updateKeyStatus();
 function getKey() { return keyInput.value.trim(); }
 
-// ─── Tabs ───────────────────────────────────────────────────────────────────
-const tabArtBtn = document.getElementById('tabArtBtn');
-const tabLayoutBtn = document.getElementById('tabLayoutBtn');
-const tabArt = document.getElementById('tabArt');
-const tabLayout = document.getElementById('tabLayout');
-tabArtBtn.addEventListener('click', () => {
-  tabArtBtn.classList.add('active'); tabLayoutBtn.classList.remove('active');
-  tabArt.classList.add('active'); tabLayout.classList.remove('active');
-});
-tabLayoutBtn.addEventListener('click', () => {
-  tabLayoutBtn.classList.add('active'); tabArtBtn.classList.remove('active');
-  tabLayout.classList.add('active'); tabArt.classList.remove('active');
-});
-
-// ─── Art tab -- one reusable "slot" per key, same upload/preview/publish
+// ─── Art -- one reusable "slot" per key, same upload/preview/publish
 // shape as level-editor.html's own wireArtSlot(), just hitting
 // /api/game-assets/<category>/publish's {key, images: {slotKey: base64}}
 // shape instead of the levels endpoint. Each slot publishes itself
 // independently (one image at a time) rather than batching a whole
 // category, so a single upload doesn't need every other slot in that
 // category filled in first.
-// SYNC: these three key lists mirror game/net/game_asset_categories.gd
-// (CHROME_KEYS/BACKGROUND_KEYS/PLAYLIST_THUMBNAIL_KEYS) and server.js's
-// own identical mirror of the same.
+// SYNC: these key lists mirror game/net/game_asset_categories.gd
+// (CHROME_KEYS/PLAYLIST_THUMBNAIL_KEYS) and server.js's own identical
+// mirror of the same. Background keys aren't a flat list here anymore --
+// each one's upload slot now lives on whichever screen's own page it
+// belongs to instead (see SCREEN_ART_BACKGROUND_KEYS below), so the full
+// set of valid background category keys (game_asset_categories.gd's own
+// BACKGROUND_KEYS) has to stay reachable from there instead of from one
+// place here.
 const CHROME_KEYS = ['button', 'panel', 'slider_groove', 'slider_fill'];
-const BACKGROUND_KEYS = [
-  'main_menu', 'online_menu', 'local_menu', 'casual_queue', 'ranked_queue',
-  'lobby_room', 'achievements_menu', 'friends_menu', 'login_screen',
-  'match_intro', 'match_intro_ranked', 'match_results',
-];
 const PLAYLIST_THUMBNAIL_KEYS = ['1v1', '2v2', '1v1v1', '1v1v1v1'];
 
-function buildArtSlot(category, key) {
+function buildArtSlot(category, key, displayLabel) {
   const slot = document.createElement('div');
   slot.className = 'art-slot';
 
   const label = document.createElement('div');
   label.className = 'slot-label';
-  label.textContent = key;
+  label.textContent = displayLabel || key;
   slot.appendChild(label);
 
   const preview = document.createElement('div');
@@ -378,8 +340,6 @@ function buildSlotGrid(containerId, category, keys) {
   for (const key of keys) container.appendChild(buildArtSlot(category, key));
 }
 buildSlotGrid('chromeSlots', 'chrome', CHROME_KEYS);
-buildSlotGrid('backgroundSlots', 'backgrounds', BACKGROUND_KEYS);
-buildSlotGrid('playlistSlots', 'playlist_thumbnails', PLAYLIST_THUMBNAIL_KEYS);
 
 // ─── Layout tab ─────────────────────────────────────────────────────────────
 // SYNC: this key list has to be kept in sync BY HAND with every
@@ -413,7 +373,7 @@ const SCREENS = {
   pause_menu: ['title', 'resume_button', 'menu_button'],
 };
 
-// Which `backgrounds` category key (see BACKGROUND_KEYS above) each layout
+// Which `backgrounds` category key each layout
 // screen's stage should show behind its boxes -- mirrors the screen_key each
 // screen actually passes to UIStyle.add_background()/add_glow_background()
 // in-game. casual_playlist_select/ranked_playlist_select share their queue
@@ -438,6 +398,19 @@ const SCREEN_BACKGROUND_KEY = {
   match_results: 'match_results',
 };
 
+// Every background-art upload slot a given screen's page should offer --
+// almost always just SCREEN_BACKGROUND_KEY's own single key, EXCEPT
+// match_intro.gd, which picks between two different background keys at
+// runtime (match_intro / match_intro_ranked, see its own add_background()
+// calls) depending on whether the match is ranked -- both need an upload
+// slot on that one page, or match_intro_ranked would have nowhere left to
+// upload to at all now that there's no separate flat Backgrounds grid.
+const SCREEN_ART_BACKGROUND_KEYS = { match_intro: ['match_intro', 'match_intro_ranked'] };
+function backgroundKeysForScreenArt(screen) {
+  if (SCREEN_ART_BACKGROUND_KEYS[screen]) return SCREEN_ART_BACKGROUND_KEYS[screen];
+  return SCREEN_BACKGROUND_KEY[screen] ? [SCREEN_BACKGROUND_KEY[screen]] : [];
+}
+
 // One cache-busting timestamp for the whole page load (not per-render) --
 // renderStageAndList() reruns on every drag/field edit, and re-tagging
 // every art <img> with a fresh Date.now() on each of those calls would
@@ -457,10 +430,20 @@ function elementKind(shortKey) {
   if (shortKey.startsWith('card_') && !shortKey.endsWith('_name') && !shortKey.endsWith('_sub')) return 'card';
   return 'label';
 }
+// Returns a fallback CHAIN, not a single {category,key} -- a button tries
+// its own per-button art first (see UIStyle._apply_button_art_override())
+// and only falls back to the shared chrome texture if nothing's been
+// published for it specifically, exactly matching the real in-game
+// priority order. Cards only ever have the one tier (their own thumbnail).
 function artInfoFor(shortKey) {
   const kind = elementKind(shortKey);
-  if (kind === 'button') return { category: 'chrome', key: 'button' };
-  if (kind === 'card') return { category: 'playlist_thumbnails', key: shortKey.slice('card_'.length) };
+  if (kind === 'button') {
+    return [
+      { category: 'button_art', key: screenSelect.value + '.' + shortKey },
+      { category: 'chrome', key: 'button' },
+    ];
+  }
+  if (kind === 'card') return [{ category: 'playlist_thumbnails', key: shortKey.slice('card_'.length) }];
   return null;
 }
 
@@ -522,6 +505,68 @@ const BUTTON_STYLE = {
 // style_button() calls (COLOR_QUICKPLAY / COLOR_RANKED respectively).
 const CARD_SCREEN_COLOR = { casual_playlist_select: 'quickplay', ranked_playlist_select: 'ranked' };
 
+// Real default copy for every registered element (grepped from each
+// screen's own .gd/.tscn, not guessed) -- shown on a box until it's been
+// given its own text override, so an unedited screen reads like the real
+// game instead of a wall of abstract key names. Dynamic-content elements
+// (status_label, lobby_name_label, rank_label, countdown_label, playlist
+// card name/sub) have no sensible static default and are intentionally
+// left out -- those still fall back to their bare shortKey.
+// SYNC: same hand-maintained convention as SCREENS/BUTTON_STYLE above.
+const DEFAULT_TEXT = {
+  'main_menu.title': 'TAG',
+  'main_menu.subtitle': 'CHOOSE A MODE',
+  'main_menu.online_button': 'ONLINE',
+  'main_menu.local_button': 'LOCAL',
+  'main_menu.account_button': '  Account',
+  'main_menu.achievements_button': 'Achievements  ',
+  'online_menu.title': 'ONLINE',
+  'online_menu.subtitle': 'PLAY WITH OTHERS',
+  'online_menu.casual_button': 'Casual',
+  'online_menu.ranked_button': 'Ranked',
+  'online_menu.private_button': 'Private',
+  'online_menu.friends_button': 'Friends',
+  'online_menu.back_button': 'Back',
+  'local_menu.title': 'LOCAL',
+  'local_menu.subtitle': 'PRACTICE AGAINST BOTS',
+  'local_menu.start_button': 'Play Tag',
+  'local_menu.back_button': 'Back',
+  'casual_playlist_select.title': 'CASUAL',
+  'casual_playlist_select.subtitle': 'CHOOSE A PLAYLIST',
+  'casual_playlist_select.back_button': 'Back',
+  'ranked_playlist_select.title': 'RANKED',
+  'ranked_playlist_select.subtitle': 'CHOOSE A PLAYLIST',
+  'ranked_playlist_select.back_button': 'Back',
+  'casual_queue.title': 'CASUAL',
+  'casual_queue.back_button': 'Cancel',
+  'casual_queue.cancel_button': 'Cancel',
+  'ranked_queue.title': 'RANKED',
+  'ranked_queue.back_button': 'Cancel',
+  'ranked_queue.cancel_button': 'Cancel',
+  'lobby_room.ready_button': 'Ready',
+  'lobby_room.start_button': 'Start Match',
+  'lobby_room.leave_button': 'Leave',
+  'achievements_menu.title': 'Achievements',
+  'achievements_menu.back_button': 'Back',
+  'friends_menu.title': 'Friends',
+  'friends_menu.subtitle': "Optional -- add friends by code, see who's online, join with one click.",
+  'friends_menu.copy_button': 'Copy',
+  'friends_menu.add_button': 'Add Friend',
+  'friends_menu.back_button': 'Back',
+  'login_screen.title': 'Account',
+  'login_screen.subtitle': 'Optional -- lets your progress follow you across devices.',
+  'login_screen.back_button': 'Back',
+  'login_screen.login_button': 'Log In',
+  'login_screen.register_button': 'Create Account',
+  'login_screen.logout_button': 'Log Out',
+  'match_intro.skip_button': 'Skip',
+  'match_results.title': 'ROUND OVER',
+  'match_results.continue_button': 'Continue',
+  'pause_menu.title': 'PAUSED',
+  'pause_menu.resume_button': 'Resume',
+  'pause_menu.menu_button': 'Main Menu',
+};
+
 // Real look for a box: button/card get that key's actual accent color at
 // button_box()'s own normal-state alpha (0.14 bg / 0.35 border, see
 // ui_style.gd) and real corner radius; labels get no fill/border (a real
@@ -552,6 +597,40 @@ for (const name of Object.keys(SCREENS)) {
   opt.value = name;
   opt.textContent = name;
   screenSelect.appendChild(opt);
+}
+
+// ─── Art for the currently-selected screen -- merges what used to be a
+// separate top-level Art tab into this same per-screen view: whichever
+// screen you're editing the layout of, its own background (if it has one,
+// see SCREEN_BACKGROUND_KEY) and playlist thumbnails (if it's a playlist-
+// select screen, see CARD_SCREEN_COLOR) show up right here too, reusing
+// the exact same buildArtSlot() upload/preview/publish block the old Art
+// tab used. Rebuilt on every screen switch, same as the stage/list below.
+const screenArtSlots = document.getElementById('screenArtSlots');
+const screenArtHint = document.getElementById('screenArtHint');
+function renderScreenArt() {
+  screenArtSlots.innerHTML = '';
+  for (const bgKey of backgroundKeysForScreenArt(screenSelect.value)) {
+    screenArtSlots.appendChild(buildArtSlot('backgrounds', bgKey));
+  }
+  if (CARD_SCREEN_COLOR.hasOwnProperty(screenSelect.value)) {
+    for (const id of PLAYLIST_THUMBNAIL_KEYS) {
+      screenArtSlots.appendChild(buildArtSlot('playlist_thumbnails', id));
+    }
+  }
+  // One art slot per *_button element registered on this screen (see
+  // elementKind()) -- each button gets its own independent art instead of
+  // every button on every screen sharing the one global chrome texture;
+  // an unset one just keeps using that shared chrome fallback in-game (see
+  // UIStyle._apply_button_art_override()). Excludes playlist cards, which
+  // already have their own richer per-id art above.
+  for (const shortKey of currentScreenKeys()) {
+    if (elementKind(shortKey) !== 'button') continue;
+    screenArtSlots.appendChild(buildArtSlot('button_art', screenSelect.value + '.' + shortKey, shortKey));
+  }
+  screenArtHint.textContent = screenArtSlots.children.length
+    ? 'Background/playlist-thumbnail art replaces this screen\'s default gradient/glow and/or plain card fill when set. Each button below keeps using the shared chrome look until it has its own image published.'
+    : 'This screen has no background, playlist-thumbnail, or button art to upload -- it only draws over the app\'s plain default backdrop and shared chrome buttons.';
 }
 
 const stage = document.getElementById('stage');
@@ -691,20 +770,30 @@ function renderStageAndList() {
       box.style.background = hexToRgba(style.colorHex, 0.14);
     }
 
-    // Real chrome/thumbnail art behind the label, if this element has any
-    // (see artInfoFor()) -- falls back to the plain colored placeholder
-    // above (or, for labels, no fill at all) when nothing's published.
-    const info = artInfoFor(shortKey);
-    if (info) {
+    // Real chrome/button/thumbnail art behind the label, if this element
+    // has any (see artInfoFor()) -- tries each tier of the fallback chain
+    // in order (a button's own art, then the shared chrome texture) and
+    // falls back to the plain colored placeholder above (or, for labels,
+    // no fill at all) once every tier has 404'd.
+    const chain = artInfoFor(shortKey);
+    if (chain) {
       const artImg = document.createElement('img');
       artImg.className = 'el-box-art';
       artImg.addEventListener('load', () => { if (artImg.naturalWidth > 0) artImg.style.display = 'block'; });
-      artImg.src = 'api/game-assets/' + info.category + '/' + info.key + '/download?t=' + ART_CACHE_BUST;
+      let tier = 0;
+      artImg.addEventListener('error', () => {
+        tier += 1;
+        if (tier < chain.length) {
+          artImg.src = 'api/game-assets/' + chain[tier].category + '/' + chain[tier].key + '/download?t=' + ART_CACHE_BUST;
+        }
+      });
+      artImg.src = 'api/game-assets/' + chain[0].category + '/' + chain[0].key + '/download?t=' + ART_CACHE_BUST;
       box.appendChild(artImg);
     }
     const label = document.createElement('span');
     label.className = 'el-box-label';
-    label.textContent = (d.hasText ? d.text : null) || shortKey;
+    const fullKeyForText = screenSelect.value + '.' + shortKey;
+    label.textContent = (d.hasText ? d.text : null) || DEFAULT_TEXT[fullKeyForText] || shortKey;
     if (style.font) {
       label.style.fontSize = style.font.size + 'px';
       label.style.fontWeight = String(style.font.weight);
@@ -753,7 +842,7 @@ function renderStageAndList() {
     row.appendChild(textLbl);
     const textInput = document.createElement('input');
     textInput.type = 'text';
-    textInput.placeholder = '(unchanged)';
+    textInput.placeholder = DEFAULT_TEXT[fullKeyForText] || '(unchanged)';
     textInput.value = d.hasText ? d.text : '';
     textInput.addEventListener('input', () => {
       d.text = textInput.value;
@@ -841,6 +930,7 @@ window.addEventListener('mouseup', () => {
 
 async function refreshScreen() {
   setLayoutStatus('Loading…', 'busy');
+  renderScreenArt();
   await fetchManifest();
   loadDraftFromManifest();
   renderStageAndList();
