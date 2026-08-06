@@ -163,7 +163,7 @@
 
     <div class="card">
       <div class="card-title">Chrome</div>
-      <p class="hint" style="margin-top:-2px;margin-bottom:10px;">The app's shared panel/slider 9-patch art, plus the default "button" look every button falls back to until it has its own art published on its own screen's page below.</p>
+      <p class="hint" style="margin-top:-2px;margin-bottom:10px;">The app's shared panel/slider 9-patch art -- used on every screen at once, not tied to any one page below. (Button art moved to each screen's own page since every button already gets its own slot there.)</p>
       <div class="slot-grid" id="chromeSlots"></div>
     </div>
 
@@ -339,7 +339,17 @@ function buildSlotGrid(containerId, category, keys) {
   const container = document.getElementById(containerId);
   for (const key of keys) container.appendChild(buildArtSlot(category, key));
 }
-buildSlotGrid('chromeSlots', 'chrome', CHROME_KEYS);
+// "button" is deliberately left out of the website's own Chrome section --
+// every registered button already gets its own per-screen art slot now
+// (see renderScreenArt()'s button_art wiring), so re-showing a global
+// "button" upload here too was redundant. The underlying chrome/button
+// category itself isn't removed (game_asset_categories.gd/server.js still
+// list it) -- it's still the real fallback UIStyle.button_box() uses for
+// any button with NO per-button art AND no registered layout_key at all
+// (e.g. friends_menu.gd's per-friend-row Accept/Decline/Kick buttons,
+// which have no stable key to register), just not re-publishable from
+// this particular page anymore.
+buildSlotGrid('chromeSlots', 'chrome', CHROME_KEYS.filter((k) => k !== 'button'));
 
 // ─── Layout tab ─────────────────────────────────────────────────────────────
 // SYNC: this key list has to be kept in sync BY HAND with every
