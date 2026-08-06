@@ -224,6 +224,15 @@ static func build_arena_from_data(data: Dictionary, textures: Array = [], backgr
 	# tile floor, never under it.
 	var placements := Node2D.new()
 	placements.name = "Placements"
+	# Player/NPC nodes (added as game.gd's own later siblings, outside this
+	# arena entirely -- see game.gd's own add_child(player)) default to
+	# z_index=0, and CanvasItem z_index compares globally across the whole
+	# 2D scene regardless of tree position -- without this, every placement
+	# sprite painted BEHIND whoever was standing in front of it (tree order
+	# alone put arena, and everything in it, under the later-added player).
+	# Background keeps its own separate z_index=-10 (set below) either way,
+	# so it's unaffected by this.
+	placements.z_index = 1
 	for entry in data.get("placements", []):
 		if not _is_placement_renderable(entry):
 			continue
@@ -273,6 +282,7 @@ static func build_arena_from_data(data: Dictionary, textures: Array = [], backgr
 
 	var platforms := Node2D.new()
 	platforms.name = "Platforms"
+	platforms.z_index = 1 # same reasoning as Placements' own z_index above
 	for entry in data.get("platforms", []):
 		var platform: MovingPlatform = MovingPlatformScene.instantiate()
 		var start: Array = entry.start

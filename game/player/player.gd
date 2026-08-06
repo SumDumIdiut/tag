@@ -570,16 +570,30 @@ func _try_corner_correction(wall_normal: Vector2) -> void:
 
 ## Glides the player from where the corner correction was triggered up onto
 ## the detected ledge over CORNER_CORRECTION_DURATION, instead of teleporting
-## instantly -- velocity is held at zero and move_and_slide is skipped for the
-## duration (via the early-return in apply_input) so nothing fights the glide.
+## instantly -- move_and_slide is skipped for the duration (via the
+## early-return in apply_input) so nothing fights the glide.
 func _process_corner_correction(delta: float) -> void:
+	var pre_glide_position := global_position
 	_corner_correction_timer += delta
 	var t := clampf(_corner_correction_timer / CORNER_CORRECTION_DURATION, 0.0, 1.0)
 	var eased_t := t * t * (3.0 - 2.0 * t)
 	global_position = _corner_correction_start.lerp(_corner_correction_target, eased_t)
-	velocity = Vector2.ZERO
+	# velocity is derived from the actual glide displacement, not zeroed --
+	# server_match.gd broadcasts p.velocity alongside p.global_position every
+	# tick (see its own states dict), and remote_avatar.gd dead-reckons other
+	# players' motion between ticks as target_position + target_velocity *
+	# elapsed. A hardcoded zero here told every other client "not moving"
+	# while global_position was actually gliding up onto the ledge, so
+	# anyone watching saw the climbing player freeze in place and then snap
+	# to the finished position the instant the next snapshot arrived --
+	# confirmed by tracing that exact broadcast path, not just guessing.
+	# Deriving velocity from the real frame-to-frame delta instead lets
+	# dead-reckoning extrapolate the glide itself, matching what actually
+	# happened on the correcting player's own machine.
+	velocity = (global_position - pre_glide_position) / delta
 	if t >= 1.0:
 		_corner_correction_active = false
+		velocity = Vector2.ZERO
 
 ## Finds a wall to jump off even if not in actual contact with one: real
 ## contact always counts, and failing that a short raycast on each side
