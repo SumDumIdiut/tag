@@ -397,14 +397,19 @@ func apply_input(input: Dictionary, delta: float) -> void:
 	if is_dashing:
 		_end_dash_on_impact()
 
-	# Dashing (or just running) into the top edge of a platform hits its
-	# vertical face square-on -- a hard 90-degree corner has no slope to
-	# slide you up over it, so without this you just hang on the wall face
-	# and keep wall-jumping instead of mantling onto the platform. Uses the
-	# same generous proximity check as wall-jump (not just exact contact),
-	# recomputed post-move, so being slightly above the platform's edge --
-	# not just level with or below it -- still catches the correction.
-	if not is_dashing and not is_climbing:
+	# Dashing or jumping into the top edge of a platform hits its vertical
+	# face square-on -- a hard 90-degree corner has no slope to slide you up
+	# over it, so without this you just hang on the wall face and keep
+	# wall-jumping instead of mantling onto the platform. Only while actually
+	# airborne (not is_on_floor()) -- gating on that as well as
+	# not-dashing/not-climbing is what keeps this to genuine "jumped/dashed
+	# into a corner and got stuck" cases. Without it, the same generous
+	# proximity check wall-jump uses (not just exact contact) also fired for
+	# plain grounded walking past any low step or block, auto-mantling the
+	# player up onto it with no jump input at all -- reads as an uncontrolled
+	# snap rather than a deliberate mantle (confirmed: this is what "way too
+	# generous" was about).
+	if not is_dashing and not is_climbing and not is_on_floor():
 		var post_move_wall := _find_wall_jump_normal(is_on_wall_only())
 		if post_move_wall != Vector2.ZERO:
 			_try_corner_correction(post_move_wall)
