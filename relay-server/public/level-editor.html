@@ -139,6 +139,7 @@
     flex: 0 0 auto; background: none; border: none; color: #6d7288; font-size: 13px; cursor: pointer; line-height: 1; padding: 3px;
   }
   .texture-thumb .tdel:hover, .layer-row button:hover { color: #e4e7f0; }
+  .layer-row button.danger:hover:not(:disabled) { color: #ff8e8e; }
   .layer-row button.hidden-toggle.off { color: #4a4e60; }
   .empty-hint { font-size: 11.5px; color: #4a4e60; margin-top: 8px; }
 
@@ -1394,6 +1395,36 @@ async function refreshPublishedList() {
       }
     });
     row.appendChild(copy);
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = '✕';
+    del.title = 'Delete this level';
+    del.className = 'danger';
+    del.addEventListener('click', async () => {
+      if (!confirm('Permanently delete "' + e.name + '"? This can\'t be undone.')) return;
+      del.disabled = true;
+      try {
+        const res = await fetch('api/levels/' + encodeURIComponent(getClientId()) + '/' + e.id + '/delete', { method: 'POST' });
+        const parsed = await res.json().catch(() => ({}));
+        if (!res.ok || !parsed.ok) {
+          setStatus('Delete failed: ' + (parsed.error || res.status), 'err');
+          del.disabled = false;
+          return;
+        }
+        // Deleting the level currently loaded in the canvas leaves nothing
+        // for Save Changes to target -- back to a blank new level, same as
+        // pressing "New" would, rather than silently still pointing at an
+        // id that no longer exists server-side.
+        if (e.id === editingLevelId) resetToNewLevel();
+        setStatus('Deleted "' + e.name + '".', 'ok');
+        refreshPublishedList();
+      } catch {
+        setStatus('Could not reach the relay server.', 'err');
+        del.disabled = false;
+      }
+    });
+    row.appendChild(del);
 
     publishedList.appendChild(row);
   });
