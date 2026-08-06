@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tag — Level Editor</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    min-height: 100vh;
+    font: 13.5px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: #16151b; color: #d8dae6;
+    padding: 24px 20px 60px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  header { margin-bottom: 16px; }
+  h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 4px; color: #f0f1f7; }
+  .sub { color: #74798f; font-size: 12.5px; }
+  nav { margin-top: 10px; }
+  nav a { color: #34d1d4; font-size: 12px; text-decoration: none; }
+  nav a:hover { text-decoration: underline; }
+
+  .card {
+    padding: 16px; border-radius: 10px; margin-bottom: 14px;
+    border: 1px solid rgba(255,255,255,.07); background: #201f26;
+  }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #6d7288; margin-bottom: 10px; }
+
+  /* Generic chrome button -- Upload/Publish/Clear/texture-remove, anything
+     that isn't a toolbar icon. */
+  .btn {
+    padding: 7px 13px; border-radius: 7px; font-size: 12.5px; font-weight: 700;
+    border: 1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.04);
+    color: #d8dae6; cursor: pointer;
+  }
+  .btn:hover:not(:disabled) { background: rgba(255,255,255,.09); }
+  .btn.primary { background: #34d1d4; border-color: #34d1d4; color: #0a2323; }
+  .btn.primary:hover:not(:disabled) { background: #5be0e2; }
+  .btn.danger { background: rgba(255,110,110,.12); border-color: rgba(255,110,110,.4); color: #ff8e8e; }
+  .btn.danger:hover:not(:disabled) { background: rgba(255,110,110,.22); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn.small { padding: 6px 10px; font-size: 11.5px; }
+
+  .check-field { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #9095ac; }
+  .check-field input { accent-color: #34d1d4; }
+
+  input[type="text"] {
+    padding: 8px 12px; border-radius: 7px; font-size: 12.5px;
+    border: 1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.05);
+    color: #e4e7f0; min-width: 180px;
+  }
+  input[type="text"]::placeholder { color: #565b70; }
+  input[type="file"] { display: none; }
+
+  /* ─── The editor "app frame" -- tool rail | canvas stage | side panels,
+     the 3-pane chrome that gives this its pixel-editor look. ─────────── */
+  .app-frame {
+    display: flex; border-radius: 10px; overflow: hidden;
+    border: 1px solid rgba(255,255,255,.07); background: #1c1b22;
+  }
+
+  .tool-rail {
+    flex: 0 0 84px; padding: 10px;
+    background: #18171d; border-right: 1px solid rgba(255,255,255,.06);
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; align-content: start;
+  }
+  .tool-btn {
+    width: 32px; height: 32px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 7px; border: 1px solid transparent;
+    background: rgba(255,255,255,.03); color: #868ba8; cursor: pointer;
+  }
+  .tool-btn svg { width: 17px; height: 17px; display: block; }
+  .tool-btn:hover { background: rgba(255,255,255,.08); color: #e4e7f0; }
+  .tool-btn.active { background: rgba(52,209,212,.16); border-color: #34d1d4; color: #34d1d4; }
+  .tool-rail-sep { grid-column: 1 / -1; height: 1px; background: rgba(255,255,255,.06); margin: 4px 2px; }
+
+  .stage-col { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .stage-bar {
+    display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+    padding: 7px 10px; background: #201f26; border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .stage-bar.bottom { border-bottom: none; border-top: 1px solid rgba(255,255,255,.06); }
+  .rail-sep { width: 1px; align-self: stretch; background: rgba(255,255,255,.08); margin: 0 3px; }
+  .icon-btn {
+    width: 28px; height: 28px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03);
+    color: #9095ac; cursor: pointer;
+  }
+  .icon-btn svg { width: 15px; height: 15px; display: block; }
+  .icon-btn:hover:not(:disabled) { background: rgba(255,255,255,.09); color: #e4e7f0; }
+  .icon-btn:disabled { opacity: .35; cursor: default; }
+  .icon-btn.danger:hover:not(:disabled) { background: rgba(255,110,110,.16); color: #ff8e8e; }
+  .zoom-label { font-size: 11px; color: #6d7288; padding: 0 2px; min-width: 36px; text-align: center; }
+
+  .stage-body {
+    flex: 1 1 auto; padding: 16px; background: #131217;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .canvas-scroll {
+    max-width: 100%; overflow: auto; max-height: 560px;
+    border-radius: 6px; border: 1px solid rgba(255,255,255,.1);
+    background: #05060a; box-shadow: 0 0 0 6px rgba(255,255,255,.02);
+  }
+  /* cellAt()/rawPointAt() read the canvas's actual displayed size via
+     getBoundingClientRect() every time, so changing this width for zoom
+     (see applyZoom()) never desyncs painting/dragging/drop math from
+     wherever the cursor visually is. */
+  #gridCanvas { display: block; cursor: crosshair; }
+  #gridCanvas.select-mode, #gridCanvas.select-tiles-mode { cursor: default; }
+  #gridCanvas.drag-over { outline: 2px dashed #34d1d4; outline-offset: -2px; }
+
+  .right-rail {
+    flex: 0 0 220px; padding: 14px; background: #201f26;
+    border-left: 1px solid rgba(255,255,255,.06);
+    display: flex; flex-direction: column; gap: 18px;
+    max-height: 700px; overflow-y: auto;
+  }
+
+  .row-flex { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+  .texture-list, .layer-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; max-height: 240px; overflow-y: auto; }
+  .texture-thumb, .layer-row {
+    display: flex; align-items: center; gap: 6px; padding: 6px; border-radius: 7px;
+    border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03);
+  }
+  .texture-thumb { cursor: grab; }
+  .texture-thumb:hover { background: rgba(255,255,255,.07); }
+  .layer-row.selected { border-color: #34d1d4; background: rgba(52,209,212,.1); }
+  .texture-thumb img, .layer-row img {
+    width: 26px; height: 26px; border-radius: 5px; object-fit: cover; flex: 0 0 auto;
+    background: repeating-conic-gradient(#26252d 0% 25%, #1a191f 0% 50%) 50% / 8px 8px;
+  }
+  .texture-thumb .tname, .layer-row .tname { font-size: 11px; color: #9095ac; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; cursor: pointer; }
+  .texture-thumb .tdel, .layer-row button {
+    flex: 0 0 auto; background: none; border: none; color: #6d7288; font-size: 13px; cursor: pointer; line-height: 1; padding: 3px;
+  }
+  .texture-thumb .tdel:hover, .layer-row button:hover { color: #e4e7f0; }
+  .layer-row button.hidden-toggle.off { color: #4a4e60; }
+  .empty-hint { font-size: 11.5px; color: #4a4e60; margin-top: 8px; }
+
+  .art-preview {
+    display: flex; align-items: center; gap: 10px; padding: 6px; margin-top: 8px;
+    border-radius: 7px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03);
+  }
+  .art-preview img {
+    width: 64px; height: 36px; border-radius: 5px; object-fit: cover; flex: 0 0 auto;
+    background: repeating-conic-gradient(#26252d 0% 25%, #1a191f 0% 50%) 50% / 8px 8px;
+  }
+  .art-preview .tdel {
+    margin-left: auto; flex: 0 0 auto; background: none; border: none; color: #6d7288;
+    font-size: 15px; cursor: pointer; line-height: 1; padding: 3px;
+  }
+  .art-preview .tdel:hover { color: #e4e7f0; }
+
+  .hint { color: #565b70; font-size: 11.5px; margin-top: 8px; }
+  .status { font-size: 12.5px; margin-top: 10px; min-height: 18px; }
+  .status.ok { color: #34d1d4; }
+  .status.err { color: #ff8e8e; }
+  .status.busy { color: #9095ac; }
+
+  .selected-bar {
+    display: none; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 12px 16px; margin-top: 14px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.07); background: #201f26;
+  }
+  .selected-bar.visible { display: flex; }
+  .selected-bar label { font-size: 11.5px; color: #6d7288; }
+  .selected-bar input[type="range"] { width: 160px; accent-color: #34d1d4; }
+  .selected-bar .scale-value { font-size: 11.5px; color: #9095ac; min-width: 36px; }
+
+  footer { margin-top: 28px; color: #444858; font-size: 11px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Level Editor</h1>
+      <p class="sub">Paint a tile layout, drag textures in from the library, publish it.</p>
+      <nav><a href="index.html">&larr; Servers</a> &nbsp; <a href="ui-editor.html">UI Editor &rarr;</a></nav>
+    </header>
+
+    <div class="card">
+      <div class="app-frame">
+        <div class="tool-rail">
+          <button class="tool-btn active" id="modePaint" type="button" title="Paint Tiles" aria-label="Paint Tiles">
+            <svg viewBox="0 0 20 20" fill="none"><path d="M4 16l1-4.2L12.8 4 16 7.2 8.2 15 4 16z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M11 5.2l3.8 3.8" stroke="currentColor" stroke-width="1.5"/></svg>
+          </button>
+          <button class="tool-btn" id="modeErase" type="button" title="Erase Tiles" aria-label="Erase Tiles">
+            <svg viewBox="0 0 20 20" fill="none"><rect x="3.5" y="10" width="9" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 10L13 3.5l3.5 3.5L10 14" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="tool-btn" id="modeBucket" type="button" title="Bucket Fill" aria-label="Bucket Fill">
+            <svg viewBox="0 0 20 20" fill="none"><path d="M3.5 9L10 2.5 17.5 10 10 17.5 3.5 11c-1-1-1-1 0-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="16" cy="16.3" r="1.4" fill="currentColor"/></svg>
+          </button>
+          <button class="tool-btn" id="modeSelectTiles" type="button" title="Select Tiles" aria-label="Select Tiles">
+            <svg viewBox="0 0 20 20" fill="none"><rect x="3.5" y="3.5" width="13" height="13" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2.6 2.2"/></svg>
+          </button>
+          <button class="tool-btn" id="modeSpawn" type="button" title="Place Spawn" aria-label="Place Spawn">
+            <svg viewBox="0 0 20 20" fill="none"><path d="M10 17.5S15 12 15 8a5 5 0 10-10 0c0 4 5 9.5 5 9.5z" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="8" r="1.8" fill="currentColor"/></svg>
+          </button>
+          <button class="tool-btn" id="modeEraseSpawn" type="button" title="Erase Spawn" aria-label="Erase Spawn">
+            <svg viewBox="0 0 20 20" fill="none"><path d="M10 17.5S15 12 15 8a5 5 0 10-10 0c0 4 5 9.5 5 9.5z" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="8" r="1.8" fill="currentColor"/><path d="M3.5 3.5l13 13" stroke="currentColor" stroke-width="1.6"/></svg>
+          </button>
+          <div class="tool-rail-sep"></div>
+          <button class="tool-btn" id="modeSelect" type="button" title="Select / Move Texture" aria-label="Select / Move Texture" style="grid-column: 1 / -1; width: auto;">
+            <svg viewBox="0 0 20 20" fill="none"><path d="M10 2.5v15M2.5 10h15" stroke="currentColor" stroke-width="1.5"/><path d="M10 2.5L7.7 5M10 2.5L12.3 5M10 17.5L7.7 15M10 17.5L12.3 15M2.5 10L5 7.7M2.5 10L5 12.3M17.5 10L15 7.7M17.5 10L15 12.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+
+        <div class="stage-col">
+          <div class="stage-bar">
+            <button class="icon-btn" id="undoBtn" type="button" title="Undo (Ctrl+Z)">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M7.5 5.5L3.5 9.5l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 9.5H12a4.5 4.5 0 010 9H9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            </button>
+            <button class="icon-btn" id="redoBtn" type="button" title="Redo (Ctrl+Y)">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M12.5 5.5l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M16.5 9.5H8a4.5 4.5 0 000 9h2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            </button>
+            <div class="rail-sep"></div>
+            <button class="icon-btn" id="zoomOutBtn" type="button" title="Zoom out">
+              <svg viewBox="0 0 20 20" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M16 16l-3.2-3.2M6 8.5h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+            <span class="zoom-label" id="zoomLabel">Fit</span>
+            <button class="icon-btn" id="zoomInBtn" type="button" title="Zoom in">
+              <svg viewBox="0 0 20 20" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M16 16l-3.2-3.2M8.5 6v5M6 8.5h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+            <button class="icon-btn" id="zoomResetBtn" type="button" title="Fit to view">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M7 3.5H3.5V7M13 3.5h3.5V7M7 16.5H3.5V13M13 16.5h3.5V13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="rail-sep"></div>
+            <label class="check-field"><input type="checkbox" id="gridToggle" checked> Grid</label>
+            <span style="flex:1 1 auto"></span>
+            <button class="btn small" id="clearBtn" type="button">Clear All</button>
+          </div>
+
+          <div class="stage-body">
+            <div class="canvas-scroll" id="canvasScroll">
+              <canvas id="gridCanvas"></canvas>
+            </div>
+          </div>
+
+          <div class="stage-bar bottom">
+            <button class="icon-btn" id="copyBtn" type="button" title="Copy selection (Ctrl+C)">
+              <svg viewBox="0 0 20 20" fill="none"><rect x="6.5" y="6.5" width="9" height="9" rx="1.2" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 13.5v-9a1 1 0 011-1h9" stroke="currentColor" stroke-width="1.5"/></svg>
+            </button>
+            <button class="icon-btn" id="pasteBtn" type="button" title="Paste (Ctrl+V)">
+              <svg viewBox="0 0 20 20" fill="none"><rect x="5" y="4" width="10" height="14" rx="1.4" stroke="currentColor" stroke-width="1.5"/><rect x="7.5" y="2.3" width="5" height="3" rx="0.8" fill="currentColor"/></svg>
+            </button>
+            <div class="rail-sep"></div>
+            <button class="icon-btn" id="flipHBtn" type="button" title="Flip Horizontal">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M10 2v16" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 2"/><path d="M6.5 6L3.5 10l3 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.5 6l3 4-3 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="icon-btn" id="flipVBtn" type="button" title="Flip Vertical">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M2 10h16" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 2"/><path d="M6 6.5L10 3.5l4 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 13.5l4 3 4-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="icon-btn" id="rotateCwBtn" type="button" title="Rotate Clockwise">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M15.5 7A6 6 0 106.5 15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12.5 3.5l3 3-3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="icon-btn" id="rotateCcwBtn" type="button" title="Rotate Counter-clockwise">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M4.5 7A6 6 0 0113.5 15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M7.5 3.5l-3 3 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="rail-sep"></div>
+            <button class="icon-btn danger" id="deleteSelectionBtn" type="button" title="Delete selected tiles (Delete)">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M4 6h12M8 6V4.3a.8.8 0 01.8-.8h2.4a.8.8 0 01.8.8V6M6.5 6l.7 10a1 1 0 001 .9h3.6a1 1 0 001-.9L13.5 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="right-rail">
+          <div>
+            <div class="section-title">Level Art</div>
+            <div class="row-flex">
+              <button class="btn small" id="uploadBgBtn" type="button">Background…</button>
+              <input type="file" id="bgInput" accept="image/png">
+            </div>
+            <div class="art-preview" id="bgPreview" style="display:none;">
+              <img id="bgPreviewImg" alt="Background preview">
+              <button class="tdel" id="bgRemoveBtn" type="button" title="Remove background">×</button>
+            </div>
+            <p class="empty-hint" id="bgEmptyHint">No background -- fills the whole camera view behind everything in-game.</p>
+            <div class="row-flex" style="margin-top:10px;">
+              <button class="btn small" id="uploadThumbBtn" type="button">Thumbnail…</button>
+              <input type="file" id="thumbInput" accept="image/png">
+            </div>
+            <div class="art-preview" id="thumbPreview" style="display:none;">
+              <img id="thumbPreviewImg" alt="Thumbnail preview">
+              <button class="tdel" id="thumbRemoveBtn" type="button" title="Remove thumbnail">×</button>
+            </div>
+            <p class="empty-hint" id="thumbEmptyHint">No thumbnail -- shown in map pickers instead of a generic icon.</p>
+          </div>
+          <div>
+            <div class="section-title">Textures</div>
+            <div class="row-flex">
+              <button class="btn small" id="uploadLibBtn" type="button">Upload…</button>
+              <input type="file" id="libInput" accept="image/png" multiple>
+            </div>
+            <div class="texture-list" id="textureList"></div>
+            <p class="empty-hint" id="textureEmptyHint">No textures uploaded yet.</p>
+            <p class="hint">Drag onto the layout to place a copy.</p>
+          </div>
+          <div>
+            <div class="section-title">Layers</div>
+            <div class="layer-list" id="layerList"></div>
+            <p class="empty-hint" id="layerEmptyHint">No textures placed yet.</p>
+          </div>
+          <div>
+            <div class="section-title">Published Levels</div>
+            <div class="texture-list" id="publishedList"></div>
+            <p class="empty-hint" id="publishedEmptyHint">You haven't published anything yet.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="selected-bar" id="selectedBar">
+        <span>Selected texture</span>
+        <label for="selScale">Scale</label>
+        <input type="range" id="selScale" min="10" max="400" value="100">
+        <span class="scale-value" id="selScaleVal">100%</span>
+        <button class="btn small danger" id="selDelete" type="button">Delete</button>
+        <button class="btn small" id="selDeselect" type="button">Deselect</button>
+      </div>
+
+      <p class="hint">Click/drag to paint, erase, or bucket-fill tiles. Select Tiles to marquee-select a region for Copy/Flip/Rotate/Delete (Paste stamps a copy nearby). Select / Move Texture picks up a placed texture to drag, scale, or delete. Spawn points need at least 2 before publishing.</p>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Publish</div>
+      <div class="row-flex" id="editingBanner" style="display:none; margin-bottom:10px;">
+        <span class="sub" id="editingBannerText"></span>
+        <button class="btn small" id="newLevelBtn" type="button">New Level</button>
+      </div>
+      <div class="row-flex">
+        <input type="text" id="nameInput" placeholder="Level name" maxlength="40">
+        <button class="btn primary" id="publishBtn" type="button">Publish</button>
+      </div>
+      <p class="status" id="statusEl"></p>
+    </div>
+
+    <footer>codecade.co.za/tag</footer>
+  </div>
+
+<script>
+// ─── Grid/model ─────────────────────────────────────────────────────────────
+// Mirrors game/levels/level_data.gd's wire format exactly: tiles are
+// [x, y, tile_type] cell coordinates (tile_type is always 0, ignored by the
+// renderer -- see that file's own comment), spawn_points are world-pixel
+// positions (cell center * TILE_SIZE_PX). TILE_SIZE_PX is a LOGICAL grid
+// cell (one tile = one player, see level_data.gd's own header) -- the real
+// TileSet art stays 10px/cell (tag_tileset.tres's texture_region_size,
+// never changes), level_data.gd fills a solid block of those per logical
+// cell instead of ever touching tile art/resolution.
+const TILE_SIZE_PX = 40;
+const COLS = 60, ROWS = 40;
+const CELL_PX = 20; // native/backing on-screen cell size, independent of the game's own 10px tile size
+
+function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function key(x, y) { return x + ',' + y; }
+
+let tiles = new Set(); // "x,y" strings
+let spawns = []; // {x, y} in grid-cell units (converted to world pixels on publish)
+let libTextures = []; // {name, img, base64} -- the upload library, never part of undo history
+let background = null; // {img, base64} or null -- fills the whole camera view behind everything, see draw()/LevelData
+let thumbnail = null; // {img, base64} or null -- shown in map pickers instead of a generic icon
+let placed = []; // {id, libIndex, x, y, scale, visible} -- x/y are the CENTER, in canvas-pixel space
+let selectedIndex = -1; // index into `placed`, -1 = none selected
+let tileSelection = null; // {x0,y0,x1,y1} inclusive cell-coord marquee, or null
+let clipboard = null; // {w, h, cells: Set of "dx,dy" relative offsets} from the last Copy
+
+// null while authoring a brand-new level (Publish mints a fresh id) --
+// otherwise the id of a live-published level currently loaded for editing
+// (see loadLevelForEdit()), and Publish instead POSTs to that level's own
+// /update endpoint, overwriting it in place rather than creating a
+// duplicate. See resetToNewLevel() for how this gets cleared again.
+let editingLevelId = null;
+// A loaded level's own "platforms" array, carried through untouched on
+// republish -- this editor has no authoring UI for them (only the in-game
+// Art Tool does, see level_data.gd's own header), so without this, editing
+// a level that has some would silently drop them the moment it's saved.
+let loadedPlatforms = [];
+
+let mode = 'paint';
+let painting = false;
+let dragStart = null; // raw pixel {x,y} at mousedown, only used while dragging a selected placement
+let dragOrigin = null; // that placement's own {x,y} at drag start
+let marqueeStartCell = null; // cell {x,y} where a Select Tiles drag began
+
+let zoom = 1; // multiplier on top of "fit to container width"
+let showGrid = true;
+
+const canvas = document.getElementById('gridCanvas');
+canvas.width = COLS * CELL_PX;
+canvas.height = ROWS * CELL_PX;
+const ctx = canvas.getContext('2d');
+const canvasScroll = document.getElementById('canvasScroll');
+
+function applyZoom() {
+  const containerWidth = canvasScroll.clientWidth || canvas.width;
+  const fitScale = containerWidth / canvas.width;
+  const displayWidth = canvas.width * fitScale * zoom;
+  canvas.style.width = displayWidth + 'px';
+  canvas.style.height = (canvas.height * (displayWidth / canvas.width)) + 'px';
+  const zoomLabel = document.getElementById('zoomLabel');
+  if (zoomLabel) zoomLabel.textContent = zoom === 1 ? 'Fit' : Math.round(zoom * 100) + '%';
+}
+window.addEventListener('resize', applyZoom);
+
+// ─── History (undo/redo) ────────────────────────────────────────────────────
+// Snapshots the "map" state -- tiles/spawns/placed, NOT the uploaded texture
+// library itself (matching Piskel's own model: undo affects canvas content,
+// not the asset/palette library). Pushed once per discrete action (a full
+// paint/erase drag, a bucket fill, a spawn add/remove, a placement add/
+// move/delete/scale, paste, flip, rotate) -- not per mousemove, so a single
+// undo reverses "that whole brush stroke," not one pixel of it.
+let history = [];
+let historyIndex = -1;
+
+function snapshot() {
+  return {
+    tiles: [...tiles],
+    spawns: JSON.parse(JSON.stringify(spawns)),
+    placed: JSON.parse(JSON.stringify(placed)),
+  };
+}
+function pushHistory() {
+  history = history.slice(0, historyIndex + 1);
+  history.push(snapshot());
+  historyIndex = history.length - 1;
+  updateHistoryButtons();
+}
+function restoreSnapshot(s) {
+  tiles = new Set(s.tiles);
+  spawns = JSON.parse(JSON.stringify(s.spawns));
+  placed = JSON.parse(JSON.stringify(s.placed));
+  if (selectedIndex >= placed.length) selectedIndex = -1;
+  renderLayerList();
+  updateSelectedBar();
+  draw();
+}
+function undo() {
+  if (historyIndex <= 0) return;
+  historyIndex -= 1;
+  restoreSnapshot(history[historyIndex]);
+  updateHistoryButtons();
+}
+function redo() {
+  if (historyIndex >= history.length - 1) return;
+  historyIndex += 1;
+  restoreSnapshot(history[historyIndex]);
+  updateHistoryButtons();
+}
+function updateHistoryButtons() {
+  document.getElementById('undoBtn').disabled = historyIndex <= 0;
+  document.getElementById('redoBtn').disabled = historyIndex >= history.length - 1;
+}
+
+function cellAt(evt) {
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor((evt.clientX - rect.left) * (canvas.width / rect.width) / CELL_PX);
+  const y = Math.floor((evt.clientY - rect.top) * (canvas.height / rect.height) / CELL_PX);
+  return { x, y };
+}
+
+// Raw canvas-pixel coordinates (unlike cellAt's grid-cell coordinates) --
+// what placing/dragging a texture actually needs, since its position isn't
+// cell-quantized.
+function rawPointAt(evt) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (evt.clientX - rect.left) * (canvas.width / rect.width),
+    y: (evt.clientY - rect.top) * (canvas.height / rect.height),
+  };
+}
+
+function clampCell(v, max) { return Math.max(0, Math.min(max, v)); }
+
+function paintCell(x, y) {
+  if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return;
+  if (mode === 'paint') tiles.add(key(x, y));
+  else if (mode === 'erase') tiles.delete(key(x, y));
+  else if (mode === 'spawn') {
+    if (!spawns.some(s => s.x === x && s.y === y)) spawns.push({ x, y });
+  } else if (mode === 'eraseSpawn') {
+    const i = spawns.findIndex(s => s.x === x && s.y === y);
+    if (i >= 0) spawns.splice(i, 1);
+  }
+  draw();
+}
+
+// Flood fill from (x,y): adds tiles to every 4-directionally-connected
+// currently-EMPTY cell, stopping at already-filled cells or the grid edge
+// -- the standard "bucket" behavior, filling a bounded empty region rather
+// than the whole canvas when the layout is fully enclosed.
+function bucketFill(x, y) {
+  if (x < 0 || y < 0 || x >= COLS || y >= ROWS || tiles.has(key(x, y))) return;
+  const stack = [[x, y]];
+  const seen = new Set([key(x, y)]);
+  while (stack.length) {
+    const [cx, cy] = stack.pop();
+    tiles.add(key(cx, cy));
+    for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
+      if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
+      const k = key(nx, ny);
+      if (tiles.has(k) || seen.has(k)) continue;
+      seen.add(k);
+      stack.push([nx, ny]);
+    }
+  }
+  draw();
+}
+
+function normalizedSelection(sel) {
+  return {
+    x0: Math.min(sel.x0, sel.x1), x1: Math.max(sel.x0, sel.x1),
+    y0: Math.min(sel.y0, sel.y1), y1: Math.max(sel.y0, sel.y1),
+  };
+}
+
+// A placement's on-canvas rect -- shown at its own source image's natural
+// resolution at scale 100 (1 image pixel = 1 canvas pixel), so an upload's
+// real size is always the honest starting point rather than an auto-fit
+// guess.
+function placedRect(p) {
+  const img = libTextures[p.libIndex].img;
+  const w = img.naturalWidth * p.scale / 100;
+  const h = img.naturalHeight * p.scale / 100;
+  return { x: p.x - w / 2, y: p.y - h / 2, w, h };
+}
+
+function draw() {
+  ctx.fillStyle = '#0d0f18';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Background fills the whole camera view behind everything else, same as
+  // in-game (see LevelData.build_arena_from_data) -- stretched to the full
+  // canvas here since the editor canvas itself represents the level bounds.
+  if (background) {
+    ctx.drawImage(background.img, 0, 0, canvas.width, canvas.height);
+  }
+
+  // Tiles are the base layer -- plain flat color always, never any texture
+  // of their own. Placed textures are drawn afterward, on top of tiles, so
+  // a texture is always fully visible wherever it sits rather than getting
+  // covered by whatever tiles happen to be underneath it.
+  if (tiles.size > 0) {
+    ctx.fillStyle = '#3a3d52';
+    for (const k of tiles) {
+      const [x, y] = k.split(',').map(Number);
+      ctx.fillRect(x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,.06)';
+    for (const k of tiles) {
+      const [x, y] = k.split(',').map(Number);
+      ctx.strokeRect(x * CELL_PX + 0.5, y * CELL_PX + 0.5, CELL_PX - 1, CELL_PX - 1);
+    }
+  }
+
+  // Every placed texture is its own independent object -- own position,
+  // own scale, no relationship to tile placement or to each other beyond
+  // draw order (later in the array = drawn on top, see the Layers panel).
+  // Hidden layers (see the eye toggle) are skipped entirely.
+  for (let i = 0; i < placed.length; i++) {
+    const p = placed[i];
+    if (!p.visible) continue;
+    const lib = libTextures[p.libIndex];
+    if (!lib) continue; // defensive -- shouldn't happen, see removeLibTexture()
+    const r = placedRect(p);
+    ctx.drawImage(lib.img, r.x, r.y, r.w, r.h);
+    if (i === selectedIndex) {
+      ctx.save();
+      ctx.strokeStyle = '#34d1d4';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+      ctx.restore();
+    }
+  }
+
+  ctx.fillStyle = '#3ef5a8';
+  for (const s of spawns) {
+    const cx = s.x * CELL_PX + CELL_PX / 2;
+    const cy = s.y * CELL_PX + CELL_PX / 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, CELL_PX * 0.32, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (showGrid) {
+    ctx.strokeStyle = 'rgba(255,255,255,.04)';
+    ctx.beginPath();
+    for (let x = 0; x <= COLS; x += 5) { ctx.moveTo(x * CELL_PX, 0); ctx.lineTo(x * CELL_PX, canvas.height); }
+    for (let y = 0; y <= ROWS; y += 5) { ctx.moveTo(0, y * CELL_PX); ctx.lineTo(canvas.width, y * CELL_PX); }
+    ctx.stroke();
+  }
+
+  if (tileSelection) {
+    const s = normalizedSelection(tileSelection);
+    ctx.save();
+    ctx.strokeStyle = '#f5c542';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]);
+    ctx.strokeRect(s.x0 * CELL_PX + 1, s.y0 * CELL_PX + 1, (s.x1 - s.x0 + 1) * CELL_PX - 2, (s.y1 - s.y0 + 1) * CELL_PX - 2);
+    ctx.restore();
+  }
+}
+
+// Topmost (last-drawn, visible) placement whose rect contains `pt`, or -1.
+function hitTestPlaced(pt) {
+  for (let i = placed.length - 1; i >= 0; i--) {
+    if (!placed[i].visible) continue;
+    const r = placedRect(placed[i]);
+    if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) return i;
+  }
+  return -1;
+}
+
+function beginPointer(evt) {
+  painting = true;
+  if (mode === 'select') {
+    const p = rawPointAt(evt);
+    selectedIndex = hitTestPlaced(p);
+    updateSelectedBar();
+    renderLayerList();
+    if (selectedIndex >= 0) {
+      dragStart = p;
+      dragOrigin = { x: placed[selectedIndex].x, y: placed[selectedIndex].y };
+    }
+    draw();
+    return;
+  }
+  if (mode === 'selectTiles') {
+    const c = cellAt(evt);
+    marqueeStartCell = c;
+    tileSelection = { x0: c.x, y0: c.y, x1: c.x, y1: c.y };
+    draw();
+    return;
+  }
+  if (mode === 'bucket') {
+    const c = cellAt(evt);
+    bucketFill(c.x, c.y);
+    pushHistory();
+    return;
+  }
+  const c = cellAt(evt);
+  paintCell(c.x, c.y);
+}
+
+function movePointer(evt) {
+  if (!painting) return;
+  if (mode === 'select') {
+    if (selectedIndex < 0) return;
+    const p = rawPointAt(evt);
+    placed[selectedIndex].x = dragOrigin.x + (p.x - dragStart.x);
+    placed[selectedIndex].y = dragOrigin.y + (p.y - dragStart.y);
+    draw();
+    return;
+  }
+  if (mode === 'selectTiles') {
+    if (!marqueeStartCell) return;
+    const c = cellAt(evt);
+    tileSelection = { x0: marqueeStartCell.x, y0: marqueeStartCell.y, x1: clampCell(c.x, COLS - 1), y1: clampCell(c.y, ROWS - 1) };
+    draw();
+    return;
+  }
+  if (mode === 'bucket') return; // one-shot per click, not a drag tool
+  const c = cellAt(evt);
+  paintCell(c.x, c.y);
+}
+
+function endPointer() {
+  const wasPainting = painting;
+  painting = false;
+  if (!wasPainting) return;
+  if (mode === 'select' && selectedIndex >= 0 && dragStart) {
+    pushHistory();
+  } else if (mode === 'paint' || mode === 'erase' || mode === 'spawn' || mode === 'eraseSpawn') {
+    pushHistory();
+  }
+  dragStart = null;
+  dragOrigin = null;
+  marqueeStartCell = null;
+}
+
+canvas.addEventListener('mousedown', beginPointer);
+canvas.addEventListener('mousemove', movePointer);
+window.addEventListener('mouseup', endPointer);
+canvas.addEventListener('touchstart', evt => { beginPointer(evt.touches[0]); evt.preventDefault(); }, { passive: false });
+canvas.addEventListener('touchmove', evt => { movePointer(evt.touches[0]); evt.preventDefault(); }, { passive: false });
+canvas.addEventListener('touchend', endPointer);
+
+const modeButtons = {
+  paint: document.getElementById('modePaint'),
+  erase: document.getElementById('modeErase'),
+  bucket: document.getElementById('modeBucket'),
+  selectTiles: document.getElementById('modeSelectTiles'),
+  spawn: document.getElementById('modeSpawn'),
+  eraseSpawn: document.getElementById('modeEraseSpawn'),
+  select: document.getElementById('modeSelect'),
+};
+function setMode(m) {
+  mode = m;
+  for (const k in modeButtons) modeButtons[k].classList.toggle('active', k === m);
+  canvas.classList.toggle('select-mode', mode === 'select');
+  canvas.classList.toggle('select-tiles-mode', mode === 'selectTiles');
+  if (mode !== 'select') { selectedIndex = -1; updateSelectedBar(); renderLayerList(); }
+  draw();
+}
+for (const k in modeButtons) modeButtons[k].addEventListener('click', () => setMode(k));
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  tiles.clear();
+  spawns.length = 0;
+  placed.length = 0;
+  selectedIndex = -1;
+  tileSelection = null;
+  updateSelectedBar();
+  renderLayerList();
+  draw();
+  pushHistory();
+});
+
+// ─── Selection actions: copy / paste / flip / rotate / delete ──────────────
+document.getElementById('copyBtn').addEventListener('click', () => {
+  if (!tileSelection) return;
+  const s = normalizedSelection(tileSelection);
+  const cells = new Set();
+  for (const k of tiles) {
+    const [x, y] = k.split(',').map(Number);
+    if (x >= s.x0 && x <= s.x1 && y >= s.y0 && y <= s.y1) cells.add(key(x - s.x0, y - s.y0));
+  }
+  clipboard = { w: s.x1 - s.x0 + 1, h: s.y1 - s.y0 + 1, cells };
+});
+document.getElementById('pasteBtn').addEventListener('click', () => {
+  if (!clipboard) return;
+  // Offsets a little further each repeated paste (from wherever it was
+  // last stamped), so mashing Paste visibly walks a trail of copies
+  // instead of invisibly restacking on the exact same cells.
+  const base = tileSelection ? normalizedSelection(tileSelection) : { x0: 0, y0: 0 };
+  const ox = clampCell(base.x0 + 3, COLS - clipboard.w);
+  const oy = clampCell(base.y0 + 3, ROWS - clipboard.h);
+  for (const k of clipboard.cells) {
+    const [dx, dy] = k.split(',').map(Number);
+    tiles.add(key(ox + dx, oy + dy));
+  }
+  tileSelection = { x0: ox, y0: oy, x1: ox + clipboard.w - 1, y1: oy + clipboard.h - 1 };
+  draw();
+  pushHistory();
+});
+function tilesInSelection(s) {
+  const result = [];
+  for (const k of tiles) {
+    const [x, y] = k.split(',').map(Number);
+    if (x >= s.x0 && x <= s.x1 && y >= s.y0 && y <= s.y1) result.push([x, y]);
+  }
+  return result;
+}
+document.getElementById('flipHBtn').addEventListener('click', () => {
+  if (!tileSelection) return;
+  const s = normalizedSelection(tileSelection);
+  const cells = tilesInSelection(s);
+  for (const [x, y] of cells) tiles.delete(key(x, y));
+  for (const [x, y] of cells) tiles.add(key(s.x0 + (s.x1 - x), y));
+  draw();
+  pushHistory();
+});
+document.getElementById('flipVBtn').addEventListener('click', () => {
+  if (!tileSelection) return;
+  const s = normalizedSelection(tileSelection);
+  const cells = tilesInSelection(s);
+  for (const [x, y] of cells) tiles.delete(key(x, y));
+  for (const [x, y] of cells) tiles.add(key(x, s.y0 + (s.y1 - y)));
+  draw();
+  pushHistory();
+});
+// Rotating a non-square region swaps its own width/height -- the selection
+// itself is updated to the rotated footprint (still anchored at the same
+// top-left corner) so a follow-up Copy/Flip/Rotate acts on the result, not
+// the pre-rotation shape.
+function rotateSelection(clockwise) {
+  if (!tileSelection) return;
+  const s = normalizedSelection(tileSelection);
+  const w = s.x1 - s.x0 + 1, h = s.y1 - s.y0 + 1;
+  const cells = tilesInSelection(s);
+  for (const [x, y] of cells) tiles.delete(key(x, y));
+  for (const [x, y] of cells) {
+    const dx = x - s.x0, dy = y - s.y0;
+    const [ndx, ndy] = clockwise ? [h - 1 - dy, dx] : [dy, w - 1 - dx];
+    tiles.add(key(s.x0 + ndx, s.y0 + ndy));
+  }
+  tileSelection = { x0: s.x0, y0: s.y0, x1: s.x0 + h - 1, y1: s.y0 + w - 1 };
+  draw();
+  pushHistory();
+}
+document.getElementById('rotateCwBtn').addEventListener('click', () => rotateSelection(true));
+document.getElementById('rotateCcwBtn').addEventListener('click', () => rotateSelection(false));
+document.getElementById('deleteSelectionBtn').addEventListener('click', () => {
+  if (!tileSelection) return;
+  const s = normalizedSelection(tileSelection);
+  for (const [x, y] of tilesInSelection(s)) tiles.delete(key(x, y));
+  draw();
+  pushHistory();
+});
+
+// ─── Undo/redo, zoom, grid buttons ──────────────────────────────────────────
+document.getElementById('undoBtn').addEventListener('click', undo);
+document.getElementById('redoBtn').addEventListener('click', redo);
+document.getElementById('zoomInBtn').addEventListener('click', () => { zoom = Math.min(zoom * 1.25, 4); applyZoom(); });
+document.getElementById('zoomOutBtn').addEventListener('click', () => { zoom = Math.max(zoom / 1.25, 0.5); applyZoom(); });
+document.getElementById('zoomResetBtn').addEventListener('click', () => { zoom = 1; applyZoom(); });
+document.getElementById('gridToggle').addEventListener('change', evt => { showGrid = evt.target.checked; draw(); });
+
+// Keyboard shortcuts -- ignored while typing in a text field (the level
+// Name input is the only one on this page) so they never hijack normal
+// typing.
+window.addEventListener('keydown', evt => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  const ctrl = evt.ctrlKey || evt.metaKey;
+  if (ctrl && evt.key.toLowerCase() === 'z' && !evt.shiftKey) { evt.preventDefault(); undo(); }
+  else if (ctrl && (evt.key.toLowerCase() === 'y' || (evt.key.toLowerCase() === 'z' && evt.shiftKey))) { evt.preventDefault(); redo(); }
+  else if (ctrl && evt.key.toLowerCase() === 'c') { evt.preventDefault(); document.getElementById('copyBtn').click(); }
+  else if (ctrl && evt.key.toLowerCase() === 'v') { evt.preventDefault(); document.getElementById('pasteBtn').click(); }
+  else if (evt.key === 'Delete' || evt.key === 'Backspace') {
+    if (tileSelection) { evt.preventDefault(); document.getElementById('deleteSelectionBtn').click(); }
+    else if (selectedIndex >= 0) { evt.preventDefault(); document.getElementById('selDelete').click(); }
+  }
+});
+
+// ─── Background / thumbnail (single images, not part of the texture library) ──
+// Both are simple "pick a file, preview it, publish it" slots -- unlike
+// library textures, neither is ever placed/scaled/positioned on the
+// layout, so there's no canvas interaction for these beyond the live
+// backdrop preview in draw() itself.
+function wireArtSlot(inputId, uploadBtnId, previewWrapId, previewImgId, removeBtnId, emptyHintId, getSlot, setSlot) {
+  const input = document.getElementById(inputId);
+  const wrap = document.getElementById(previewWrapId);
+  const img = document.getElementById(previewImgId);
+  const emptyHint = document.getElementById(emptyHintId);
+
+  function render() {
+    const slot = getSlot();
+    wrap.style.display = slot ? 'flex' : 'none';
+    emptyHint.style.display = slot ? 'none' : 'block';
+    if (slot) img.src = 'data:image/png;base64,' + slot.base64;
+  }
+
+  document.getElementById(uploadBtnId).addEventListener('click', () => input.click());
+  input.addEventListener('change', () => {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const img = new Image();
+      img.onload = () => {
+        setSlot({ img, base64: dataUrl.split(',')[1] });
+        render();
+        draw();
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+    input.value = ''; // so selecting the exact same file again still fires 'change'
+  });
+  document.getElementById(removeBtnId).addEventListener('click', () => {
+    setSlot(null);
+    render();
+    draw();
+  });
+
+  render();
+  return render; // exposed so loadLevelForEdit()/resetToNewLevel() can refresh this preview after setting background/thumbnail directly, without duplicating this function's own display logic
+}
+const renderBgPreview = wireArtSlot('bgInput', 'uploadBgBtn', 'bgPreview', 'bgPreviewImg', 'bgRemoveBtn', 'bgEmptyHint',
+  () => background, v => { background = v; });
+const renderThumbPreview = wireArtSlot('thumbInput', 'uploadThumbBtn', 'thumbPreview', 'thumbPreviewImg', 'thumbRemoveBtn', 'thumbEmptyHint',
+  () => thumbnail, v => { thumbnail = v; });
+
+// ─── Texture library ────────────────────────────────────────────────────────
+const libInput = document.getElementById('libInput');
+const textureList = document.getElementById('textureList');
+const textureEmptyHint = document.getElementById('textureEmptyHint');
+
+document.getElementById('uploadLibBtn').addEventListener('click', () => libInput.click());
+libInput.addEventListener('change', () => {
+  for (const file of libInput.files) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const img = new Image();
+      img.onload = () => {
+        libTextures.push({ name: file.name, img, base64: dataUrl.split(',')[1] });
+        renderTextureList();
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  }
+  libInput.value = ''; // so selecting the exact same file again still fires 'change'
+});
+
+function renderTextureList() {
+  textureList.innerHTML = '';
+  textureEmptyHint.style.display = libTextures.length ? 'none' : 'block';
+  libTextures.forEach((t, i) => {
+    const row = document.createElement('div');
+    row.className = 'texture-thumb';
+    row.draggable = true;
+    row.title = 'Drag onto the layout to place a copy';
+    row.addEventListener('dragstart', evt => {
+      evt.dataTransfer.setData('text/plain', String(i));
+      evt.dataTransfer.effectAllowed = 'copy';
+    });
+
+    const img = document.createElement('img');
+    img.src = 'data:image/png;base64,' + t.base64;
+    row.appendChild(img);
+
+    const name = document.createElement('span');
+    name.className = 'tname';
+    name.textContent = t.name;
+    row.appendChild(name);
+
+    const del = document.createElement('button');
+    del.className = 'tdel';
+    del.type = 'button';
+    del.textContent = '×';
+    del.title = 'Remove from library (also removes any placed copies)';
+    del.addEventListener('click', () => removeLibTexture(i));
+    row.appendChild(del);
+
+    textureList.appendChild(row);
+  });
+}
+
+function removeLibTexture(i) {
+  libTextures.splice(i, 1);
+  // Drop any placements that referenced it, and shift every later index
+  // down by one so the rest keep pointing at the right library entry.
+  placed = placed.filter(p => p.libIndex !== i).map(p => (
+    p.libIndex > i ? { ...p, libIndex: p.libIndex - 1 } : p
+  ));
+  if (selectedIndex >= placed.length) selectedIndex = -1;
+  renderTextureList();
+  renderLayerList();
+  updateSelectedBar();
+  draw();
+  pushHistory();
+}
+renderTextureList();
+
+// ─── Layers panel (placed textures, not the library) ───────────────────────
+const layerList = document.getElementById('layerList');
+const layerEmptyHint = document.getElementById('layerEmptyHint');
+
+function renderLayerList() {
+  layerList.innerHTML = '';
+  layerEmptyHint.style.display = placed.length ? 'none' : 'block';
+  // Topmost layer (last in `placed`, drawn last/on top) shown first, like
+  // every layers panel convention.
+  for (let i = placed.length - 1; i >= 0; i--) {
+    const p = placed[i];
+    const lib = libTextures[p.libIndex];
+    if (!lib) continue;
+    const row = document.createElement('div');
+    row.className = 'layer-row' + (i === selectedIndex ? ' selected' : '');
+
+    const vis = document.createElement('button');
+    vis.type = 'button';
+    vis.className = 'hidden-toggle' + (p.visible ? '' : ' off');
+    vis.textContent = p.visible ? '\u{1F441}' : '\u{1F576}';
+    vis.title = p.visible ? 'Hide' : 'Show';
+    vis.addEventListener('click', () => { p.visible = !p.visible; renderLayerList(); draw(); pushHistory(); });
+    row.appendChild(vis);
+
+    const img = document.createElement('img');
+    img.src = 'data:image/png;base64,' + lib.base64;
+    row.appendChild(img);
+
+    const name = document.createElement('span');
+    name.className = 'tname';
+    name.textContent = lib.name;
+    name.addEventListener('click', () => { selectedIndex = i; setMode('select'); updateSelectedBar(); renderLayerList(); draw(); });
+    row.appendChild(name);
+
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.textContent = '▲';
+    up.title = 'Bring forward';
+    up.disabled = i === placed.length - 1;
+    up.addEventListener('click', () => { moveLayer(i, i + 1); });
+    row.appendChild(up);
+
+    const down = document.createElement('button');
+    down.type = 'button';
+    down.textContent = '▼';
+    down.title = 'Send backward';
+    down.disabled = i === 0;
+    down.addEventListener('click', () => { moveLayer(i, i - 1); });
+    row.appendChild(down);
+
+    layerList.appendChild(row);
+  }
+}
+function moveLayer(from, to) {
+  if (to < 0 || to >= placed.length) return;
+  const [item] = placed.splice(from, 1);
+  placed.splice(to, 0, item);
+  if (selectedIndex === from) selectedIndex = to;
+  renderLayerList();
+  draw();
+  pushHistory();
+}
+
+// ─── Drag-and-drop placement ────────────────────────────────────────────────
+canvas.addEventListener('dragover', evt => {
+  evt.preventDefault();
+  evt.dataTransfer.dropEffect = 'copy';
+  canvasScroll.classList.add('drag-over');
+});
+canvas.addEventListener('dragleave', () => canvasScroll.classList.remove('drag-over'));
+canvas.addEventListener('drop', evt => {
+  evt.preventDefault();
+  canvasScroll.classList.remove('drag-over');
+  const libIndex = Number(evt.dataTransfer.getData('text/plain'));
+  if (!Number.isInteger(libIndex) || !libTextures[libIndex]) return;
+  const p = rawPointAt(evt);
+  placed.push({ id: uid(), libIndex, x: p.x, y: p.y, scale: 100, visible: true });
+  selectedIndex = placed.length - 1;
+  setMode('select');
+  updateSelectedBar();
+  renderLayerList();
+  draw();
+  pushHistory();
+});
+
+// ─── Selected-placement controls ────────────────────────────────────────────
+const selectedBar = document.getElementById('selectedBar');
+const selScale = document.getElementById('selScale');
+const selScaleVal = document.getElementById('selScaleVal');
+
+function updateSelectedBar() {
+  const p = placed[selectedIndex];
+  if (selectedIndex < 0 || !p) {
+    selectedBar.classList.remove('visible');
+    return;
+  }
+  selectedBar.classList.add('visible');
+  selScale.value = p.scale;
+  selScaleVal.textContent = p.scale + '%';
+}
+selScale.addEventListener('input', () => {
+  if (selectedIndex < 0 || !placed[selectedIndex]) return;
+  placed[selectedIndex].scale = Number(selScale.value);
+  selScaleVal.textContent = placed[selectedIndex].scale + '%';
+  draw();
+});
+selScale.addEventListener('change', pushHistory);
+document.getElementById('selDelete').addEventListener('click', () => {
+  if (selectedIndex < 0) return;
+  placed.splice(selectedIndex, 1);
+  selectedIndex = -1;
+  updateSelectedBar();
+  renderLayerList();
+  draw();
+  pushHistory();
+});
+document.getElementById('selDeselect').addEventListener('click', () => {
+  selectedIndex = -1;
+  updateSelectedBar();
+  renderLayerList();
+  draw();
+});
+
+// ─── Publish ────────────────────────────────────────────────────────────────
+// A random per-browser id, persisted in localStorage -- the relay's level
+// upload endpoint keys quota/ownership off a clientId the same shape the
+// game itself generates (see relay-server/server.js's CLIENT_ID_RE), but
+// has no notion of a "web session," so this page mints and keeps its own.
+function getClientId() {
+  let id = localStorage.getItem('tagLevelEditorClientId');
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem('tagLevelEditorClientId', id);
+  }
+  return id;
+}
+
+const statusEl = document.getElementById('statusEl');
+const publishBtn = document.getElementById('publishBtn');
+
+function setStatus(text, cls) {
+  statusEl.textContent = text;
+  statusEl.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+publishBtn.addEventListener('click', async () => {
+  const name = document.getElementById('nameInput').value.trim() || 'Untitled Level';
+  if (tiles.size === 0) { setStatus('Paint at least one tile first.', 'err'); return; }
+  if (spawns.length < 2) { setStatus('Place at least 2 spawn points first.', 'err'); return; }
+
+  const tilesPayload = [...tiles].map(k => { const [x, y] = k.split(',').map(Number); return [x, y, 0]; });
+  const spawnPayload = spawns.map(s => [
+    (s.x + 0.5) * TILE_SIZE_PX,
+    (s.y + 0.5) * TILE_SIZE_PX,
+  ]);
+
+  const body = { name, tiles: tilesPayload, spawn_points: spawnPayload };
+  if (loadedPlatforms.length > 0) body.platforms = loadedPlatforms;
+  if (libTextures.length > 0) {
+    body.texturesBase64 = libTextures.map(t => t.base64);
+    // Hidden layers (see the Layers panel's eye toggle) are left out of
+    // what actually publishes -- "what you see is what you get," the same
+    // convention any layered editor's own export follows.
+    //
+    // x/y/width/height are converted from this canvas's own on-screen scale
+    // (CELL_PX per grid cell -- an arbitrary editor rendering choice, not a
+    // real-world unit) into grid-cell-relative units by dividing out
+    // CELL_PX, the same way spawn_points are already grid-relative before
+    // TILE_SIZE_PX converts them to world-pixels. LevelData.gd multiplies
+    // these back out by whatever TILE_SIZE_PX actually is at load time, so
+    // a placement's size/position stays proportionally correct even if
+    // TILE_SIZE_PX itself ever changes again later -- unlike a raw
+    // canvas-px or world-px value baked in at publish time, which would
+    // silently drift.
+    body.placements = placed.filter(p => p.visible).map(p => {
+      const r = placedRect(p);
+      return {
+        textureIndex: p.libIndex,
+        x: p.x / CELL_PX,
+        y: p.y / CELL_PX,
+        width: r.w / CELL_PX,
+        height: r.h / CELL_PX,
+      };
+    });
+  }
+  if (background) body.backgroundBase64 = background.base64;
+  if (thumbnail) body.thumbnailBase64 = thumbnail.base64;
+
+  publishBtn.disabled = true;
+  setStatus(editingLevelId ? 'Saving changes…' : 'Publishing…', 'busy');
+  try {
+    const url = editingLevelId
+      ? 'api/levels/' + encodeURIComponent(getClientId()) + '/' + editingLevelId + '/update'
+      : 'api/levels/' + encodeURIComponent(getClientId()) + '/upload';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const parsed = await res.json().catch(() => ({}));
+    if (res.ok && parsed.id) {
+      setStatus(editingLevelId ? 'Saved changes to "' + name + '".' : 'Published as ' + parsed.id + '.', 'ok');
+      refreshPublishedList();
+    } else {
+      setStatus((editingLevelId ? 'Save failed: ' : 'Publish failed: ') + (parsed.error || res.status), 'err');
+    }
+  } catch {
+    setStatus('Could not reach the relay server.', 'err');
+  } finally {
+    publishBtn.disabled = false;
+  }
+});
+
+// ─── Load an existing level for editing ─────────────────────────────────────
+// Publish always used to mint a brand-new id -- there was no way to revise
+// something already live short of publishing a duplicate and manually
+// deleting the old one. Edit (see refreshPublishedList() below) fetches
+// everything the relay knows about a level -- its data JSON, every library
+// texture, background, thumbnail -- and reconstructs this editor's full
+// state from it, inverting the exact same grid-cell/world-pixel conversions
+// the Publish handler above applies. Publish then targets that level's own
+// /update endpoint (see the publishBtn handler) instead of creating a
+// duplicate.
+
+function hasUnsavedWork() {
+  return tiles.size > 0 || spawns.length > 0 || placed.length > 0 || libTextures.length > 0 || !!background || !!thumbnail;
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+function loadImageFromBase64(base64) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = 'data:image/png;base64,' + base64;
+  });
+}
+async function fetchImageAsset(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('asset fetch failed: ' + url);
+  const base64 = await blobToBase64(await res.blob());
+  return { img: await loadImageFromBase64(base64), base64 };
+}
+
+function updatePublishModeUI() {
+  const banner = document.getElementById('editingBanner');
+  if (editingLevelId) {
+    banner.style.display = 'flex';
+    document.getElementById('editingBannerText').textContent = 'Editing an existing level -- Publish saves changes to it.';
+    publishBtn.textContent = 'Save Changes';
+  } else {
+    banner.style.display = 'none';
+    publishBtn.textContent = 'Publish';
+  }
+}
+
+// Full reset back to a blank, un-editing canvas -- everything loadLevelForEdit()
+// below can populate, undone. Used both by the "New Level" button and as the
+// very first step of loadLevelForEdit() itself (so a failed load can't leave
+// a half-old/half-new state on screen).
+function resetToNewLevel() {
+  editingLevelId = null;
+  loadedPlatforms = [];
+  tiles = new Set();
+  spawns = [];
+  placed = [];
+  libTextures = [];
+  background = null;
+  thumbnail = null;
+  selectedIndex = -1;
+  tileSelection = null;
+  document.getElementById('nameInput').value = '';
+  renderBgPreview();
+  renderThumbPreview();
+  renderTextureList();
+  renderLayerList();
+  updateSelectedBar();
+  updatePublishModeUI();
+  history = [];
+  historyIndex = -1;
+  pushHistory();
+  draw();
+}
+document.getElementById('newLevelBtn').addEventListener('click', () => {
+  if (hasUnsavedWork() && !confirm('Start a new level? Unsaved changes to the current one will be lost.')) return;
+  resetToNewLevel();
+  setStatus('', '');
+  refreshPublishedList();
+});
+
+async function loadLevelForEdit(entry) {
+  setStatus('Loading "' + entry.name + '" for editing…', 'busy');
+  try {
+    const dataRes = await fetch('api/levels/data/' + entry.id);
+    if (!dataRes.ok) throw new Error('level data fetch failed');
+    const data = await dataRes.json();
+
+    const newLibTextures = [];
+    for (let i = 0; i < (entry.textureCount || 0); i++) {
+      const asset = await fetchImageAsset('api/levels/data/' + entry.id + '/texture/' + i);
+      newLibTextures.push({ name: 'texture' + i + '.png', img: asset.img, base64: asset.base64 });
+    }
+    const newBackground = entry.hasBackground ? await fetchImageAsset('api/levels/data/' + entry.id + '/background') : null;
+    const newThumbnail = entry.hasThumbnail ? await fetchImageAsset('api/levels/data/' + entry.id + '/thumbnail') : null;
+
+    resetToNewLevel();
+
+    // Inverse of the Publish handler's own conversions (see its comments):
+    // tiles are already grid-cell coordinates, spawn_points are world-pixel
+    // (cell-center * TILE_SIZE_PX), placements are grid-cell-relative
+    // x/y/width/height that need CELL_PX (and, for scale, each texture's own
+    // natural size) multiplied back in to land in this canvas's own
+    // on-screen coordinate space.
+    tiles = new Set((data.tiles || []).map(t => key(t[0], t[1])));
+    spawns = (data.spawn_points || []).map(s => ({
+      x: s[0] / TILE_SIZE_PX - 0.5,
+      y: s[1] / TILE_SIZE_PX - 0.5,
+    }));
+    libTextures = newLibTextures;
+    placed = (data.placements || []).map(p => {
+      const lib = libTextures[p.textureIndex];
+      const w = p.width * CELL_PX;
+      return {
+        id: uid(),
+        libIndex: p.textureIndex,
+        x: p.x * CELL_PX,
+        y: p.y * CELL_PX,
+        scale: lib ? (w / lib.img.naturalWidth) * 100 : 100,
+        visible: true,
+      };
+    });
+    background = newBackground;
+    thumbnail = newThumbnail;
+    loadedPlatforms = Array.isArray(data.platforms) ? data.platforms : [];
+    editingLevelId = entry.id;
+    document.getElementById('nameInput').value = entry.name;
+
+    renderBgPreview();
+    renderThumbPreview();
+    renderTextureList();
+    renderLayerList();
+    updateSelectedBar();
+    updatePublishModeUI();
+    history = [];
+    historyIndex = -1;
+    pushHistory();
+    draw();
+    setStatus('Editing "' + entry.name + '". Publish to save changes.', 'ok');
+    refreshPublishedList();
+  } catch (err) {
+    setStatus('Could not load that level for editing.', 'err');
+  }
+}
+
+// ─── Published levels ──────────────────────────────────────────────────────
+// GET /api/levels/catalog has existed since the very first publish endpoint,
+// but nothing ever consumed it, so there was no way to tell a publish had
+// actually worked or find the id again afterward -- the confirmed cause of
+// "the new published map not showing up." This lists this browser's own
+// published levels (matched the same way the relay itself scopes quota, by
+// getClientId()) and refreshes right after a successful publish so a new
+// entry appears immediately with no reload needed.
+const publishedList = document.getElementById('publishedList');
+const publishedEmptyHint = document.getElementById('publishedEmptyHint');
+
+function relativeTime(ms) {
+  const diffSec = Math.round((Date.now() - ms) / 1000);
+  const units = [['year', 31536000], ['month', 2592000], ['day', 86400], ['hour', 3600], ['minute', 60]];
+  for (const [name, secs] of units) {
+    const n = Math.floor(diffSec / secs);
+    if (n >= 1) return n + ' ' + name + (n > 1 ? 's' : '') + ' ago';
+  }
+  return 'just now';
+}
+
+async function refreshPublishedList() {
+  let entries;
+  try {
+    const res = await fetch('api/levels/catalog');
+    entries = await res.json();
+  } catch {
+    return; // Leave whatever was already shown -- a failed refresh isn't worth surfacing over the publish status line itself.
+  }
+  if (!Array.isArray(entries)) return;
+
+  const mine = entries.filter(e => e.createdBy === getClientId()).sort((a, b) => b.createdAt - a.createdAt);
+  publishedList.innerHTML = '';
+  publishedEmptyHint.style.display = mine.length ? 'none' : 'block';
+  mine.forEach(e => {
+    const row = document.createElement('div');
+    row.className = 'layer-row' + (e.id === editingLevelId ? ' selected' : '');
+
+    const info = document.createElement('span');
+    info.className = 'tname';
+    info.title = e.id;
+    info.textContent = e.name + ' · ' + relativeTime(e.createdAt);
+    row.appendChild(info);
+
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.textContent = '✎';
+    edit.title = 'Load into the editor';
+    edit.addEventListener('click', () => {
+      if (e.id === editingLevelId) return; // already editing this one
+      if (hasUnsavedWork() && !confirm('Load "' + e.name + '" for editing? Unsaved changes to the current level will be lost.')) return;
+      loadLevelForEdit(e);
+    });
+    row.appendChild(edit);
+
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.textContent = '⧉';
+    copy.title = 'Copy level id (' + e.id + ')';
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(e.id);
+        setStatus('Copied id for "' + e.name + '".', 'ok');
+      } catch {
+        setStatus('Level id: ' + e.id, 'ok');
+      }
+    });
+    row.appendChild(copy);
+
+    publishedList.appendChild(row);
+  });
+}
+refreshPublishedList();
+
+applyZoom();
+updatePublishModeUI();
+draw();
+pushHistory();
+</script>
+</body>
+</html>

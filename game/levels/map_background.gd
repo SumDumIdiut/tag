@@ -23,6 +23,12 @@ class_name MapBackground
 # keep this in sync even though the art itself is gone.
 @export var bounds: Rect2 = Rect2(-1100, -100, 2200, 700)
 
+# A custom level's own uploaded backdrop (see CustomLevelCache/LevelData.
+# build_arena_from_data), stretched to fill `bounds` exactly -- null (every
+# built-in map, and any custom level that didn't upload one) just means the
+# flat FILL_COLOR below is all that shows, same as before this existed.
+@export var background_texture: Texture2D = null
+
 const FILL_COLOR := Color(0.11, 0.115, 0.145)
 
 func _ready() -> void:
@@ -31,3 +37,5 @@ func _ready() -> void:
 
 func _draw() -> void:
 	draw_rect(bounds, FILL_COLOR)
+	if background_texture != null:
+		draw_texture_rect(background_texture, bounds, false)

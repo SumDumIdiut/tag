@@ -7,6 +7,11 @@ extends Node
 # StyleBoxFlat at runtime. These are the pixel-art foundation ui_style.gd's
 # art-first rewrite loads from disk.
 #
+# Also bakes MovingPlatform's 3 tile pieces (left/middle/right, see
+# levels/moving_platform.gd) as flat placeholder squares matching its
+# current solid-color look exactly -- real end-cap/middle art can replace
+# these later via the Art Tool's Platform section without any code change.
+#
 # Painted flat white on transparent (button/panel) so ONE shared image
 # covers every accent color via StyleBoxTexture.modulate_color at
 # runtime, same "paint white, retint via modulate" convention
@@ -23,7 +28,16 @@ extends Node
 # Pure Image pixel math (no _draw()/SubViewport capture needed, unlike
 # build_icon_atlas.gd/build_procedural_sprites.gd) -- safe headless.
 
+const Categories := preload("res://net/game_asset_categories.gd")
+
 const OUT_DIR := "res://assets/icons/chrome"
+
+const PLATFORM_OUT_DIR := "res://assets/icons/platform"
+const PLATFORM_TILE_SIZE := 10
+# Matches moving_platform.tscn's current flat Visual ColorRect color exactly
+# -- the placeholder bake should look identical to today until real left/
+# middle/right art is painted over it via the Art Tool's Platform section.
+const PLATFORM_COLOR := Color(0.85, 0.55, 0.2, 1)
 
 const BUTTON_SIZE := 32
 const BUTTON_RADIUS := 10
@@ -59,6 +73,11 @@ func _ready() -> void:
 
 	_make_flat_rounded(SLIDER_W, SLIDER_H, SLIDER_RADIUS, Color(1, 1, 1, FILL_ALPHA)).save_png("%s/slider_fill.png" % OUT_DIR)
 	print("baked chrome: slider_fill")
+
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(PLATFORM_OUT_DIR))
+	for key in Categories.PLATFORM_KEYS:
+		_make_flat_rounded(PLATFORM_TILE_SIZE, PLATFORM_TILE_SIZE, 0, PLATFORM_COLOR).save_png("%s/%s.png" % [PLATFORM_OUT_DIR, key])
+		print("baked platform: %s" % key)
 
 	print("BUILD_CHROME_ART_DONE")
 	get_tree().quit()

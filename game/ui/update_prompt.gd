@@ -2,12 +2,14 @@ extends Control
 class_name UpdatePrompt
 
 # A small "a new build is available" card, shown over whatever screen calls
-# setup() when UpdateChecker reports one. Update Now downloads the release
-# asset for this exe and hands off to a tiny generated .bat (Windows-only,
-# matching this project's only export target) that waits for this process to
-# exit, swaps the new exe into place, and relaunches it -- the standard
-# workaround for "a running exe can't overwrite itself." Skip just frees this
-# node; the check runs again next launch.
+# setup() when UpdateChecker reports one. Update Now downloads TagSetup.exe
+# (see installer/tag.iss -- a proper per-user Inno Setup installer, not a
+# bare exe) and runs it silently with /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS,
+# which closes this running process, replaces the installed files, and
+# relaunches it -- the installer itself now owns the whole "a running exe
+# can't overwrite itself" dance that a hand-rolled wait-for-exit .bat script
+# used to (see git history: this file used to write/launch one directly).
+# Skip just frees this node; the check runs again next launch.
 
 const UIStyle := preload("res://ui/ui_style.gd")
 
@@ -98,11 +100,8 @@ func _on_download_completed(result: int, response_code: int, _headers: PackedStr
 		_skip_button.disabled = false
 		return
 
-	var exe_path := OS.get_executable_path()
-	var dir := exe_path.get_base_dir()
-	var exe_file := exe_path.get_file()
-	var tmp_path := dir.path_join(exe_file + ".update")
-	var f := FileAccess.open(tmp_path, FileAccess.WRITE)
+	var installer_path := OS.get_cache_dir().path_join("TagSetup.exe")
+	var f := FileAccess.open(installer_path, FileAccess.WRITE)
 	if f == null:
 		_status_label.text = "Couldn't save the update -- try again later."
 		_update_button.disabled = false
@@ -111,39 +110,21 @@ func _on_download_completed(result: int, response_code: int, _headers: PackedStr
 	f.store_buffer(body)
 	f.close()
 
-	if not _spawn_swap_and_relaunch(exe_path, tmp_path):
-		_status_label.text = "Couldn't apply the update -- try again later."
+	# /CLOSEAPPLICATIONS makes the installer itself close this running
+	# Tag.exe (it holds its own exe file open, which Inno's RestartManager
+	# check detects) so its file can actually be overwritten -- see
+	# installer/tag.iss's CloseApplications directive, which is what
+	# enables this switch to do anything under /VERYSILENT. The relaunch
+	# after that is the installer's own unconditional [Run] entry, not
+	# RestartApplications (confirmed live that doesn't reliably relaunch a
+	# plain exe -- see the .iss file's own comment).
+	var pid := OS.create_process(installer_path, [
+		"/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS",
+	])
+	if pid == -1:
+		_status_label.text = "Couldn't start the update -- try again later."
 		_update_button.disabled = false
 		_skip_button.disabled = false
 		return
 
 	get_tree().quit()
-
-## Writes and launches a one-shot batch script that waits for this process
-## to exit, replaces the running exe with the freshly-downloaded one, then
-## relaunches it and deletes itself.
-func _spawn_swap_and_relaunch(exe_path: String, tmp_path: String) -> bool:
-	var pid := OS.get_process_id()
-	var win_exe := exe_path.replace("/", "\\")
-	var win_tmp := tmp_path.replace("/", "\\")
-	var bat_path := exe_path.get_base_dir().path_join(exe_path.get_file() + ".updater.bat")
-
-	var lines := [
-		"@echo off",
-		":wait",
-		"tasklist /FI \"PID eq %d\" 2>NUL | find \"%d\" >NUL" % [pid, pid],
-		"if not errorlevel 1 (",
-		"  timeout /t 1 /nobreak >NUL",
-		"  goto wait",
-		")",
-		"move /Y \"%s\" \"%s\" >NUL" % [win_tmp, win_exe],
-		"start \"\" \"%s\"" % win_exe,
-		"del \"%~f0\"",
-	]
-	var bf := FileAccess.open(bat_path, FileAccess.WRITE)
-	if bf == null:
-		return false
-	bf.store_string("\r\n".join(lines) + "\r\n")
-	bf.close()
-
-	return OS.create_process(bat_path.replace("/", "\\"), []) != -1

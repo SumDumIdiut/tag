@@ -13,8 +13,10 @@ const RELAY_JOIN_BASE := "wss://codecade.co.za/tag/relay/join/"
 const UIStyle := preload("res://ui/ui_style.gd")
 const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 const TeamLobbyViewScene := preload("res://ui/team_lobby_view.gd")
+const FfaLobbyViewScene := preload("res://ui/ffa_lobby_view.gd")
 const MapVotePopupScene := preload("res://ui/map_vote_popup.gd")
 
+@onready var title_label: Label = $VBox/Title
 @onready var status_label: Label = $VBox/StatusPanel/StatusBox/StatusLabel
 @onready var back_button: Button = $VBox/BackButton
 
@@ -24,6 +26,7 @@ var _username := ""
 var _playlist_id := ""
 var _server_name := "" # whichever server we ended up on (found or spawned) -- see PartyManager.queue_party()
 var _team_view: TeamLobbyView
+var _ffa_view: FfaLobbyView
 var _map_vote_popup: MapVotePopup
 # NetworkManager is an autoload -- its signals outlive this screen, so a
 # match_started (or a late directory/connect response) can still fire after
@@ -34,7 +37,7 @@ var _cancelled := false
 
 func _ready() -> void:
 	_playlist_id = GameSettings.selected_ranked_playlist
-	UIStyle.add_glow_background(self, UIStyle.COLOR_RANKED, PlaylistCatalog.team_count(_playlist_id))
+	UIStyle.add_glow_background(self, UIStyle.COLOR_RANKED, PlaylistCatalog.team_count(_playlist_id), "ranked_queue")
 	$VBox/StatusPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_RANKED))
 	UIStyle.style_back_button(back_button)
 	# team_count == 2, not is_team_mode() -- is_team_mode() is keyed on
@@ -43,8 +46,11 @@ func _ready() -> void:
 	# identically in TeamLobbyView's red/blue split. Using team_size here
 	# meant 1v1 queueing never got this view at all, only the plain status
 	# text -- confirmed live, comparing screenshots of the two side by side.
-	if PlaylistCatalog.team_count(_playlist_id) == 2:
+	var tc := PlaylistCatalog.team_count(_playlist_id)
+	if tc == 2:
 		_build_team_view()
+	elif tc >= 3:
+		_build_ffa_view()
 	# Built AFTER _build_team_view() -- a later sibling draws on top, and
 	# _team_view is a full-rect background (see team_lobby_view.gd's split
 	# background), which would otherwise completely cover a visible popup.
@@ -52,6 +58,14 @@ func _ready() -> void:
 	add_child(_map_vote_popup)
 
 	back_button.pressed.connect(_on_back_pressed)
+	# Title/StatusLabel/BackButton are only ever actually visible if some
+	# future playlist has team_count < 2 (none of the 4 current ones do --
+	# team_view/ffa_view below covers every real case and hides $VBox
+	# entirely) -- registered anyway since it's free and futureproofs this
+	# without needing to remember to add it back later.
+	UIStyle.apply_layout_override(title_label, "ranked_queue.title")
+	UIStyle.apply_layout_override(status_label, "ranked_queue.status_label")
+	UIStyle.apply_layout_override(back_button, "ranked_queue.back_button")
 	_username = GameSettings.saved_username
 	GameSettings.save_username(_username)
 
@@ -89,7 +103,23 @@ func _build_team_view() -> void:
 	_team_view.my_id = NetworkManager.my_peer_id
 	add_child(_team_view)
 	_team_view.set_roster({})
+	_add_cancel_button()
 
+## Same idea as _build_team_view(), for the 3+-sided FFA playlists
+## (1v1v1/1v1v1v1) that don't fit TeamLobbyView's fixed 2-side layout --
+## see ffa_lobby_view.gd's own header comment.
+func _build_ffa_view() -> void:
+	$VBox.visible = false
+	_ffa_view = FfaLobbyViewScene.new()
+	_ffa_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_ffa_view.playlist_id = _playlist_id
+	_ffa_view.ranked = true
+	_ffa_view.my_id = NetworkManager.my_peer_id
+	add_child(_ffa_view)
+	_ffa_view.set_roster({})
+	_add_cancel_button()
+
+func _add_cancel_button() -> void:
 	var cancel_btn := Button.new()
 	cancel_btn.text = "Cancel"
 	cancel_btn.custom_minimum_size = Vector2(200, 40)
@@ -98,6 +128,7 @@ func _build_team_view() -> void:
 	UIStyle.style_back_button(cancel_btn)
 	cancel_btn.pressed.connect(_on_back_pressed)
 	add_child(cancel_btn)
+	UIStyle.apply_layout_override(cancel_btn, "ranked_queue.cancel_button")
 
 ## Map selection is a timed pop-up right before the match actually starts
 ## (see network_manager.gd's _begin_match_sequence), not a passive panel
@@ -126,10 +157,12 @@ func _on_lobby_state_updated(lobby: Dictionary) -> void:
 	voters.merge(lobby.get("bots", {}))
 	_map_vote_popup.set_roster(voters)
 	_map_vote_popup.set_votes(lobby.get("map_votes", {}))
-	if not _team_view:
-		return
-	_team_view.my_id = NetworkManager.my_peer_id
-	_team_view.set_roster(lobby.get("members", {}))
+	if _team_view:
+		_team_view.my_id = NetworkManager.my_peer_id
+		_team_view.set_roster(lobby.get("members", {}))
+	elif _ffa_view:
+		_ffa_view.my_id = NetworkManager.my_peer_id
+		_ffa_view.set_roster(lobby.get("members", {}))
 
 func _on_directory_response(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if _cancelled:

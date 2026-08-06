@@ -21,6 +21,7 @@ const PODIUM_COLUMN_HEIGHT := 90.0
 const PODIUM_RISE_DURATION_SEC := 0.35
 const PODIUM_RISE_GAP_SEC := 0.15
 
+@onready var title_label: Label = $VBox/Title
 @onready var placements_box: VBoxContainer = $VBox/PlacementsPanel/PlacementsBox
 @onready var rank_label: Label = $VBox/RankLabel
 @onready var continue_button: Button = $VBox/ContinueButton
@@ -49,6 +50,9 @@ func _ready() -> void:
 	_toast = AchievementToastScene.new()
 	add_child(_toast)
 	continue_button.pressed.connect(_on_continue_pressed)
+	UIStyle.apply_layout_override(title_label, "match_results.title")
+	UIStyle.apply_layout_override(rank_label, "match_results.rank_label")
+	UIStyle.apply_layout_override(continue_button, "match_results.continue_button")
 	# Top 3 (or fewer, for a small match) get the podium visual instead of a
 	# plain row -- anyone past 3rd still gets the existing plain-row list,
 	# same as before.

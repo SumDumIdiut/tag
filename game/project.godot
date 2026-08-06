@@ -9,6 +9,7 @@ config_version=5
 config/name="Tag"
 run/main_scene="res://main/bootstrap.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://icon.png"
 
 [autoload]
 
@@ -16,6 +17,7 @@ GameSettings="*res://main/game_settings.gd"
 NetworkManager="*res://net/network_manager.gd"
 PlayerIdentity="*res://net/player_identity.gd"
 PartyManager="*res://net/party_manager.gd"
+CustomLevelCache="*res://net/custom_level_cache.gd"
 
 [input]
 

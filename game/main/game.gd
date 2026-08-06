@@ -2,7 +2,7 @@ extends Node2D
 
 const NPC_SCENE := preload("res://npc/npc.tscn")
 const PLAYER_SCENE := preload("res://player/player.tscn")
-const LocalMapCatalog := preload("res://levels/local_maps/catalog.gd")
+const LevelData := preload("res://levels/level_data.gd")
 const FixedView := preload("res://levels/fixed_view.gd")
 
 @onready var hud: Label = $HUD
@@ -16,13 +16,25 @@ var _spawn_points: Array = []
 var _death_rect: Rect2
 
 func _ready() -> void:
-	arena = load(LocalMapCatalog.scene_path_for(GameSettings.selected_local_map)).instantiate()
+	# Local/bot practice now plays exclusively on live-published custom
+	# levels (see CustomLevelCache, downloaded once at game startup) --
+	# local_menu.gd's Start button is only ever enabled once a real
+	# selection exists, so get_level_data() returning {} here would mean
+	# that invariant broke, not a normal condition to design around
+	# silently. Bouncing back to the map picker beats crashing on an empty
+	# SpawnPoints list below.
+	var data := CustomLevelCache.get_level_data(GameSettings.selected_local_map)
+	if data.is_empty():
+		push_error("Game: selected_local_map %s not in CustomLevelCache -- returning to Local menu" % GameSettings.selected_local_map)
+		get_tree().change_scene_to_file("res://main/local_menu.tscn")
+		return
+	arena = LevelData.build_arena_from_data(data, CustomLevelCache.get_level_textures(GameSettings.selected_local_map), CustomLevelCache.get_level_background(GameSettings.selected_local_map))
 	add_child(arena)
 	move_child(arena, 0) # keep it drawn behind HUD/PauseMenu, matching the old static-child order
 
-	# Same rect MapBackground draws itself to (see generate_local_maps.gd) --
-	# reusing it here means the camera, the backdrop, and the death boundary
-	# below can never drift out of sync with each other.
+	# Same rect MapBackground draws itself to -- reusing it here means the
+	# camera, the backdrop, and the death boundary below can never drift out
+	# of sync with each other.
 	var view_rect: Rect2 = arena.get_node("Background").bounds
 	add_child(FixedView.make_camera(view_rect))
 	_death_rect = FixedView.death_rect(view_rect)

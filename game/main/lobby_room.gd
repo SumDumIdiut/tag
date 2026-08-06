@@ -6,6 +6,7 @@ const PlaylistCatalog := preload("res://net/playlist_catalog.gd")
 const TeamLobbyViewScene := preload("res://ui/team_lobby_view.gd")
 const MapVotePopupScene := preload("res://ui/map_vote_popup.gd")
 
+@onready var vbox: VBoxContainer = $VBox
 @onready var lobby_name_label: Label = $VBox/LobbyNameLabel
 @onready var roster_list: ItemList = $VBox/RosterList
 @onready var ready_button: Button = $VBox/ReadyButton
@@ -26,6 +27,10 @@ func _ready() -> void:
 	ready_button.pressed.connect(_on_ready_pressed)
 	start_button.pressed.connect(_on_start_pressed)
 	leave_button.pressed.connect(_on_leave_pressed)
+	UIStyle.apply_layout_override(lobby_name_label, "lobby_room.lobby_name_label")
+	UIStyle.apply_layout_override(ready_button, "lobby_room.ready_button")
+	UIStyle.apply_layout_override(start_button, "lobby_room.start_button")
+	UIStyle.apply_layout_override(leave_button, "lobby_room.leave_button")
 	NetworkManager.lobby_state_updated.connect(_on_lobby_state_updated)
 	NetworkManager.match_started.connect(_on_match_started)
 	NetworkManager.disconnected_from_server.connect(_on_disconnected)
@@ -103,8 +108,35 @@ func _on_map_vote_phase_started(duration: float) -> void:
 func _on_map_vote_phase_ended(chosen_level_id: String, countdown: float) -> void:
 	_map_vote_popup.show_result(chosen_level_id, countdown)
 
+## `vbox`'s height (not width -- see below) sits in a fixed-looking offset
+## rect that's really just a rough upper bound (sized for the roster/team-
+## view case, see the .tscn's own history) -- content genuinely varies (the
+## optional private-match address panel from _build_share_address_panel(),
+## and _ensure_team_view()'s roster_list-vs-TeamLobbyView swap, which alone
+## differs by close to 160px), so a single static offset always left a gap
+## under LeaveButton for the common case. Recomputed here (called at the end
+## of every lobby_state update, not just once) from vbox's own real content
+## -- safe to call repeatedly since it's a no-op whenever the content shape
+## hasn't actually changed (e.g. just a member joining/leaving in non-team
+## mode, where roster_list's own height stays fixed regardless of item count).
+##
+## Width (offset_left/offset_right) is deliberately left untouched --
+## recomputing it too would shrink-wrap the whole card down to whatever the
+## narrowest button needs (confirmed live: ~120px instead of the original,
+## intentionally roomy 600px meant to comfortably fit real usernames + host/
+## ready tags in RosterList). RosterList's own custom_minimum_size.x=600
+## floors this the same way SettingsPanel's width floor does for
+## local_menu.gd's identical fix, now that the rect's own width is no longer
+## what's enforcing it.
+func _recenter_vbox() -> void:
+	await get_tree().process_frame
+	var content_height := vbox.get_combined_minimum_size().y
+	vbox.offset_top = -content_height / 2.0
+	vbox.offset_bottom = content_height / 2.0
+
 func _on_lobby_state_updated(lobby: Dictionary) -> void:
 	if lobby.is_empty():
+		_recenter_vbox()
 		return
 	lobby_name_label.text = lobby.name
 	var lobby_playlist: String = lobby.get("playlist", "")
@@ -156,6 +188,7 @@ func _on_lobby_state_updated(lobby: Dictionary) -> void:
 		_ensure_team_view(lobby_playlist)
 		_team_view.my_id = NetworkManager.my_peer_id
 		_team_view.set_roster(lobby.members)
+		_recenter_vbox()
 		return
 	_teardown_team_view()
 	roster_list.visible = true
@@ -165,6 +198,7 @@ func _on_lobby_state_updated(lobby: Dictionary) -> void:
 		var host_tag := "  [host]" if peer_id == lobby.host_peer else ""
 		var ready_tag := "  READY" if member.ready else ""
 		roster_list.add_item("%s%s%s" % [member.username, host_tag, ready_tag])
+	_recenter_vbox()
 
 ## Lazily built the first time a team-mode playlist lobby is seen -- replaces
 ## roster_list with the live team-card view (2 sides, empty slots as dark
@@ -175,7 +209,14 @@ func _ensure_team_view(lobby_playlist: String) -> void:
 	_teardown_team_view()
 	roster_list.visible = false
 	_team_view = TeamLobbyViewScene.new()
-	_team_view.custom_minimum_size = Vector2(0, 320)
+	# 600 width matches RosterList's own explicit floor (see _recenter_vbox()'s
+	# comment on why vbox itself no longer enforces this) -- without it, an
+	# invisible roster_list contributes nothing to vbox's own minimum-width
+	# calculation (Godot Containers skip invisible children), so team mode
+	# specifically would silently lose the intended width the instant a team-
+	# mode lobby loads, unlike every other lobby which keeps roster_list
+	# visible and its floor active.
+	_team_view.custom_minimum_size = Vector2(600, 320)
 	_team_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_team_view.playlist_id = lobby_playlist
 	_team_view.ranked = false

@@ -7,6 +7,13 @@ class_name OnlineMapIcon
 # local_map_icon.gd already established for the (separate, offline-only)
 # Local map catalog. Used by map_vote_view.gd's vote buttons so a player can
 # actually see what they're voting for instead of a bare map name.
+#
+# Also matches local_map_icon.gd in preferring a live-published custom
+# level's own uploaded thumbnail (via CustomLevelCache) over everything else
+# when one exists -- see that script's own header comment for the full
+# reasoning; OnlineMapCatalog.MAPS has no entry for a custom level id either,
+# so without this every custom level tile fell through to _draw()'s empty
+# platform list (nothing drawn at all, not even a fallback glyph here).
 
 const Catalog := preload("res://levels/online_maps/catalog.gd")
 
@@ -47,6 +54,11 @@ func _try_setup_baked() -> void:
 	if _baked_rect:
 		_baked_rect.queue_free()
 		_baked_rect = null
+	if map_id.begins_with("level_"):
+		var custom_tex := CustomLevelCache.get_level_thumbnail(map_id)
+		if custom_tex:
+			_set_baked_texture(custom_tex)
+			return
 	if not accent_color.is_equal_approx(BAKED_COLOR):
 		return
 	var path := "%s/%s.png" % [BAKED_DIR, map_id]
@@ -55,6 +67,9 @@ func _try_setup_baked() -> void:
 	var tex: Texture2D = load(path)
 	if not tex:
 		return
+	_set_baked_texture(tex)
+
+func _set_baked_texture(tex: Texture2D) -> void:
 	_baked_rect = TextureRect.new()
 	_baked_rect.texture = tex
 	_baked_rect.stretch_mode = TextureRect.STRETCH_SCALE
