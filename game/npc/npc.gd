@@ -220,11 +220,44 @@ func _make_decision() -> void:
 		return
 
 	# Reactive obstacle handling: a blocked path or a ledge just ahead both
-	# call for a jump, and so does a target clearly above us.
+	# call for a jump, and so does a target clearly above us -- EXCEPT a
+	# ledge with no floor resuming anywhere within real jumping range (see
+	# _floor_resumes_ahead()), which means this is the actual edge of the
+	# level, not a gap to more platform -- jumping there just launches
+	# straight into the void. Turning around instead (same reversal
+	# _blocked_ahead's own wall case already gets, further down for the
+	# flee branch) keeps NPCs from routinely leaping off small single-
+	# platform custom levels that have no waypoints to route them around
+	# edges properly -- built-in multi-platform maps are unaffected, since
+	# their real gaps always have floor resuming well within this check's
+	# own range.
 	var look := _look_distance()
 	var blocked := _blocked_ahead(dir_sign, look)
 	var floor_ahead := _floor_ahead(dir_sign, look)
-	if blocked or not floor_ahead or to_target.y < -20.0:
+	# Uses _floor_ahead_deep(), NOT the shallow floor_ahead above -- a
+	# not-yet-landed NPC (just spawned, mid-jump, freshly knocked off a
+	# ledge) can genuinely be further above real ground than floor_ahead's
+	# own shallow 40px probe reaches, which would misread solid ground below
+	# as "no floor" and reverse an already-correct flee/chase direction into
+	# the WRONG one (confirmed live: gating this on is_on_floor() instead,
+	# to just skip the check while airborne, was worse -- it left a
+	# genuinely-toward-the-edge direction from that same airborne window
+	# completely unchecked instead).
+	var at_level_edge := not _floor_ahead_deep(dir_sign, look) and not _floor_resumes_ahead(dir_sign, look)
+	if at_level_edge:
+		dir_sign = -dir_sign
+		_decision_move_dir = Vector2(dir_sign, 0.0)
+		# Reversing the DESIRED direction alone isn't enough by itself --
+		# by the time this triggers (right at the edge), existing rightward
+		# (or leftward) momentum from the approach can still carry the NPC
+		# over before normal acceleration/deceleration catches up, same as
+		# a car not stopping the instant you turn the wheel. Confirmed live:
+		# without this, an NPC detected as "at the edge, moving right" would
+		# still drift the rest of the way off and fall before its velocity
+		# actually reversed. Killing the existing horizontal velocity right
+		# here removes that carry-over completely.
+		velocity.x = 0.0
+	elif blocked or not floor_ahead or to_target.y < -20.0:
 		_decision_jump = randf() > _mistake_chance()
 
 	# Dashing is purposeful, not random noise: chasers dash to close real
@@ -265,3 +298,42 @@ func _floor_ahead(dir_sign: float, distance: float) -> bool:
 		global_position + ahead, global_position + ahead + Vector2(0.0, 40.0), WORLD_COLLISION_MASK, [get_rid()]
 	)
 	return space_state.intersect_ray(params).size() > 0
+
+# Deep enough that a not-yet-landed NPC (just spawned, mid-jump, freshly
+# knocked off a ledge) still correctly finds real ground below it -- see
+# _floor_ahead_deep()'s own comment for why this can't just reuse
+# _floor_ahead()'s own much shallower 40px probe.
+const EDGE_FLOOR_PROBE_DEPTH := 300.0
+## Same idea as _floor_ahead() but probes much deeper -- only used by the
+## level-edge check below, never the original shallow reactive jump-decision
+## _floor_ahead() itself still uses (that one's short depth is exactly right
+## for its own "is this a real step/ledge right at my feet" purpose).
+func _floor_ahead_deep(dir_sign: float, distance: float) -> bool:
+	var space_state := get_world_2d().direct_space_state
+	var ahead := Vector2(dir_sign * distance, 0.0)
+	var params := PhysicsRayQueryParameters2D.create(
+		global_position + ahead, global_position + ahead + Vector2(0.0, EDGE_FLOOR_PROBE_DEPTH), WORLD_COLLISION_MASK, [get_rid()]
+	)
+	return space_state.intersect_ray(params).size() > 0
+
+# How far past the immediate reactive lookahead to keep checking for floor
+# resuming before giving up and calling it a dead end -- a real jumpable gap
+# between two built-in-map platforms always has floor resume well inside
+# this; a small custom level's own actual edge never does, no matter how
+# far out this looks.
+const EDGE_CHECK_STEP := 60.0
+const EDGE_CHECK_MAX_EXTRA := 240.0
+
+## Beyond `base_distance` (the same short reactive lookahead the caller
+## already used), checks progressively further out -- via the same deep
+## probe _floor_ahead_deep() uses, for the same not-yet-landed-NPC reason --
+## for floor resuming anywhere in that stretch. Lets _make_decision() tell
+## an actual jumpable gap to more platform apart from the genuine edge of a
+## level (see its own call site's comment for why this matters).
+func _floor_resumes_ahead(dir_sign: float, base_distance: float) -> bool:
+	var extra := EDGE_CHECK_STEP
+	while extra <= EDGE_CHECK_MAX_EXTRA:
+		if _floor_ahead_deep(dir_sign, base_distance + extra):
+			return true
+		extra += EDGE_CHECK_STEP
+	return false
