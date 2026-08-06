@@ -106,7 +106,7 @@ const ASSET_PUBLISH_KEY = process.env.ASSET_PUBLISH_KEY || '';
 // instead of hand-copying. This file can't share that literal source
 // across languages, so this is the one remaining manual-sync copy -- keep
 // both sides updated together.
-const GAME_ASSET_CATEGORIES = ['icons', 'chrome', 'platform', 'playlist_thumbnails', 'backgrounds'];
+const GAME_ASSET_CATEGORIES = ['icons', 'chrome', 'platform', 'playlist_thumbnails', 'backgrounds', 'button_art'];
 // The app's shared button/panel/slider box art.
 const CHROME_KEYS = ['button', 'panel', 'slider_groove', 'slider_fill'];
 // The 3 tiles a MovingPlatform assembles itself from left-to-right (see
@@ -124,6 +124,30 @@ const BACKGROUND_KEYS = [
   'lobby_room', 'achievements_menu', 'friends_menu', 'login_screen',
   'match_intro', 'match_intro_ranked', 'match_results',
 ];
+// SYNC: mirrors game/net/game_asset_categories.gd's BUTTON_ART_KEYS -- one
+// optional per-button art override per individually-registered Button, keyed
+// by the SAME "screen.shortkey" strings the ui-layout override system uses
+// as layout_key (not a separate namespace). Deliberately excludes playlist
+// cards -- those already have their own richer per-id art via
+// PLAYLIST_THUMBNAIL_KEYS above.
+const BUTTON_ART_KEYS = [
+  'main_menu.online_button', 'main_menu.local_button',
+  'main_menu.account_button', 'main_menu.achievements_button',
+  'online_menu.casual_button', 'online_menu.ranked_button',
+  'online_menu.private_button', 'online_menu.friends_button', 'online_menu.back_button',
+  'local_menu.start_button', 'local_menu.back_button',
+  'casual_playlist_select.back_button', 'ranked_playlist_select.back_button',
+  'casual_queue.back_button', 'casual_queue.cancel_button',
+  'ranked_queue.back_button', 'ranked_queue.cancel_button',
+  'lobby_room.ready_button', 'lobby_room.start_button', 'lobby_room.leave_button',
+  'achievements_menu.back_button',
+  'friends_menu.copy_button', 'friends_menu.add_button', 'friends_menu.back_button',
+  'login_screen.back_button', 'login_screen.login_button',
+  'login_screen.register_button', 'login_screen.logout_button',
+  'match_intro.skip_button',
+  'match_results.continue_button',
+  'pause_menu.resume_button', 'pause_menu.menu_button',
+];
 // Categories that publish as one file per key (like a per-key subfolder)
 // rather than a single shared atlas image (like icons/tiles) -- maps each
 // to its key list so the publish/download routes below don't need one
@@ -133,6 +157,7 @@ const MULTI_KEY_CATEGORIES = {
   platform: PLATFORM_KEYS,
   playlist_thumbnails: PLAYLIST_THUMBNAIL_KEYS,
   backgrounds: BACKGROUND_KEYS,
+  button_art: BUTTON_ART_KEYS,
 };
 // A full-screen background (1152x648, far bigger than any icon/mode-button
 // canvas) needs more headroom than those -- bumped along with the
