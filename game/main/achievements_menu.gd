@@ -70,13 +70,16 @@ func _ready() -> void:
 	vbox.add_theme_constant_override("separation", 14)
 	add_child(vbox)
 
-	vbox.add_child(UIStyle.title_label("Achievements", 32))
+	var title_label := UIStyle.title_label("Achievements", 32)
+	vbox.add_child(title_label)
+	UIStyle.apply_layout_override(title_label, "achievements_menu.title")
 
 	_status_label = Label.new()
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status_label.add_theme_color_override("font_color", Color(0.7, 0.72, 0.78))
 	_status_label.text = "Loading..."
 	vbox.add_child(_status_label)
+	UIStyle.apply_layout_override(_status_label, "achievements_menu.status_label")
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -107,6 +110,7 @@ func _ready() -> void:
 	UIStyle.style_back_button(back_btn)
 	back_btn.pressed.connect(_on_back_pressed)
 	vbox.add_child(back_btn)
+	UIStyle.apply_layout_override(back_btn, "achievements_menu.back_button")
 
 	_fetch_progression()
 

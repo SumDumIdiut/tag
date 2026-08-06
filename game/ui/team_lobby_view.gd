@@ -24,17 +24,34 @@ const CARD_PORTRAIT_SIZE := Vector2(150, 190)
 const CARD_WIDTH := 260.0
 const CARD_HEIGHT := 320.0
 const SLOT_SEPARATION := 14.0
+const SLIDE_DURATION_SEC := 0.34
+const SLIDE_GAP_SEC := 0.12
 
 @export var playlist_id: String = "1v1"
 @export var ranked: bool = false
 @export var my_id: int = -1
 @export var accent_color: Color = UIStyle.COLOR_RANKED
+# The queue's own colored split, VS badge, and glowing/rank-line cards give
+# a plain waiting room some identity while nothing else is happening --
+# match_intro.gd's post-"match found" reveal sets this to false, matching
+# the plain flat-bordered cards on a plain black backdrop that columns_
+# reveal_view.gd/corners_reveal_view.gd's own 3+-way reveals already use (no
+# background, no badge, no glow, no rank line -- see _build_plain_card()),
+# so the reveal's slide-in cards are the only thing moving/visible instead
+# of competing with a still-visible glowing waiting-room look left over from
+# a moment before.
+@export var queue_style: bool = true
 
 var _roster := {} # peer_id -> info dict (username, color_id, elo, tier, team)
 var _slot_nodes := [[], []] # per side: ordered list of Control currently occupying each slot (card or placeholder)
 var _side_boxes: Array = [null, null] # per side: the VBoxContainer stacking that side's slots
 var _vs_label: Label
 var _built := false
+# See set_roster()'s own force_rebuild comment -- a sentinel distinct from
+# any real peer_id (including the -1 "not connected yet" default) so the
+# very first real set_roster() call is never mistaken for "my_id didn't
+# change."
+var _last_my_id: int = -999999
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -49,37 +66,38 @@ func _ready() -> void:
 ## screenshot: the second slot landed nowhere near its side) the moment slot
 ## heights weren't all identical -- not worth re-deriving that math by hand.
 func _build_static_shell() -> void:
-	var split := _SplitBackground.new()
-	split.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	split.accent_color = accent_color
-	add_child(split)
+	if queue_style:
+		var split := _SplitBackground.new()
+		split.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		split.accent_color = accent_color
+		add_child(split)
 
-	var badge := _VsBadge.new()
-	badge.accent_color = accent_color
-	badge.custom_minimum_size = Vector2(132, 132)
-	badge.size = Vector2(132, 132)
-	badge.set_anchors_preset(Control.PRESET_CENTER)
-	badge.position = -badge.size * 0.5
-	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(badge)
+		var badge := _VsBadge.new()
+		badge.accent_color = accent_color
+		badge.custom_minimum_size = Vector2(132, 132)
+		badge.size = Vector2(132, 132)
+		badge.set_anchors_preset(Control.PRESET_CENTER)
+		badge.position = -badge.size * 0.5
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(badge)
 
-	# A child of badge, sized to fill it exactly (PRESET_FULL_RECT), rather
-	# than a sibling independently anchored to screen-center with a
-	# hand-guessed pixel offset -- that guess assumed the Label's auto-size
-	# would land at exactly 60x44, which it doesn't (font metrics for "VS"
-	# at this size come out slightly different), so the text visibly drifted
-	# off-center from the badge's own true center. Filling the badge's own
-	# rect and centering via alignment is correct regardless of glyph size.
-	_vs_label = Label.new()
-	_vs_label.text = "VS"
-	_vs_label.add_theme_font_size_override("font_size", 34)
-	_vs_label.add_theme_color_override("font_color", Color(0.95, 0.96, 0.98))
-	_vs_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_vs_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_vs_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_vs_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_vs_label.pivot_offset = badge.size * 0.5
-	badge.add_child(_vs_label)
+		# A child of badge, sized to fill it exactly (PRESET_FULL_RECT), rather
+		# than a sibling independently anchored to screen-center with a
+		# hand-guessed pixel offset -- that guess assumed the Label's auto-size
+		# would land at exactly 60x44, which it doesn't (font metrics for "VS"
+		# at this size come out slightly different), so the text visibly drifted
+		# off-center from the badge's own true center. Filling the badge's own
+		# rect and centering via alignment is correct regardless of glyph size.
+		_vs_label = Label.new()
+		_vs_label.text = "VS"
+		_vs_label.add_theme_font_size_override("font_size", 34)
+		_vs_label.add_theme_color_override("font_color", Color(0.95, 0.96, 0.98))
+		_vs_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_vs_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_vs_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_vs_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_vs_label.pivot_offset = badge.size * 0.5
+		badge.add_child(_vs_label)
 
 	# Fixed-height slots (a placeholder reserves the exact same height a
 	# real card would, just centering its own smaller box within that space)
@@ -105,9 +123,27 @@ func _build_static_shell() -> void:
 		_side_boxes[side] = side_box
 		for slot in team_size:
 			var placeholder := _build_placeholder_slot()
-			side_box.add_child(placeholder)
-			_slot_nodes[side].append(placeholder)
+			var wrapper := _wrap_slot(placeholder)
+			side_box.add_child(wrapper)
+			_slot_nodes[side].append(wrapper)
 	_built = true
+
+## A slot's real content (card or placeholder) sits inside a plain, non-
+## container-managed wrapper -- side_box (a VBoxContainer) lays out and
+## repositions the wrapper on every resort, while the content inside it
+## keeps a freely animatable `position` of its own, so _slide_in() below can
+## move it without a layout pass stomping the animation mid-flight. This is
+## exactly the failure mode this file's own header comment already
+## describes hitting once, the first time a slot's position was animated
+## directly as a container's own child.
+func _wrap_slot(content: Control) -> Control:
+	var wrapper := Control.new()
+	wrapper.custom_minimum_size = content.custom_minimum_size
+	wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	content.size = content.custom_minimum_size
+	wrapper.add_child(content)
+	return wrapper
 
 ## Full replace -- diffs against the currently-shown roster so only newly
 ## filled/emptied slots animate; already-settled cards are left alone.
@@ -123,6 +159,21 @@ func set_roster(new_roster: Dictionary) -> void:
 		var side := 0 if t == my_team else 1
 		side_peers[side].append(peer_id)
 
+	# A change in my_id invalidates every slot's already-built side
+	# assignment and "(You)" tag even for a peer that hasn't otherwise
+	# moved -- the diff below only checks "did the OCCUPANT of this slot
+	# change," not "did the viewer's own identity," so without this a
+	# my_id that was still -1 (or otherwise stale) on an earlier call --
+	# e.g. the very first roster update arriving a tick before
+	# NetworkManager.my_peer_id finished populating -- could bake in the
+	# WRONG side/tag permanently: once a slot's occupant stops changing,
+	# the diff below never revisits it again, even after my_id later
+	# becomes correct. Confirmed as the live "my own screen tags the OTHER
+	# player (You)" report: the fix is forcing every slot to rebuild the
+	# one time my_id itself changes, not just when who's in a slot does.
+	var force_rebuild := my_id != _last_my_id
+	_last_my_id = my_id
+
 	var team_size := PlaylistCatalog.team_size(playlist_id)
 	for side in 2:
 		var side_box: VBoxContainer = _side_boxes[side]
@@ -134,7 +185,7 @@ func set_roster(new_roster: Dictionary) -> void:
 			# Godot quirk) -- has_meta() first avoids the noise for every
 			# placeholder slot, which never carries this key at all.
 			var prev_peer = prev.get_meta("peer_id") if prev and prev.has_meta("peer_id") else null
-			if peer_id == prev_peer:
+			if peer_id == prev_peer and not force_rebuild:
 				continue # unchanged -- leave whatever's already shown (and its animation state) alone
 			side_box.remove_child(prev)
 			prev.queue_free()
@@ -152,12 +203,14 @@ func set_roster(new_roster: Dictionary) -> void:
 				# in the match, not a mismatched preview.
 				var actual_team: int = teams.get(peer_id, 0)
 				fresh = _build_card(peer_id, new_roster[peer_id], actual_team)
-				fresh.set_meta("peer_id", peer_id)
-			side_box.add_child(fresh)
-			side_box.move_child(fresh, slot)
-			_slot_nodes[side][slot] = fresh
+			var wrapper := _wrap_slot(fresh)
 			if peer_id != null:
-				_pop_in(fresh)
+				wrapper.set_meta("peer_id", peer_id)
+			side_box.add_child(wrapper)
+			side_box.move_child(wrapper, slot)
+			_slot_nodes[side][slot] = wrapper
+			if peer_id != null:
+				_slide_in(fresh, side * team_size + slot)
 	_roster = new_roster
 
 ## Prefers whatever team assignment the server already actually made
@@ -194,17 +247,44 @@ func _roster_has_real_teams(roster: Dictionary) -> bool:
 ## The "match found" beat -- call once every slot is filled. Just the VS
 ## label's punch-in flourish; per-slot pop-ins already happened as each
 ## player joined via set_roster(), so this doesn't re-animate the cards.
+## No-op in the plain reveal style (queue_style == false) -- there's no
+## badge/label to punch, matching columns/corners_reveal_view.gd having no
+## such flourish of their own either.
 func play_full_reveal() -> void:
+	if not _vs_label:
+		return
 	_vs_label.scale = Vector2.ZERO
 	var tween := create_tween()
 	tween.tween_property(_vs_label, "scale", Vector2(1.35, 1.35), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tween.tween_property(_vs_label, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_SINE)
 
-func _pop_in(node: Control) -> void:
-	node.scale = Vector2(0.4, 0.4)
-	node.pivot_offset = node.custom_minimum_size * 0.5
+## Same staggered top/bottom slide columns_reveal_view.gd/corners_reveal_
+## view.gd's own reveals use (drop for an even index, rise for an odd one,
+## strictly one card at a time rather than an overlapping stagger), replacing
+## the old plain scale-in pop and a first slide attempt that was both too
+## subtle (a fixed 70px travel next to these reveals' near-full-viewport
+## slide) and, worse, silently not staggering at all: delay must be set per-
+## Tweener via set_delay(), NOT tween_interval()+set_parallel() -- see
+## corners_reveal_view.gd's own header comment on that exact bug
+## (set_parallel(true) makes the tweener right after it run alongside the
+## one before it, which here was the interval itself, racing the delay away
+## entirely so every card animated from frame 0 regardless of index).
+## `content` is a slot's actual card/placeholder, a free-floating child of
+## _wrap_slot()'s wrapper (see there for why), so animating its own
+## `position` is safe here in a way it isn't for something still directly
+## parented to the VBoxContainer itself.
+func _slide_in(content: Control, index: int) -> void:
+	var final_pos := content.position
+	var dropping := index % 2 == 0
+	var viewport_size := get_viewport_rect().size
+	var travel := viewport_size.y * 0.5 + content.custom_minimum_size.y
+	content.modulate.a = 0.0
+	content.position = final_pos + Vector2(0, -travel if dropping else travel)
+	var delay: float = index * (SLIDE_DURATION_SEC + SLIDE_GAP_SEC)
 	var tween := create_tween()
-	tween.tween_property(node, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.set_parallel(true)
+	tween.tween_property(content, "position", final_pos, SLIDE_DURATION_SEC).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(delay)
+	tween.tween_property(content, "modulate:a", 1.0, SLIDE_DURATION_SEC * 0.65).set_delay(delay)
 
 ## Reserves the exact same height a real card would (CARD_HEIGHT), the
 ## visible dark box centered within that space -- keeps this slot's row
@@ -241,6 +321,9 @@ func _build_placeholder_slot() -> Control:
 	return reserved
 
 func _build_card(peer_id: int, info: Dictionary, team: int) -> VBoxContainer:
+	if not queue_style:
+		return _build_plain_card(peer_id, info, team)
+
 	var team_color: Color = PlayerColors.color_for(PlaylistCatalog.SLOT_COLORS[team % PlaylistCatalog.SLOT_COLORS.size()])
 
 	var card := VBoxContainer.new()
@@ -313,6 +396,62 @@ func _build_card(peer_id: int, info: Dictionary, team: int) -> VBoxContainer:
 
 	return card
 
+## The reveal's plain card style (queue_style == false) -- a flat solid-
+## color border instead of the queue's glowing/shadowed panel, and no rank/
+## elo row regardless of `ranked`, matching columns_reveal_view.gd's/
+## corners_reveal_view.gd's own _build_column()/_build_corner() exactly
+## (same border width, same fill alpha, same lack of a rank line) so the
+## "match found" moment reads identically for every playlist shape instead
+## of 1v1/2v2 alone keeping the richer waiting-room look a beat too long.
+func _build_plain_card(peer_id: int, info: Dictionary, team: int) -> VBoxContainer:
+	var team_color: Color = PlayerColors.color_for(PlaylistCatalog.SLOT_COLORS[team % PlaylistCatalog.SLOT_COLORS.size()])
+
+	var card := VBoxContainer.new()
+	card.custom_minimum_size = Vector2(CARD_WIDTH, CARD_HEIGHT)
+	card.alignment = BoxContainer.ALIGNMENT_CENTER
+	card.add_theme_constant_override("separation", 10)
+
+	# Tight box hugging the portrait (matches columns_reveal_view.gd's own
+	# _build_column() exactly: box == CARD_PORTRAIT_SIZE, portrait inset only
+	# 16px, SHRINK_CENTER so it doesn't stretch to the VBoxContainer's full
+	# CARD_WIDTH) -- a first pass reused the rich style's own wrap sizing
+	# (0.7x height, full card width, 0.65x portrait), which was tuned for a
+	# wide glowing panel, not this flat style: the result was a much wider
+	# box than its own portrait, reading as nested vertical bands instead of
+	# one solid-colored square.
+	var portrait_wrap := PanelContainer.new()
+	portrait_wrap.custom_minimum_size = CARD_PORTRAIT_SIZE
+	portrait_wrap.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(team_color.r, team_color.g, team_color.b, 0.16)
+	box.border_width_left = 3
+	box.border_width_top = 3
+	box.border_width_right = 3
+	box.border_width_bottom = 3
+	box.border_color = team_color
+	box.corner_radius_top_left = 10
+	box.corner_radius_top_right = 10
+	box.corner_radius_bottom_right = 10
+	box.corner_radius_bottom_left = 10
+	portrait_wrap.add_theme_stylebox_override("panel", box)
+	card.add_child(portrait_wrap)
+	var portrait_center := CenterContainer.new()
+	portrait_wrap.add_child(portrait_center)
+	var portrait := CharacterPreviewScene.new()
+	portrait.color_id = PlaylistCatalog.SLOT_COLORS[team % PlaylistCatalog.SLOT_COLORS.size()]
+	portrait.custom_minimum_size = CARD_PORTRAIT_SIZE - Vector2(16, 16)
+	portrait_center.add_child(portrait)
+
+	var you_tag := "  (You)" if peer_id == my_id else ""
+	var name_label := Label.new()
+	name_label.text = "%s%s" % [info.get("username", "Player"), you_tag]
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.add_theme_font_size_override("font_size", 18)
+	name_label.add_theme_color_override("font_color", UIStyle.tier_color(info.get("tier", "")))
+	card.add_child(name_label)
+
+	return card
+
 ## A plain dark base (matching every other screen's own dark background)
 ## with each side's own identity color as a soft glow behind that side's
 ## cards -- reads as mood lighting, not a hazard-stripe split. A slim
@@ -375,7 +514,6 @@ class _VsBadge extends Control:
 		var radius := minf(size.x, size.y) * 0.5
 		_draw_glow(c, radius, accent_color)
 		draw_circle(c, radius * 0.6, Color(0.086, 0.09, 0.125, 0.96))
-		draw_arc(c, radius * 0.6, 0, TAU, 48, accent_color, 3.0, true)
 
 	# Same 28-step smooth ring-stack _SplitBackground's own glow uses (see
 	# its _draw_glow below) -- the previous 5-step version here was coarse

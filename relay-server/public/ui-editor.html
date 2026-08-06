@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tag — UI Editor</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    min-height: 100vh;
+    font: 13.5px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: #16151b; color: #d8dae6;
+    padding: 24px 20px 60px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  header { margin-bottom: 16px; }
+  h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 4px; color: #f0f1f7; }
+  .sub { color: #74798f; font-size: 12.5px; }
+  nav { margin-top: 10px; }
+  nav a { color: #34d1d4; font-size: 12px; text-decoration: none; }
+  nav a:hover { text-decoration: underline; }
+
+  .card {
+    padding: 16px; border-radius: 10px; margin-bottom: 14px;
+    border: 1px solid rgba(255,255,255,.07); background: #201f26;
+  }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #6d7288; margin-bottom: 10px; }
+  .card-title { font-size: 14px; font-weight: 700; color: #e4e7f0; margin-bottom: 4px; }
+
+  .btn {
+    padding: 7px 13px; border-radius: 7px; font-size: 12.5px; font-weight: 700;
+    border: 1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.04);
+    color: #d8dae6; cursor: pointer;
+  }
+  .btn:hover:not(:disabled) { background: rgba(255,255,255,.09); }
+  .btn.primary { background: #34d1d4; border-color: #34d1d4; color: #0a2323; }
+  .btn.primary:hover:not(:disabled) { background: #5be0e2; }
+  .btn.danger { background: rgba(255,110,110,.12); border-color: rgba(255,110,110,.4); color: #ff8e8e; }
+  .btn.danger:hover:not(:disabled) { background: rgba(255,110,110,.22); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn.small { padding: 5px 10px; font-size: 11.5px; }
+
+  input[type="text"], input[type="password"], input[type="number"], select {
+    padding: 8px 12px; border-radius: 7px; font-size: 12.5px;
+    border: 1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.05);
+    color: #e4e7f0;
+  }
+  input[type="text"]::placeholder, input[type="password"]::placeholder { color: #565b70; }
+  input[type="file"] { display: none; }
+
+  .row-flex { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+  /* ─── Publish key bar ──────────────────────────────────────────────── */
+  .key-bar { display: flex; align-items: center; gap: 10px; }
+  .key-bar input { flex: 1 1 320px; min-width: 200px; }
+  .key-status { font-size: 11.5px; }
+  .key-status.ok { color: #34d1d4; }
+  .key-status.unset { color: #6d7288; }
+
+  /* ─── Top-level tabs ───────────────────────────────────────────────── */
+  .tab-row { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tab-btn {
+    padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    border: 1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.03);
+    color: #9095ac; cursor: pointer;
+  }
+  .tab-btn.active { background: rgba(52,209,212,.14); border-color: #34d1d4; color: #34d1d4; }
+  .tab-page { display: none; }
+  .tab-page.active { display: block; }
+
+  /* ─── Art slots ────────────────────────────────────────────────────── */
+  .slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+  .art-slot {
+    border-radius: 8px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03);
+    padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .art-slot .slot-label { font-size: 12px; font-weight: 700; color: #d8dae6; }
+  .art-slot .slot-preview {
+    height: 70px; border-radius: 6px; border: 1px solid rgba(255,255,255,.08);
+    background: repeating-conic-gradient(#26252d 0% 25%, #1a191f 0% 50%) 50% / 10px 10px;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .art-slot .slot-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .art-slot .slot-preview.empty span { color: #4a4e60; font-size: 11px; }
+  .art-slot .slot-buttons { display: flex; gap: 6px; }
+  .art-slot .slot-status { font-size: 10.5px; min-height: 13px; }
+  .art-slot .slot-status.ok { color: #34d1d4; }
+  .art-slot .slot-status.err { color: #ff8e8e; }
+  .art-slot .slot-status.busy { color: #9095ac; }
+
+  /* ─── Layout tab ───────────────────────────────────────────────────── */
+  .stage-wrap {
+    border-radius: 8px; border: 1px solid rgba(255,255,255,.1); background: #05060a;
+    overflow: auto; margin-top: 12px;
+  }
+  #stage {
+    position: relative; width: 1152px; height: 648px;
+    background: radial-gradient(circle at 70% 70%, #1c1d2b, #0b0c12);
+    transform-origin: top left;
+  }
+  .stage-bg-img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: fill; display: none; pointer-events: none; z-index: 0;
+  }
+  /* Base look is a faint, mostly-invisible hit target -- real per-element
+     color/border/radius (matching UIStyle.button_box()'s actual accent
+     color and corner radius for that exact key, see BUTTON_STYLE/
+     CARD_SCREEN_COLOR below) is set inline per box in renderStageAndList(),
+     same idea as buildArtSlot()'s art already showing the real texture.
+     Labels (title/subtitle/etc.) keep no fill/border at all, same as a
+     real in-game Label drawn directly over its screen's background. */
+  .el-box {
+    position: absolute; border-radius: 6px; cursor: grab; user-select: none;
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    padding: 4px; min-width: 40px; min-height: 24px; overflow: hidden;
+    border: 1.5px dashed rgba(255,255,255,.22); background: transparent;
+    color: #e4e7f0; font-size: 11px;
+  }
+  .el-box[data-kind="button"], .el-box[data-kind="card"] { border-style: solid; border-width: 2px; }
+  .el-box.dirty { border-color: #f5c542 !important; background: rgba(245,197,66,.15) !important; }
+  .el-box.dirty .el-box-label { color: #ffe9ab !important; }
+  .el-box:active { cursor: grabbing; }
+  .el-box-art {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: fill; border-radius: inherit; display: none; pointer-events: none; z-index: 0;
+  }
+  .el-box-label {
+    position: relative; z-index: 1; pointer-events: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,.8);
+  }
+  .el-box .resize-handle {
+    position: absolute; right: -5px; bottom: -5px; width: 14px; height: 14px;
+    border-radius: 3px; background: #34d1d4; cursor: nwse-resize; z-index: 2;
+  }
+  .el-box.dirty .resize-handle { background: #f5c542; }
+  .el-list { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .el-row {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 7px;
+    border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); flex-wrap: wrap;
+  }
+  .el-row.dirty { border-color: rgba(245,197,66,.4); background: rgba(245,197,66,.06); }
+  .el-row .el-key { font-size: 11.5px; color: #9095ac; min-width: 200px; flex: 1 1 200px; }
+  .el-row input[type="text"] { width: 120px; }
+  .el-row input[type="number"] { width: 64px; }
+  .el-row label { font-size: 10.5px; color: #6d7288; }
+
+  .hint { color: #565b70; font-size: 11.5px; margin-top: 8px; }
+  .status { font-size: 12.5px; margin-top: 10px; min-height: 18px; }
+  .status.ok { color: #34d1d4; }
+  .status.err { color: #ff8e8e; }
+  .status.busy { color: #9095ac; }
+
+  footer { margin-top: 28px; color: #444858; font-size: 11px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>UI Editor</h1>
+      <p class="sub">Upload art for every button/panel/background, and live-edit any screen's button/label position, size, and text.</p>
+      <nav><a href="index.html">&larr; Servers</a> &nbsp; <a href="level-editor.html">Level Editor &rarr;</a></nav>
+    </header>
+
+    <div class="card">
+      <div class="section-title">Publish Key</div>
+      <div class="key-bar">
+        <input type="password" id="keyInput" placeholder="Server publish key">
+        <span class="key-status unset" id="keyStatus">Not set -- uploads/publishes will be rejected.</span>
+      </div>
+      <p class="hint">This page is not public-facing like the Level Editor -- every publish here is gated by the same server-side key the in-game Art Tool uses. Saved only in this browser's local storage.</p>
+    </div>
+
+    <div class="tab-row">
+      <button class="tab-btn active" id="tabArtBtn" type="button">Art</button>
+      <button class="tab-btn" id="tabLayoutBtn" type="button">Layout</button>
+    </div>
+
+    <div class="tab-page active" id="tabArt">
+      <div class="card">
+        <div class="card-title">Chrome</div>
+        <p class="hint" style="margin-top:-2px;margin-bottom:10px;">The app's shared button/panel/slider 9-patch art -- used everywhere at once.</p>
+        <div class="slot-grid" id="chromeSlots"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Backgrounds</div>
+        <p class="hint" style="margin-top:-2px;margin-bottom:10px;">One per menu screen -- replaces that screen's default gradient/glow when set. Stretched to fill the screen.</p>
+        <div class="slot-grid" id="backgroundSlots"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Playlist Thumbnails</div>
+        <p class="hint" style="margin-top:-2px;margin-bottom:10px;">Shown on the Casual/Ranked playlist cards in place of the plain color fill.</p>
+        <div class="slot-grid" id="playlistSlots"></div>
+      </div>
+    </div>
+
+    <div class="tab-page" id="tabLayout">
+      <div class="card">
+        <div class="card-title">Screen Layout</div>
+        <div class="row-flex" style="margin-bottom:10px;">
+          <select id="screenSelect"></select>
+          <button class="btn small" id="loadCurrentBtn" type="button">Reload from server</button>
+          <span style="flex:1 1 auto"></span>
+          <button class="btn small danger" id="resetAllBtn" type="button">Reset all on this screen</button>
+          <button class="btn primary" id="publishLayoutBtn" type="button">Publish Layout</button>
+        </div>
+        <p class="hint">Drag a box to reposition it (an offset from its normal spot, not an absolute canvas position -- Godot lays these screens out with containers, not free placement), drag its bottom-right corner to resize, edit its text below. Yellow means changed since load/publish.</p>
+        <div class="stage-wrap"><div id="stage"></div></div>
+        <div class="el-list" id="elList"></div>
+        <p class="status" id="layoutStatus"></p>
+      </div>
+    </div>
+
+    <footer>codecade.co.za/tag</footer>
+  </div>
+
+<script>
+// ─── Publish key ────────────────────────────────────────────────────────────
+const keyInput = document.getElementById('keyInput');
+const keyStatus = document.getElementById('keyStatus');
+keyInput.value = localStorage.getItem('tagUIEditorPublishKey') || '';
+function updateKeyStatus() {
+  if (keyInput.value.trim()) {
+    keyStatus.textContent = 'Saved locally.';
+    keyStatus.className = 'key-status ok';
+  } else {
+    keyStatus.textContent = 'Not set -- uploads/publishes will be rejected.';
+    keyStatus.className = 'key-status unset';
+  }
+}
+keyInput.addEventListener('input', () => {
+  localStorage.setItem('tagUIEditorPublishKey', keyInput.value);
+  updateKeyStatus();
+});
+updateKeyStatus();
+function getKey() { return keyInput.value.trim(); }
+
+// ─── Tabs ───────────────────────────────────────────────────────────────────
+const tabArtBtn = document.getElementById('tabArtBtn');
+const tabLayoutBtn = document.getElementById('tabLayoutBtn');
+const tabArt = document.getElementById('tabArt');
+const tabLayout = document.getElementById('tabLayout');
+tabArtBtn.addEventListener('click', () => {
+  tabArtBtn.classList.add('active'); tabLayoutBtn.classList.remove('active');
+  tabArt.classList.add('active'); tabLayout.classList.remove('active');
+});
+tabLayoutBtn.addEventListener('click', () => {
+  tabLayoutBtn.classList.add('active'); tabArtBtn.classList.remove('active');
+  tabLayout.classList.add('active'); tabArt.classList.remove('active');
+});
+
+// ─── Art tab -- one reusable "slot" per key, same upload/preview/publish
+// shape as level-editor.html's own wireArtSlot(), just hitting
+// /api/game-assets/<category>/publish's {key, images: {slotKey: base64}}
+// shape instead of the levels endpoint. Each slot publishes itself
+// independently (one image at a time) rather than batching a whole
+// category, so a single upload doesn't need every other slot in that
+// category filled in first.
+// SYNC: these three key lists mirror game/net/game_asset_categories.gd
+// (CHROME_KEYS/BACKGROUND_KEYS/PLAYLIST_THUMBNAIL_KEYS) and server.js's
+// own identical mirror of the same.
+const CHROME_KEYS = ['button', 'panel', 'slider_groove', 'slider_fill'];
+const BACKGROUND_KEYS = [
+  'main_menu', 'online_menu', 'local_menu', 'casual_queue', 'ranked_queue',
+  'lobby_room', 'achievements_menu', 'friends_menu', 'login_screen',
+  'match_intro', 'match_intro_ranked', 'match_results',
+];
+const PLAYLIST_THUMBNAIL_KEYS = ['1v1', '2v2', '1v1v1', '1v1v1v1'];
+
+function buildArtSlot(category, key) {
+  const slot = document.createElement('div');
+  slot.className = 'art-slot';
+
+  const label = document.createElement('div');
+  label.className = 'slot-label';
+  label.textContent = key;
+  slot.appendChild(label);
+
+  const preview = document.createElement('div');
+  preview.className = 'slot-preview empty';
+  const previewImg = document.createElement('img');
+  previewImg.style.display = 'none';
+  const previewHint = document.createElement('span');
+  previewHint.textContent = 'No image';
+  preview.appendChild(previewImg);
+  preview.appendChild(previewHint);
+  slot.appendChild(preview);
+
+  const buttons = document.createElement('div');
+  buttons.className = 'slot-buttons';
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'image/png';
+  const uploadBtn = document.createElement('button');
+  uploadBtn.className = 'btn small';
+  uploadBtn.type = 'button';
+  uploadBtn.textContent = 'Upload…';
+  const publishBtn = document.createElement('button');
+  publishBtn.className = 'btn small primary';
+  publishBtn.type = 'button';
+  publishBtn.textContent = 'Publish';
+  publishBtn.disabled = true;
+  buttons.appendChild(uploadBtn);
+  buttons.appendChild(publishBtn);
+  buttons.appendChild(fileInput);
+  slot.appendChild(buttons);
+
+  const status = document.createElement('div');
+  status.className = 'slot-status';
+  slot.appendChild(status);
+
+  function setStatus(text, cls) {
+    status.textContent = text;
+    status.className = 'slot-status' + (cls ? ' ' + cls : '');
+  }
+
+  let base64 = null;
+  uploadBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      base64 = reader.result.split(',')[1];
+      previewImg.src = reader.result;
+      previewImg.style.display = 'block';
+      previewHint.style.display = 'none';
+      preview.classList.remove('empty');
+      publishBtn.disabled = false;
+      setStatus('', '');
+    };
+    reader.readAsDataURL(file);
+    fileInput.value = '';
+  });
+
+  publishBtn.addEventListener('click', async () => {
+    if (!base64) return;
+    if (!getKey()) { setStatus('Enter a publish key first.', 'err'); return; }
+    publishBtn.disabled = true;
+    setStatus('Publishing…', 'busy');
+    try {
+      const res = await fetch('api/game-assets/' + category + '/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: getKey(), images: { [key]: base64 } }),
+      });
+      const parsed = await res.json().catch(() => ({}));
+      if (res.ok && parsed.ok) {
+        setStatus('Published (v' + parsed.version + ').', 'ok');
+      } else {
+        setStatus('Failed: ' + (parsed.error || res.status), 'err');
+      }
+    } catch {
+      setStatus('Could not reach the relay server.', 'err');
+    } finally {
+      publishBtn.disabled = false;
+    }
+  });
+
+  // Show whatever's already live, if anything -- a plain <img src> 404
+  // just leaves the empty-state placeholder showing, no extra handling
+  // needed since the browser already renders nothing for a failed image.
+  previewImg.addEventListener('load', () => {
+    if (previewImg.naturalWidth === 0) return;
+    previewImg.style.display = 'block';
+    previewHint.style.display = 'none';
+    preview.classList.remove('empty');
+  });
+  previewImg.addEventListener('error', () => { previewImg.style.display = 'none'; });
+  previewImg.src = 'api/game-assets/' + category + '/' + key + '/download?t=' + Date.now();
+
+  return slot;
+}
+
+function buildSlotGrid(containerId, category, keys) {
+  const container = document.getElementById(containerId);
+  for (const key of keys) container.appendChild(buildArtSlot(category, key));
+}
+buildSlotGrid('chromeSlots', 'chrome', CHROME_KEYS);
+buildSlotGrid('backgroundSlots', 'backgrounds', BACKGROUND_KEYS);
+buildSlotGrid('playlistSlots', 'playlist_thumbnails', PLAYLIST_THUMBNAIL_KEYS);
+
+// ─── Layout tab ─────────────────────────────────────────────────────────────
+// SYNC: this key list has to be kept in sync BY HAND with every
+// UIStyle.apply_layout_override() call site across game/main/*.gd and
+// game/ui/pause_menu.gd -- there's no server-side or build-time mechanism
+// that enumerates these automatically (the game only ever reads a
+// layout_key, it never publishes its own existing list anywhere), so a
+// newly-registered element elsewhere in the game has to be added here by
+// hand too before it can be edited from this page.
+function playlistCardKeys() {
+  const out = [];
+  for (const id of PLAYLIST_THUMBNAIL_KEYS) {
+    out.push('card_' + id, 'card_' + id + '_name', 'card_' + id + '_sub');
+  }
+  return out;
+}
+const SCREENS = {
+  main_menu: ['title', 'subtitle', 'online_button', 'local_button', 'account_button', 'achievements_button'],
+  online_menu: ['title', 'subtitle', 'casual_button', 'ranked_button', 'private_button', 'friends_button', 'back_button'],
+  local_menu: ['title', 'subtitle', 'start_button', 'back_button'],
+  casual_playlist_select: ['title', 'subtitle', 'back_button', ...playlistCardKeys()],
+  ranked_playlist_select: ['title', 'subtitle', 'back_button', ...playlistCardKeys()],
+  casual_queue: ['title', 'status_label', 'back_button', 'cancel_button'],
+  ranked_queue: ['title', 'status_label', 'back_button', 'cancel_button'],
+  lobby_room: ['lobby_name_label', 'ready_button', 'start_button', 'leave_button'],
+  achievements_menu: ['title', 'status_label', 'back_button'],
+  friends_menu: ['title', 'subtitle', 'copy_button', 'add_button', 'back_button'],
+  login_screen: ['title', 'subtitle', 'back_button', 'login_button', 'register_button', 'logout_button'],
+  match_intro: ['title', 'countdown_label', 'skip_button'],
+  match_results: ['title', 'rank_label', 'continue_button'],
+  pause_menu: ['title', 'resume_button', 'menu_button'],
+};
+
+// Which `backgrounds` category key (see BACKGROUND_KEYS above) each layout
+// screen's stage should show behind its boxes -- mirrors the screen_key each
+// screen actually passes to UIStyle.add_background()/add_glow_background()
+// in-game. casual_playlist_select/ranked_playlist_select share their queue
+// screen's own key (same as in-game, see Phase 2 notes) rather than having
+// their own. pause_menu has no entry -- no background category was ever
+// registered for it, so its stage just stays the plain gradient, matching
+// what the real pause overlay looks like (drawn over whatever screen is
+// paused underneath it, not its own standalone background).
+const SCREEN_BACKGROUND_KEY = {
+  main_menu: 'main_menu',
+  online_menu: 'online_menu',
+  local_menu: 'local_menu',
+  casual_playlist_select: 'casual_queue',
+  ranked_playlist_select: 'ranked_queue',
+  casual_queue: 'casual_queue',
+  ranked_queue: 'ranked_queue',
+  lobby_room: 'lobby_room',
+  achievements_menu: 'achievements_menu',
+  friends_menu: 'friends_menu',
+  login_screen: 'login_screen',
+  match_intro: 'match_intro',
+  match_results: 'match_results',
+};
+
+// One cache-busting timestamp for the whole page load (not per-render) --
+// renderStageAndList() reruns on every drag/field edit, and re-tagging
+// every art <img> with a fresh Date.now() on each of those calls would
+// defeat the browser's own HTTP cache and refetch on every keystroke.
+// Reusing one value per page load still picks up newly-published art on
+// the next reload, same as the Art tab's own per-slot busting does.
+const ART_CACHE_BUST = Date.now();
+
+// Which live art (if any) should render behind a given layout element,
+// matching what actually draws behind/as that element in-game: every
+// *_button key uses the single shared chrome button texture; a playlist
+// card container (`card_<id>`, but not its `_name`/`_sub` text children)
+// uses that id's own playlist thumbnail; anything else is a plain Label
+// with no art of its own, drawn directly over the screen's background.
+function elementKind(shortKey) {
+  if (shortKey.endsWith('_button')) return 'button';
+  if (shortKey.startsWith('card_') && !shortKey.endsWith('_name') && !shortKey.endsWith('_sub')) return 'card';
+  return 'label';
+}
+function artInfoFor(shortKey) {
+  const kind = elementKind(shortKey);
+  if (kind === 'button') return { category: 'chrome', key: 'button' };
+  if (kind === 'card') return { category: 'playlist_thumbnails', key: shortKey.slice('card_'.length) };
+  return null;
+}
+
+// Real UIStyle.COLOR_* palette (game/ui/ui_style.gd), Color(r,g,b) floats
+// converted to hex -- not an approximation, these are the exact constants.
+const UI_COLORS = {
+  quickplay: '#faba33', ranked: '#e84a59', local: '#59c7fa', online: '#6bd98c',
+  accent: '#a67afa', sandbox: '#26bfb3', neutral: '#99a1b8',
+};
+function hexToRgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  return 'rgba(' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(',') + ',' + alpha + ')';
+}
+
+// Real per-key color + corner radius, mirroring every actual
+// UIStyle.style_button()/style_back_button() call site across
+// game/main/*.gd and game/ui/pause_menu.gd (grepped, not guessed) -- radius
+// 18 = the pill-shaped primary mode/category bars, 8 = style_back_button()'s
+// own fixed radius (every back/cancel/leave/skip/menu button), 10 =
+// style_button()'s own default for everything else.
+// SYNC: same hand-maintained convention as SCREENS above -- a new
+// style_button() call site elsewhere needs an entry added here too.
+const BUTTON_STYLE = {
+  'main_menu.online_button': { color: 'online', radius: 18 },
+  'main_menu.local_button': { color: 'local', radius: 18 },
+  'main_menu.account_button': { color: 'online', radius: 10 },
+  'main_menu.achievements_button': { color: 'accent', radius: 10 },
+  'online_menu.casual_button': { color: 'quickplay', radius: 18 },
+  'online_menu.ranked_button': { color: 'ranked', radius: 18 },
+  'online_menu.private_button': { color: 'online', radius: 18 },
+  'online_menu.friends_button': { color: 'accent', radius: 18 },
+  'online_menu.back_button': { color: 'neutral', radius: 8 },
+  'local_menu.start_button': { color: 'local', radius: 18 },
+  'local_menu.back_button': { color: 'neutral', radius: 8 },
+  'casual_playlist_select.back_button': { color: 'neutral', radius: 8 },
+  'ranked_playlist_select.back_button': { color: 'neutral', radius: 8 },
+  'casual_queue.back_button': { color: 'neutral', radius: 8 },
+  'casual_queue.cancel_button': { color: 'neutral', radius: 8 },
+  'ranked_queue.back_button': { color: 'neutral', radius: 8 },
+  'ranked_queue.cancel_button': { color: 'neutral', radius: 8 },
+  'lobby_room.ready_button': { color: 'online', radius: 10 },
+  'lobby_room.start_button': { color: 'online', radius: 10 },
+  'lobby_room.leave_button': { color: 'neutral', radius: 8 },
+  'achievements_menu.back_button': { color: 'neutral', radius: 8 },
+  'friends_menu.copy_button': { color: 'accent', radius: 8 },
+  'friends_menu.add_button': { color: 'accent', radius: 8 },
+  'friends_menu.back_button': { color: 'neutral', radius: 8 },
+  'login_screen.back_button': { color: 'neutral', radius: 8 },
+  'login_screen.login_button': { color: 'accent', radius: 10 },
+  'login_screen.register_button': { color: 'online', radius: 10 },
+  'login_screen.logout_button': { color: 'ranked', radius: 10 },
+  'match_intro.skip_button': { color: 'neutral', radius: 8 },
+  'match_results.continue_button': { color: 'quickplay', radius: 10 },
+  'pause_menu.resume_button': { color: 'neutral', radius: 10 },
+  'pause_menu.menu_button': { color: 'neutral', radius: 8 },
+};
+// Playlist cards use their own select screen's own accent -- see
+// casual_playlist_select.gd/ranked_playlist_select.gd's own _build_card()
+// style_button() calls (COLOR_QUICKPLAY / COLOR_RANKED respectively).
+const CARD_SCREEN_COLOR = { casual_playlist_select: 'quickplay', ranked_playlist_select: 'ranked' };
+
+// Real look for a box: button/card get that key's actual accent color at
+// button_box()'s own normal-state alpha (0.14 bg / 0.35 border, see
+// ui_style.gd) and real corner radius; labels get no fill/border (a real
+// Label has none) plus real font treatment (title/subtitle match
+// UIStyle.title_label()/subtitle_label(), everything else is a plain
+// mid-size white line like every other in-game status/name label).
+function visualStyleFor(shortKey) {
+  const kind = elementKind(shortKey);
+  const fullKey = screenSelect.value + '.' + shortKey;
+  if (kind === 'button') {
+    const s = BUTTON_STYLE[fullKey] || { color: 'neutral', radius: 10 };
+    return { kind, colorHex: UI_COLORS[s.color], radius: s.radius };
+  }
+  if (kind === 'card') {
+    const colorName = CARD_SCREEN_COLOR[screenSelect.value] || 'neutral';
+    return { kind, colorHex: UI_COLORS[colorName], radius: 10 };
+  }
+  if (shortKey === 'title') return { kind, font: { size: 26, weight: 800, color: '#f0f1f7' } };
+  if (shortKey === 'subtitle') return { kind, font: { size: 13, weight: 400, color: '#b3b8c7' } };
+  if (shortKey.endsWith('_name')) return { kind, font: { size: 14, weight: 700, color: '#f0f1f7' } };
+  if (shortKey.endsWith('_sub')) return { kind, font: { size: 11, weight: 400, color: '#b3b8c7' } };
+  return { kind, font: { size: 16, weight: 700, color: '#e4e7f0' } };
+}
+
+const screenSelect = document.getElementById('screenSelect');
+for (const name of Object.keys(SCREENS)) {
+  const opt = document.createElement('option');
+  opt.value = name;
+  opt.textContent = name;
+  screenSelect.appendChild(opt);
+}
+
+const stage = document.getElementById('stage');
+const elList = document.getElementById('elList');
+const layoutStatusEl = document.getElementById('layoutStatus');
+function setLayoutStatus(text, cls) {
+  layoutStatusEl.textContent = text;
+  layoutStatusEl.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+// Full manifest as last fetched from the server -- {version, overrides: {key: {x,y,w,h,text}}}.
+let serverManifest = { version: 0, overrides: {} };
+// Live-editing state for the CURRENT screen only -- layoutKey -> {x,y,w,h,text,removed}.
+// `removed` marks an element explicitly reset (publishes as null for that key).
+let draft = {};
+// See the mousedown handler in renderStageAndList() below -- lets an
+// overlapping box be brought to front on click so it can actually be
+// dragged instead of a same-position sibling always winning the hit test.
+let topZIndex = 1;
+
+// Real Godot-computed default rects, baked by game/tools/dump_ui_layout.gd
+// (run headless, reads each registered element's actual global_position/
+// size after its screen's own container layout settles -- see that script's
+// own header for how/when to re-run it) -- {"screen.key": {x,y,w,h}, ...},
+// same flat key format as the publish/manifest overrides. Falls back to a
+// generic grid for any key missing from the reference (a brand new
+// registration this hasn't been re-baked for yet, or the fetch itself
+// failing), so an unconfigured/stale key is a degraded default, not broken.
+let layoutReference = {};
+async function fetchLayoutReference() {
+  try {
+    const res = await fetch('layout-reference.json?t=' + ART_CACHE_BUST);
+    if (res.ok) layoutReference = await res.json();
+  } catch {
+    // Missing/unreachable reference just means every screen falls back to
+    // the generic grid below -- not fatal to the rest of the page.
+  }
+}
+
+function gridDefaultRectFor(index) {
+  const col = index % 4, row = Math.floor(index / 4);
+  return { x: 40 + col * 270, y: 40 + row * 90, w: 240, h: 60 };
+}
+
+function defaultRectFor(shortKey, index) {
+  const real = layoutReference[screenSelect.value + '.' + shortKey];
+  if (real) return real;
+  return gridDefaultRectFor(index);
+}
+
+function currentScreenKeys() {
+  return SCREENS[screenSelect.value] || [];
+}
+
+function loadDraftFromManifest() {
+  draft = {};
+  const keys = currentScreenKeys();
+  keys.forEach((shortKey, i) => {
+    const fullKey = screenSelect.value + '.' + shortKey;
+    const existing = serverManifest.overrides[fullKey];
+    const def = defaultRectFor(shortKey, i);
+    draft[shortKey] = {
+      x: existing && existing.x !== undefined ? existing.x : def.x,
+      y: existing && existing.y !== undefined ? existing.y : def.y,
+      w: existing && existing.w !== undefined ? existing.w : def.w,
+      h: existing && existing.h !== undefined ? existing.h : def.h,
+      text: existing && existing.text !== undefined ? existing.text : '',
+      hasText: !!(existing && existing.text !== undefined),
+      published: !!existing,
+      removed: false,
+    };
+  });
+}
+
+async function fetchManifest() {
+  try {
+    const res = await fetch('api/ui-layout/manifest');
+    serverManifest = await res.json();
+  } catch {
+    setLayoutStatus('Could not reach the relay server.', 'err');
+  }
+}
+
+function isDirty(shortKey) {
+  const d = draft[shortKey];
+  if (!d) return false;
+  if (d.removed) return d.published;
+  const def = defaultRectFor(shortKey, currentScreenKeys().indexOf(shortKey));
+  const fullKey = screenSelect.value + '.' + shortKey;
+  const existing = serverManifest.overrides[fullKey];
+  const baseline = existing || { x: def.x, y: def.y, w: def.w, h: def.h, text: undefined };
+  return d.x !== (baseline.x !== undefined ? baseline.x : def.x)
+    || d.y !== (baseline.y !== undefined ? baseline.y : def.y)
+    || d.w !== (baseline.w !== undefined ? baseline.w : def.w)
+    || d.h !== (baseline.h !== undefined ? baseline.h : def.h)
+    || (d.hasText ? d.text : undefined) !== baseline.text;
+}
+
+function renderStageAndList() {
+  stage.innerHTML = '';
+  elList.innerHTML = '';
+
+  // Stage's own background art, if this screen has one published -- same
+  // load/error-hides-itself pattern as buildArtSlot()'s preview <img>, so
+  // an unpublished key just leaves the plain CSS gradient showing through.
+  const bgKey = SCREEN_BACKGROUND_KEY[screenSelect.value];
+  if (bgKey) {
+    const bgImg = document.createElement('img');
+    bgImg.className = 'stage-bg-img';
+    bgImg.addEventListener('load', () => { if (bgImg.naturalWidth > 0) bgImg.style.display = 'block'; });
+    bgImg.src = 'api/game-assets/backgrounds/' + bgKey + '/download?t=' + ART_CACHE_BUST;
+    stage.appendChild(bgImg);
+  }
+
+  const keys = currentScreenKeys();
+  for (const shortKey of keys) {
+    const d = draft[shortKey];
+    if (!d) continue;
+    const dirty = isDirty(shortKey);
+
+    const box = document.createElement('div');
+    box.className = 'el-box' + (dirty ? ' dirty' : '');
+    box.dataset.key = shortKey;
+    box.style.left = d.x + 'px';
+    box.style.top = d.y + 'px';
+    box.style.width = d.w + 'px';
+    box.style.height = d.h + 'px';
+    box.style.display = d.removed ? 'none' : 'flex';
+
+    // Real per-element look (accent color/radius for buttons+cards, real
+    // font treatment for labels) -- see visualStyleFor()'s own header note.
+    const style = visualStyleFor(shortKey);
+    box.dataset.kind = style.kind;
+    if (style.colorHex) {
+      box.style.borderRadius = style.radius + 'px';
+      box.style.borderColor = hexToRgba(style.colorHex, 0.6);
+      box.style.background = hexToRgba(style.colorHex, 0.14);
+    }
+
+    // Real chrome/thumbnail art behind the label, if this element has any
+    // (see artInfoFor()) -- falls back to the plain colored placeholder
+    // above (or, for labels, no fill at all) when nothing's published.
+    const info = artInfoFor(shortKey);
+    if (info) {
+      const artImg = document.createElement('img');
+      artImg.className = 'el-box-art';
+      artImg.addEventListener('load', () => { if (artImg.naturalWidth > 0) artImg.style.display = 'block'; });
+      artImg.src = 'api/game-assets/' + info.category + '/' + info.key + '/download?t=' + ART_CACHE_BUST;
+      box.appendChild(artImg);
+    }
+    const label = document.createElement('span');
+    label.className = 'el-box-label';
+    label.textContent = (d.hasText ? d.text : null) || shortKey;
+    if (style.font) {
+      label.style.fontSize = style.font.size + 'px';
+      label.style.fontWeight = String(style.font.weight);
+      label.style.color = style.font.color;
+    }
+    box.appendChild(label);
+
+    // Two default-positioned (or otherwise coincidentally overlapping)
+    // boxes would otherwise always resolve clicks to whichever rendered
+    // last (later DOM siblings paint on top at equal z-index) -- raising
+    // the whole grid's paint order on click means whichever box you
+    // actually clicked is the one that receives the drag, not just
+    // whichever happens to be on top already.
+    box.addEventListener('mousedown', () => { box.style.zIndex = String(++topZIndex); }, true);
+    const handle = document.createElement('div');
+    handle.className = 'resize-handle';
+    box.appendChild(handle);
+    stage.appendChild(box);
+    wireDrag(box, handle, shortKey);
+
+    const row = document.createElement('div');
+    row.className = 'el-row' + (dirty ? ' dirty' : '');
+    row.dataset.key = shortKey;
+    const keyLabel = document.createElement('span');
+    keyLabel.className = 'el-key';
+    keyLabel.textContent = shortKey + (d.removed ? ' (reset)' : '');
+    row.appendChild(keyLabel);
+
+    for (const field of ['x', 'y', 'w', 'h']) {
+      const lbl = document.createElement('label');
+      lbl.textContent = field.toUpperCase();
+      row.appendChild(lbl);
+      const num = document.createElement('input');
+      num.type = 'number';
+      num.value = Math.round(d[field]);
+      num.addEventListener('change', () => {
+        d[field] = Number(num.value) || 0;
+        d.removed = false;
+        renderStageAndList();
+      });
+      row.appendChild(num);
+    }
+
+    const textLbl = document.createElement('label');
+    textLbl.textContent = 'TEXT';
+    row.appendChild(textLbl);
+    const textInput = document.createElement('input');
+    textInput.type = 'text';
+    textInput.placeholder = '(unchanged)';
+    textInput.value = d.hasText ? d.text : '';
+    textInput.addEventListener('input', () => {
+      d.text = textInput.value;
+      d.hasText = textInput.value.length > 0;
+      d.removed = false;
+      renderStageAndList();
+    });
+    row.appendChild(textInput);
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'btn small danger';
+    resetBtn.type = 'button';
+    resetBtn.textContent = d.removed ? 'Undo Reset' : 'Reset';
+    resetBtn.addEventListener('click', () => {
+      if (d.removed) {
+        const def = defaultRectFor(shortKey, keys.indexOf(shortKey));
+        Object.assign(d, { x: def.x, y: def.y, w: def.w, h: def.h, text: '', hasText: false, removed: false });
+      } else {
+        d.removed = true;
+      }
+      renderStageAndList();
+    });
+    row.appendChild(resetBtn);
+
+    elList.appendChild(row);
+  }
+}
+
+// Drag-to-move (box body) and drag-to-resize (corner handle) -- both work
+// directly in the stage's own 1152x648 coordinate space since the stage
+// itself is never CSS-scaled, so no pointer-to-game-space conversion is
+// needed beyond subtracting the stage's own bounding-rect offset.
+//
+// A single shared drag-state + ONE pair of window-level mousemove/mouseup
+// listeners (registered once below, not per-box) -- an earlier version
+// registered those two listeners INSIDE wireDrag() itself and called
+// renderStageAndList() (a full stage+list rebuild, calling wireDrag() again
+// for every box) on every single mousemove. That meant every mousemove
+// during a drag registered a fresh pair of window listeners that never got
+// cleaned up (the old box's listeners keep firing against a detached
+// element forever) and did a full DOM rebuild dozens of times a second --
+// functionally it still worked (each stale closure's own captured
+// start position stays correct), but wastefully, and every completed drag
+// permanently leaked another pair of listeners for the rest of the page's
+// life. This version updates only the dragged box's own inline style
+// directly while dragging (cheap), and does exactly one
+// renderStageAndList() at drag end to refresh dirty-state styling/inputs.
+let dragState = null; // {shortKey, mode, startX, startY, startRect, boxEl} | null
+
+function wireDrag(box, handle, shortKey) {
+  box.addEventListener('mousedown', (evt) => beginDrag(evt, shortKey, box, 'move'));
+  handle.addEventListener('mousedown', (evt) => beginDrag(evt, shortKey, box, 'resize'));
+}
+
+function beginDrag(evt, shortKey, boxEl, mode) {
+  dragState = { shortKey, mode, startX: evt.clientX, startY: evt.clientY, startRect: { ...draft[shortKey] }, boxEl };
+  evt.preventDefault();
+  evt.stopPropagation();
+}
+
+window.addEventListener('mousemove', (evt) => {
+  if (!dragState) return;
+  const { shortKey, mode, startX, startY, startRect, boxEl } = dragState;
+  const dx = evt.clientX - startX;
+  const dy = evt.clientY - startY;
+  const d = draft[shortKey];
+  d.removed = false;
+  if (mode === 'move') {
+    d.x = startRect.x + dx;
+    d.y = startRect.y + dy;
+    boxEl.style.left = d.x + 'px';
+    boxEl.style.top = d.y + 'px';
+  } else {
+    d.w = Math.max(20, startRect.w + dx);
+    d.h = Math.max(16, startRect.h + dy);
+    boxEl.style.width = d.w + 'px';
+    boxEl.style.height = d.h + 'px';
+  }
+});
+window.addEventListener('mouseup', () => {
+  if (!dragState) return;
+  dragState = null;
+  renderStageAndList();
+});
+
+async function refreshScreen() {
+  setLayoutStatus('Loading…', 'busy');
+  await fetchManifest();
+  loadDraftFromManifest();
+  renderStageAndList();
+  setLayoutStatus('', '');
+}
+screenSelect.addEventListener('change', refreshScreen);
+document.getElementById('loadCurrentBtn').addEventListener('click', refreshScreen);
+
+document.getElementById('resetAllBtn').addEventListener('click', () => {
+  for (const shortKey of currentScreenKeys()) {
+    if (draft[shortKey]) draft[shortKey].removed = true;
+  }
+  renderStageAndList();
+});
+
+document.getElementById('publishLayoutBtn').addEventListener('click', async () => {
+  if (!getKey()) { setLayoutStatus('Enter a publish key first.', 'err'); return; }
+  const overrides = {};
+  let any = false;
+  for (const shortKey of currentScreenKeys()) {
+    const d = draft[shortKey];
+    if (!d || !isDirty(shortKey)) continue;
+    any = true;
+    const fullKey = screenSelect.value + '.' + shortKey;
+    if (d.removed) {
+      overrides[fullKey] = null;
+      continue;
+    }
+    const entry = { x: d.x, y: d.y, w: d.w, h: d.h };
+    if (d.hasText) entry.text = d.text;
+    overrides[fullKey] = entry;
+  }
+  if (!any) { setLayoutStatus('Nothing changed on this screen.', 'err'); return; }
+
+  setLayoutStatus('Publishing…', 'busy');
+  try {
+    const res = await fetch('api/ui-layout/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: getKey(), overrides }),
+    });
+    const parsed = await res.json().catch(() => ({}));
+    if (res.ok && parsed.ok) {
+      // refreshScreen() BEFORE the success message, not after -- it sets
+      // its own "Loading…" / "" status internally (see its own body),
+      // which would otherwise silently blank out "Published (vN)." the
+      // instant it ran. Confirmed live via a Playwright test: the publish
+      // itself succeeded (200, real version bump) but the status line
+      // stayed empty because of this exact ordering bug.
+      await refreshScreen();
+      setLayoutStatus('Published (v' + parsed.version + ').', 'ok');
+    } else {
+      setLayoutStatus('Failed: ' + (parsed.error || res.status), 'err');
+    }
+  } catch {
+    setLayoutStatus('Could not reach the relay server.', 'err');
+  }
+});
+
+// The reference only needs fetching once per page load (it's a baked
+// snapshot, not something that changes mid-session) -- every later
+// refreshScreen() (screen switch, Reload button, after a publish) reuses
+// whatever's already in layoutReference.
+(async () => {
+  await fetchLayoutReference();
+  await refreshScreen();
+})();
+</script>
+</body>
+</html>

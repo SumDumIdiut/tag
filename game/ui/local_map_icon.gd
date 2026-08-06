@@ -16,6 +16,14 @@ class_name LocalMapIcon
 # row) always uses UIStyle.COLOR_LOCAL, which is what got baked -- a caller
 # passing a different accent_color still falls through to the live _draw()
 # path below and renders correctly, just not from the baked file.
+#
+# A live-published custom level's own uploaded thumbnail (see the web Level
+# Editor's "Level Art" section, fetched via CustomLevelCache) takes priority
+# over both of the above when one exists -- checked regardless of
+# accent_color, unlike the baked-PNG path, since it's a live per-level asset
+# rather than a pre-baked-per-color one. Catalog.MAPS has no entry for a
+# custom level id anyway, so without this a custom level always fell through
+# to the "missing preview data" crossed-pillars glyph in _draw().
 
 const Catalog := preload("res://levels/local_maps/catalog.gd")
 
@@ -56,6 +64,11 @@ func _try_setup_baked() -> void:
 	if _baked_rect:
 		_baked_rect.queue_free()
 		_baked_rect = null
+	if map_id.begins_with("level_"):
+		var custom_tex := CustomLevelCache.get_level_thumbnail(map_id)
+		if custom_tex:
+			_set_baked_texture(custom_tex)
+			return
 	if not accent_color.is_equal_approx(BAKED_COLOR):
 		return
 	var path := "%s/%s.png" % [BAKED_DIR, map_id]
@@ -64,6 +77,9 @@ func _try_setup_baked() -> void:
 	var tex: Texture2D = load(path)
 	if not tex:
 		return
+	_set_baked_texture(tex)
+
+func _set_baked_texture(tex: Texture2D) -> void:
 	_baked_rect = TextureRect.new()
 	_baked_rect.texture = tex
 	_baked_rect.stretch_mode = TextureRect.STRETCH_SCALE

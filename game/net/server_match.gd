@@ -13,6 +13,7 @@ class_name ServerMatch
 const PLAYER_SCENE := preload("res://player/player.tscn")
 const NPC_SCENE := preload("res://npc/npc.tscn")
 const OnlineMapCatalog := preload("res://levels/online_maps/catalog.gd")
+const LevelData := preload("res://levels/level_data.gd")
 const FixedView := preload("res://levels/fixed_view.gd")
 const RANKED_LOOKUP_URL := "https://codecade.co.za/tag/api/ranked/%s"
 const TICK_RATE := 1.0 / 60.0
@@ -111,15 +112,38 @@ func _init(network_manager: Node, p_lobby_id: int, members: Dictionary, p_ranked
 		_is_bot[peer_id] = members[peer_id].get("is_bot", false)
 		_skill_levels[peer_id] = members[peer_id].get("skill_level", 3)
 
-## Every real match uses one of OnlineMapCatalog's small set of built-in
-## maps, resolved purely locally -- no network fetch, unlike the old setup
-## (a single hand-built arena plus a live-published custom level catalog
-## that turned out unreliable in production). `level_id` "" (no vote yet,
-## or a process launched without a matching --level=) resolves to the
-## catalog's own default.
+## Most real matches use one of OnlineMapCatalog's built-in maps, resolved
+## purely locally. `level_id` "" (no vote yet, or a process launched without
+## a matching --level=) resolves to the catalog's own default. A "level_..."
+## id (see server.js's level id shape) is a live-published custom level
+## instead (web Level Editor or the in-game Art Tool -- both publish through
+## the same relay endpoint) -- read straight out of CustomLevelCache, which
+## downloaded and validated every such level once at this process's own
+## startup (see that autoload's header), so there's no per-match network
+## fetch here at all.
+##
+## A previous attempt at custom online levels (see git history around
+## "Replace the online map system with 2 reliable built-in maps") got
+## reverted for being "unreliable in production" -- but the actual arena-
+## building logic was never at fault; the real bugs were map_vote_view.gd's
+## vote list silently never showing anything past the built-in fallback, and
+## LevelData.build_arena_from_data() predating the fixed-camera system
+## entirely (no "Background" node at all -- _finish_setup() below would have
+## crashed the moment a custom level actually got voted for). Both are fixed
+## now, and moving the fetch to a one-time startup cache removes the
+## per-match network dependency that made the old approach fragile in the
+## first place.
 func _ready() -> void:
 	_resolved_level_id = _level_id_override if not _level_id_override.is_empty() else _network_manager.level_id
-	_arena = load(OnlineMapCatalog.scene_path_for(_resolved_level_id)).instantiate()
+	if _resolved_level_id.begins_with("level_"):
+		var data := CustomLevelCache.get_level_data(_resolved_level_id)
+		if data.is_empty():
+			push_warning("ServerMatch: custom level %s not in the startup cache -- falling back to the default arena" % _resolved_level_id)
+			_arena = load(OnlineMapCatalog.scene_path_for("")).instantiate()
+		else:
+			_arena = LevelData.build_arena_from_data(data, CustomLevelCache.get_level_textures(_resolved_level_id), CustomLevelCache.get_level_background(_resolved_level_id))
+	else:
+		_arena = load(OnlineMapCatalog.scene_path_for(_resolved_level_id)).instantiate()
 	add_child(_arena)
 	_finish_setup()
 

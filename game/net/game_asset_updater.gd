@@ -39,6 +39,9 @@ static var MULTI_KEY_CATEGORIES: Dictionary = {}
 static func _static_init() -> void:
 	MULTI_KEY_CATEGORIES = {
 		"chrome": [Categories.CHROME_KEYS, GameAssetOverrides.chrome_override_path],
+		"platform": [Categories.PLATFORM_KEYS, GameAssetOverrides.platform_override_path],
+		"playlist_thumbnails": [Categories.PLAYLIST_THUMBNAIL_KEYS, GameAssetOverrides.playlist_thumbnail_override_path],
+		"backgrounds": [Categories.BACKGROUND_KEYS, GameAssetOverrides.background_override_path],
 	}
 
 func check() -> void:

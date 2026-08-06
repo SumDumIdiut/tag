@@ -41,7 +41,6 @@ text = "CHOOSE A PLAYLIST"
 
 [node name="PlaylistGrid" type="GridContainer" parent="VBox"]
 layout_mode = 2
-size_flags_vertical = 3
 columns = 1
 theme_override_constants/h_separation = 16
 theme_override_constants/v_separation = 12

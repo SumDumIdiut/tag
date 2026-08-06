@@ -41,8 +41,12 @@ func _ready() -> void:
 	vbox.add_theme_constant_override("separation", 14)
 	center.add_child(vbox)
 
-	vbox.add_child(UIStyle.title_label("Account", 32))
-	vbox.add_child(UIStyle.subtitle_label("Optional -- lets your progress follow you across devices."))
+	var title_label := UIStyle.title_label("Account", 32)
+	vbox.add_child(title_label)
+	UIStyle.apply_layout_override(title_label, "login_screen.title")
+	var subtitle_label := UIStyle.subtitle_label("Optional -- lets your progress follow you across devices.")
+	vbox.add_child(subtitle_label)
+	UIStyle.apply_layout_override(subtitle_label, "login_screen.subtitle")
 
 	_status_label = Label.new()
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -59,6 +63,7 @@ func _ready() -> void:
 	UIStyle.style_back_button(back_btn)
 	back_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://main/main_menu.tscn"))
 	vbox.add_child(back_btn)
+	UIStyle.apply_layout_override(back_btn, "login_screen.back_button")
 
 	if PlayerIdentity.logged_in_username.is_empty():
 		_show_form()
@@ -94,6 +99,7 @@ func _build_form_box(parent: VBoxContainer) -> void:
 	UIStyle.style_button(login_btn, ACCENT)
 	login_btn.pressed.connect(_on_login_pressed)
 	row.add_child(login_btn)
+	UIStyle.apply_layout_override(login_btn, "login_screen.login_button")
 
 	var register_btn := Button.new()
 	register_btn.text = "Create Account"
@@ -102,6 +108,7 @@ func _build_form_box(parent: VBoxContainer) -> void:
 	UIStyle.style_button(register_btn, UIStyle.COLOR_ONLINE)
 	register_btn.pressed.connect(_on_register_pressed)
 	row.add_child(register_btn)
+	UIStyle.apply_layout_override(register_btn, "login_screen.register_button")
 
 func _build_logged_in_box(parent: VBoxContainer) -> void:
 	_logged_in_box = VBoxContainer.new()
@@ -120,6 +127,7 @@ func _build_logged_in_box(parent: VBoxContainer) -> void:
 	UIStyle.style_button(logout_btn, UIStyle.COLOR_RANKED)
 	logout_btn.pressed.connect(_on_logout_pressed)
 	_logged_in_box.add_child(logout_btn)
+	UIStyle.apply_layout_override(logout_btn, "login_screen.logout_button")
 
 func _show_form() -> void:
 	_form_box.visible = true
