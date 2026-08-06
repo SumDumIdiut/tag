@@ -3,19 +3,28 @@ class_name MapVoteView
 
 # Shared map-vote UI used by both lobby_room.gd (casual) and ranked_queue.gd
 # (ranked) while waiting for a match to start -- one square tile per map in
-# OnlineMapCatalog (small, fully built-in, no network fetch -- see that
-# catalog's own header for why this replaced a live-published custom level
-# fetch), each showing a real preview of its layout with the vote tally and
-# title beneath, reporting the local player's choice via
-# NetworkManager.submit_map_vote(). A ballot row below the tiles shows every
-# current voter's own pick as a small preview swatch, Mario-Kart-lobby style
-# -- who's picked what, at a glance, before the server's own tally decides
-# the outcome (see network_manager.gd's _pick_voted_level -- this view only
-# ever shows/sends votes, it never decides the winner itself).
+# OnlineMapCatalog (small, fully built-in) PLUS every live-published custom
+# level (web Level Editor or the in-game Art Tool, both publish through the
+# same relay endpoint), each showing a real preview of its layout with the
+# vote tally and title beneath, reporting the local player's choice via
+# NetworkManager.submit_map_vote(). Custom levels come from CustomLevelCache,
+# downloaded once at game startup rather than fetched fresh by this screen
+# every time it opens -- see that autoload's own header. A ballot row below
+# the tiles shows every current voter's own pick as a small preview swatch,
+# Mario-Kart-lobby style -- who's picked what, at a glance, before the
+# server's own tally decides the outcome (see network_manager.gd's
+# _pick_voted_level -- this view only ever shows/sends votes, it never
+# decides the winner itself).
 
 const UIStyle := preload("res://ui/ui_style.gd")
 const OnlineMapCatalog := preload("res://levels/online_maps/catalog.gd")
 const OnlineMapIconScene := preload("res://ui/online_map_icon.gd")
+# A vote screen with dozens of tiles stops being usable -- caps how many of
+# the (potentially many, across every player who's ever published one)
+# live custom levels get offered per match, newest first so recent/active
+# publishes stay in rotation rather than the oldest ones camping the slots
+# forever. Nothing is ever deleted/uncached by this -- just not offered.
+const MAX_CUSTOM_LEVELS_IN_VOTE := 10
 
 # 7 tiles at the old 150px + 20px separation totaled 1170px -- wider than
 # the game's own locked 1152px viewport (see project.godot's window/stretch
@@ -61,6 +70,24 @@ func _ready() -> void:
 		_level_names.append(String(OnlineMapCatalog.MAPS[id].name))
 	for i in _level_ids.size():
 		_add_map_tile(i)
+	_add_custom_level_tiles()
+
+## Custom levels are downloaded once at game startup (see CustomLevelCache),
+## not fetched fresh every time this screen opens -- by the time a player
+## actually reaches a lobby/vote screen that startup fetch has virtually
+## always already finished, but the not-yet-ready case (a very fast queue
+## right after launch) is still handled correctly rather than assumed away.
+func _add_custom_level_tiles() -> void:
+	if CustomLevelCache.is_ready:
+		_populate_custom_level_tiles()
+	else:
+		CustomLevelCache.levels_ready.connect(_populate_custom_level_tiles, CONNECT_ONE_SHOT)
+
+func _populate_custom_level_tiles() -> void:
+	for entry in CustomLevelCache.level_entries_newest_first().slice(0, MAX_CUSTOM_LEVELS_IN_VOTE):
+		_level_ids.append(String(entry.id))
+		_level_names.append(String(entry.name))
+		_add_map_tile(_level_ids.size() - 1)
 
 ## A big square preview (the map's real platform layout, see
 ## online_map_icon.gd), with the map's title and current vote tally stacked

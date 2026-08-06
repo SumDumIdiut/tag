@@ -32,14 +32,23 @@ func _ready() -> void:
 	PartyManager.kicked.connect(_on_kicked)
 	PartyManager.friend_request_received.connect(_on_friend_request_received)
 	PartyManager.friend_request_responded.connect(_on_friend_request_responded)
+	# Self-heals any party UI that silently drifted from the server's real
+	# state (see PartyManager.request_resync()'s own comment) the moment
+	# this screen is actually looked at, rather than trusting party_updated
+	# pushes to have all landed correctly.
+	PartyManager.request_resync()
 
 	var vbox := VBoxContainer.new()
 	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 32)
 	vbox.add_theme_constant_override("separation", 14)
 	add_child(vbox)
 
-	vbox.add_child(UIStyle.title_label("Friends", 32))
-	vbox.add_child(UIStyle.subtitle_label("Optional -- add friends by code, see who's online, join with one click."))
+	var title_label := UIStyle.title_label("Friends", 32)
+	vbox.add_child(title_label)
+	UIStyle.apply_layout_override(title_label, "friends_menu.title")
+	var subtitle_label := UIStyle.subtitle_label("Optional -- add friends by code, see who's online, join with one click.")
+	vbox.add_child(subtitle_label)
+	UIStyle.apply_layout_override(subtitle_label, "friends_menu.subtitle")
 
 	# Everything between the header and Back scrolls as one unit -- a party
 	# panel (with members + Leave Party), a requests panel, and a friends
@@ -83,6 +92,7 @@ func _ready() -> void:
 		_status_label.text = "Copied to clipboard."
 	)
 	code_row.add_child(copy_btn)
+	UIStyle.apply_layout_override(copy_btn, "friends_menu.copy_button")
 
 	var party_panel := PanelContainer.new()
 	party_panel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_ACCENT))
@@ -130,6 +140,7 @@ func _ready() -> void:
 	UIStyle.style_button(add_btn, UIStyle.COLOR_ACCENT, 8)
 	add_btn.pressed.connect(_on_add_pressed)
 	add_row.add_child(add_btn)
+	UIStyle.apply_layout_override(add_btn, "friends_menu.add_button")
 
 	_status_label = Label.new()
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -150,6 +161,7 @@ func _ready() -> void:
 	UIStyle.style_back_button(back_btn)
 	back_btn.pressed.connect(_on_back_pressed)
 	vbox.add_child(back_btn)
+	UIStyle.apply_layout_override(back_btn, "friends_menu.back_button")
 
 	_refresh_timer = Timer.new()
 	_refresh_timer.wait_time = REFRESH_INTERVAL_SEC

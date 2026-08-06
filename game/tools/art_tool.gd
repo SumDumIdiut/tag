@@ -68,6 +68,23 @@ A piece with no file here just keeps every button/panel/slider on the
 plain flat-colored fallback -- you don't need to paint all four at once.
 """
 
+const PLATFORM_INSTRUCTIONS_TEXT := """Each file here is one of the 3 tiles a moving platform assembles itself
+from, left to right: left.png, middle.png, right.png. All 3 are 10x10 --
+a platform is always exactly 3 tiles wide, so there's no auto-tiling/
+terrain matching involved, just one fixed piece per position.
+
+To make one of these the game's real platform art:
+
+  1. Copy the file to game/assets/icons/platform/<key>.png, matching the
+     file's own name here (left.png, middle.png, right.png).
+  2. Commit the file -- no rebuild step needed, moving_platform.gd checks
+     for it at runtime and uses it in place of the flat placeholder color
+     automatically, on every platform in the game at once.
+
+A piece with no file here just keeps that tile on the plain flat-colored
+placeholder -- you don't need to paint all three at once.
+"""
+
 @onready var level_tab_button: Button = $VBox/PageTabRow/LevelTabButton
 @onready var level_page: HBoxContainer = $VBox/LevelPage
 
@@ -152,6 +169,20 @@ const CHROME_ZOOM := 10
 var _chrome_images: Array[Image] = [] # index-matched to CHROME_KEYS
 var _current_chrome_index := -1
 var _chrome_select_buttons: Array[Button] = []
+
+# The 3 tiles a MovingPlatform assembles itself from left-to-right (see
+# levels/moving_platform.gd/GameAssetCategories.PLATFORM_KEYS) -- all 3 the
+# same fixed 10x10 size, unlike Chrome's per-piece CHROME_SIZES. A much
+# higher zoom than Chrome's own (10) since 10px is otherwise far too small
+# to paint into comfortably.
+const PLATFORM_KEYS := Categories.PLATFORM_KEYS
+const PLATFORM_NAMES := ["Left", "Middle", "Right"]
+const PLATFORM_TILE_SIZE := 10
+const PLATFORM_ART_DIR := "res://assets/icons/platform"
+const PLATFORM_ZOOM := 32
+var _platform_images: Array[Image] = [] # index-matched to PLATFORM_KEYS
+var _current_platform_index := -1
+var _platform_select_buttons: Array[Button] = []
 
 var _import_file_dialog: FileDialog
 
@@ -906,6 +937,25 @@ func _build_icons_page() -> void:
 		select_box.add_child(btn)
 		_chrome_select_buttons.append(btn)
 
+	var platform_spacer := Control.new()
+	platform_spacer.custom_minimum_size = Vector2(0, 8)
+	select_box.add_child(platform_spacer)
+
+	# Same shared ButtonGroup again -- picking a platform tile here
+	# deselects whichever other section was active.
+	select_box.add_child(_section_label("PLATFORM (MOVING PLATFORM TILES)"))
+	_platform_select_buttons.clear()
+	for i in PLATFORM_NAMES.size():
+		var btn := Button.new()
+		btn.text = PLATFORM_NAMES[i]
+		btn.toggle_mode = true
+		btn.button_group = icon_group
+		btn.custom_minimum_size = Vector2(0, 32)
+		UIStyle.style_button(btn, UIStyle.COLOR_SANDBOX, 10, false)
+		btn.pressed.connect(_show_platform.bind(i))
+		select_box.add_child(btn)
+		_platform_select_buttons.append(btn)
+
 	var canvas_panel := PanelContainer.new()
 	canvas_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	canvas_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -981,6 +1031,7 @@ func _build_icons_page() -> void:
 
 	_load_icon_images()
 	_load_chrome_images()
+	_load_platform_images()
 	_show_icon(0)
 	_icon_select_buttons[0].button_pressed = true
 
@@ -1009,10 +1060,13 @@ func _load_icon_images() -> void:
 func _show_icon(index: int) -> void:
 	_current_icon_index = index
 	_current_chrome_index = -1
+	_current_platform_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = (i == index)
 	for i in _chrome_select_buttons.size():
 		_chrome_select_buttons[i].button_pressed = false
+	for i in _platform_select_buttons.size():
+		_platform_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1055,10 +1109,13 @@ func _load_chrome_images() -> void:
 func _show_chrome(index: int) -> void:
 	_current_chrome_index = index
 	_current_icon_index = -1
+	_current_platform_index = -1
 	for i in _icon_select_buttons.size():
 		_icon_select_buttons[i].button_pressed = false
 	for i in _chrome_select_buttons.size():
 		_chrome_select_buttons[i].button_pressed = (i == index)
+	for i in _platform_select_buttons.size():
+		_platform_select_buttons[i].button_pressed = false
 	for child in icons_canvas_holder.get_children():
 		icons_canvas_holder.remove_child(child)
 		child.queue_free()
@@ -1066,6 +1123,49 @@ func _show_chrome(index: int) -> void:
 	icons_canvas_holder.add_child(canvas)
 	canvas.painted.connect(_on_painted)
 	canvas.painted.connect(func(): _chrome_images[index] = canvas.image)
+	canvas.color_picked.connect(_on_eyedropper_picked)
+	_current_canvas = canvas
+	_apply_tool_state()
+
+## Same "baked art if it exists, else a flat placeholder" rule
+## _load_chrome_images() follows, except the fallback here is the platform's
+## own real flat color (matching moving_platform.gd's own fallback) instead
+## of a blank transparent square -- a platform tile always renders as
+## *something* solid in-game even before anyone's painted it, so previewing
+## that same solid color here (rather than blank) is the honest starting
+## point.
+func _load_platform_images() -> void:
+	_platform_images.clear()
+	for key in PLATFORM_KEYS:
+		var path := "%s/%s.png" % [PLATFORM_ART_DIR, key]
+		var img: Image
+		if ResourceLoader.exists(path):
+			var tex: Texture2D = load(path)
+			img = tex.get_image() if tex else null
+			if img:
+				img.convert(Image.FORMAT_RGBA8)
+		if not img:
+			img = Image.create(PLATFORM_TILE_SIZE, PLATFORM_TILE_SIZE, false, Image.FORMAT_RGBA8)
+			img.fill(Color(0.85, 0.55, 0.2, 1))
+		_platform_images.append(img)
+
+func _show_platform(index: int) -> void:
+	_current_platform_index = index
+	_current_icon_index = -1
+	_current_chrome_index = -1
+	for i in _icon_select_buttons.size():
+		_icon_select_buttons[i].button_pressed = false
+	for i in _chrome_select_buttons.size():
+		_chrome_select_buttons[i].button_pressed = false
+	for i in _platform_select_buttons.size():
+		_platform_select_buttons[i].button_pressed = (i == index)
+	for child in icons_canvas_holder.get_children():
+		icons_canvas_holder.remove_child(child)
+		child.queue_free()
+	var canvas = PixelCanvasScene.new(_platform_images[index], PLATFORM_ZOOM)
+	icons_canvas_holder.add_child(canvas)
+	canvas.painted.connect(_on_painted)
+	canvas.painted.connect(func(): _platform_images[index] = canvas.image)
 	canvas.color_picked.connect(_on_eyedropper_picked)
 	_current_canvas = canvas
 	_apply_tool_state()
@@ -1192,6 +1292,30 @@ func _on_export_pressed() -> void:
 			status_label.text = "Publishing chrome art..."
 			var chrome_result := await _publish_game_asset("chrome", {"images": chrome_images_payload})
 			publish_parts.append("chrome (v%d)" % chrome_result.get("version", 0) if chrome_result.get("ok", false) else "chrome failed: %s" % chrome_result.get("error", ""))
+
+	if not _platform_images.is_empty():
+		# Same one-file-per-key shape as chrome. Unlike chrome/icons, a
+		# platform tile's own "untouched" state is a flat solid color, not
+		# transparent -- _image_has_content() would always be true here, so
+		# every export always republishes all 3 tiles rather than only the
+		# ones actually painted over. Harmless (worst case: an extra no-op
+		# version bump with identical pixels) and matches the tile's own
+		# always-something-visible nature.
+		var platform_out_dir := base_dir.path_join("edited_icons/platform")
+		DirAccess.make_dir_recursive_absolute(platform_out_dir)
+		for i in _platform_images.size():
+			_platform_images[i].save_png(platform_out_dir.path_join("%s.png" % PLATFORM_KEYS[i]))
+		var f11 := FileAccess.open(platform_out_dir.path_join("HOW_TO_SUBMIT.txt"), FileAccess.WRITE)
+		if f11:
+			f11.store_string(PLATFORM_INSTRUCTIONS_TEXT)
+		status_parts.append(platform_out_dir)
+
+		var platform_images_payload := {}
+		for i in _platform_images.size():
+			platform_images_payload[PLATFORM_KEYS[i]] = Marshalls.raw_to_base64(_platform_images[i].save_png_to_buffer())
+		status_label.text = "Publishing platform tiles..."
+		var platform_result := await _publish_game_asset("platform", {"images": platform_images_payload})
+		publish_parts.append("platform (v%d)" % platform_result.get("version", 0) if platform_result.get("ok", false) else "platform failed: %s" % platform_result.get("error", ""))
 
 	if status_parts.is_empty():
 		status_label.text = "Nothing to export yet -- paint an icon or chrome piece first."

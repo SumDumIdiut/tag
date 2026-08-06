@@ -421,6 +421,29 @@ func _fetch_turn_credentials(on_done: Callable) -> void:
 ## unsupported entry. Stripping non-UDP TURN urls (STUN entries are
 ## untouched, they have no transport param to filter) before they ever
 ## reach pc.initialize() avoids tripping that path at all.
+func _ice_config(ice_servers: Array) -> Dictionary:
+	return {"iceServers": ice_servers}
+
+## Cloudflare's anycast network (a nearby edge PoP + their own backbone
+## between PoPs) is deliberately preferred over a direct/STUN path here,
+## not just used as a NAT-traversal fallback, since it consistently beats
+## whatever peering happens to exist between two arbitrary residential
+## ISPs on a real cross-region connection -- see the ice_candidate_created
+## handlers below, which only ever signal candidates this returns true
+## for. The standard way to get this (RTCConfiguration's
+## iceTransportPolicy: "relay") does nothing here -- confirmed by reading
+## webrtc-native's actual _initialize() source: it only ever reads
+## iceServers and a libdatachannel sub-dictionary (enableIceTcp/
+## enableIceUdpMux/portRange*/mtu), never iceTransportPolicy, so setting
+## it is silently a no-op (confirmed live: host/srflx candidates still
+## got gathered and used same as without it). Filtering candidates at the
+## signaling layer instead achieves the same effect for entirely
+## different reasons: ICE only ever tries candidate PAIRS both sides
+## actually know about, so if neither peer ever tells the other about its
+## host/srflx candidates, only relay<->relay pairs exist for it to try.
+func _is_relay_candidate(candidate_name: String) -> bool:
+	return candidate_name.contains(" typ relay")
+
 func _filter_ice_servers_for_libjuice(ice_servers: Array) -> Array:
 	var filtered: Array = []
 	for entry in ice_servers:
@@ -478,7 +501,7 @@ func _accept_webrtc_offer(channel: WebRTCSignalingChannel, offer_msg: Dictionary
 	if peer_id <= 1 or _webrtc_pending_peers.has(peer_id):
 		return # 0/1 are reserved (invalid/server); a collision just drops this attempt rather than crashing
 	var pc := WebRTCPeerConnection.new()
-	pc.initialize({"iceServers": _webrtc_ice_servers})
+	pc.initialize(_ice_config(_webrtc_ice_servers))
 	(multiplayer.multiplayer_peer as WebRTCMultiplayerPeer).add_peer(pc, peer_id)
 	_webrtc_pending_peers[peer_id] = {"pc": pc, "channel": channel}
 	pc.session_description_created.connect(func(type: String, sdp: String):
@@ -486,6 +509,8 @@ func _accept_webrtc_offer(channel: WebRTCSignalingChannel, offer_msg: Dictionary
 		channel.send({"type": type, "sdp": sdp})
 	)
 	pc.ice_candidate_created.connect(func(media: String, index: int, name: String):
+		if not _is_relay_candidate(name):
+			return # never tell the far side about a host/srflx path -- see _is_relay_candidate's comment
 		channel.send({"type": "candidate", "media": media, "index": index, "name": name})
 	)
 	channel.message_received.connect(func(msg: Dictionary):
@@ -567,7 +592,7 @@ func _start_client_webrtc_with_ice(channel: WebRTCSignalingChannel, ice_servers:
 		return
 	multiplayer.multiplayer_peer = mp
 	var pc := WebRTCPeerConnection.new()
-	pc.initialize({"iceServers": ice_servers})
+	pc.initialize(_ice_config(ice_servers))
 	mp.add_peer(pc, 1) # the server is always peer 1
 	add_child(channel)
 	pc.session_description_created.connect(func(type: String, sdp: String):
@@ -575,6 +600,8 @@ func _start_client_webrtc_with_ice(channel: WebRTCSignalingChannel, ice_servers:
 		channel.send({"type": type, "sdp": sdp, "peerId": my_id})
 	)
 	pc.ice_candidate_created.connect(func(media: String, index: int, name: String):
+		if not _is_relay_candidate(name):
+			return # never tell the far side about a host/srflx path -- see _is_relay_candidate's comment
 		channel.send({"type": "candidate", "media": media, "index": index, "name": name})
 	)
 	channel.message_received.connect(func(msg: Dictionary):

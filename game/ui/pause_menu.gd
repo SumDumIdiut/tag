@@ -4,6 +4,7 @@ const UIStyle := preload("res://ui/ui_style.gd")
 
 @onready var panel: Control = $Panel
 @onready var card_panel: PanelContainer = $Panel/CardPanel
+@onready var title_label: Label = $Panel/CardPanel/VBox/Title
 @onready var resume_button: Button = $Panel/CardPanel/VBox/ResumeButton
 @onready var menu_button: Button = $Panel/CardPanel/VBox/MenuButton
 
@@ -18,6 +19,9 @@ func _ready() -> void:
 	UIStyle.style_back_button(menu_button)
 	resume_button.pressed.connect(_on_resume_pressed)
 	menu_button.pressed.connect(_on_main_menu_pressed)
+	UIStyle.apply_layout_override(title_label, "pause_menu.title")
+	UIStyle.apply_layout_override(resume_button, "pause_menu.resume_button")
+	UIStyle.apply_layout_override(menu_button, "pause_menu.menu_button")
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):

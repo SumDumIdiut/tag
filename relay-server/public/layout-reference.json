@@ -1,0 +1,494 @@
+{
+	"achievements_menu.back_button": {
+		"h": 43.0,
+		"w": 1088.0,
+		"x": 32.0,
+		"y": 573.0
+	},
+	"achievements_menu.status_label": {
+		"h": 23.0,
+		"w": 1088.0,
+		"x": 32.0,
+		"y": 91.0
+	},
+	"achievements_menu.title": {
+		"h": 45.0,
+		"w": 1088.0,
+		"x": 32.0,
+		"y": 32.0
+	},
+	"casual_playlist_select.back_button": {
+		"h": 43.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 486.0
+	},
+	"casual_playlist_select.card_1v1": {
+		"h": 54.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 218.0
+	},
+	"casual_playlist_select.card_1v1_name": {
+		"h": 28.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 220.0
+	},
+	"casual_playlist_select.card_1v1_sub": {
+		"h": 17.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 252.0
+	},
+	"casual_playlist_select.card_1v1v1": {
+		"h": 54.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 350.0
+	},
+	"casual_playlist_select.card_1v1v1_name": {
+		"h": 28.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 352.0
+	},
+	"casual_playlist_select.card_1v1v1_sub": {
+		"h": 17.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 384.0
+	},
+	"casual_playlist_select.card_1v1v1v1": {
+		"h": 54.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 416.0
+	},
+	"casual_playlist_select.card_1v1v1v1_name": {
+		"h": 28.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 418.0
+	},
+	"casual_playlist_select.card_1v1v1v1_sub": {
+		"h": 17.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 450.0
+	},
+	"casual_playlist_select.card_2v2": {
+		"h": 54.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 284.0
+	},
+	"casual_playlist_select.card_2v2_name": {
+		"h": 28.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 286.0
+	},
+	"casual_playlist_select.card_2v2_sub": {
+		"h": 17.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 318.0
+	},
+	"casual_playlist_select.subtitle": {
+		"h": 20.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 182.0
+	},
+	"casual_playlist_select.title": {
+		"h": 47.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 119.0
+	},
+	"casual_queue.back_button": {
+		"h": 43.0,
+		"w": 84.0,
+		"x": 406.0,
+		"y": 194.5
+	},
+	"casual_queue.cancel_button": {
+		"h": 43.0,
+		"w": 200.0,
+		"x": 476.0,
+		"y": 598.0
+	},
+	"casual_queue.status_label": {
+		"h": 101.0,
+		"w": 1.0,
+		"x": 406.0,
+		"y": 194.5
+	},
+	"casual_queue.title": {
+		"h": 47.0,
+		"w": 129.0,
+		"x": 406.0,
+		"y": 194.5
+	},
+	"friends_menu.add_button": {
+		"h": 43.0,
+		"w": 116.0,
+		"x": 1004.0,
+		"y": 415.0
+	},
+	"friends_menu.back_button": {
+		"h": 43.0,
+		"w": 1088.0,
+		"x": 32.0,
+		"y": 573.0
+	},
+	"friends_menu.copy_button": {
+		"h": 43.0,
+		"w": 71.0,
+		"x": 1035.0,
+		"y": 161.0
+	},
+	"friends_menu.subtitle": {
+		"h": 20.0,
+		"w": 1088.0,
+		"x": 32.0,
+		"y": 91.0
+	},
+	"friends_menu.title": {
+		"h": 45.0,
+		"w": 1088.0,
+		"x": 32.0,
+		"y": 32.0
+	},
+	"lobby_room.leave_button": {
+		"h": 43.0,
+		"w": 600.0,
+		"x": 276.0,
+		"y": 471.5
+	},
+	"lobby_room.lobby_name_label": {
+		"h": 42.0,
+		"w": 600.0,
+		"x": 276.0,
+		"y": 133.5
+	},
+	"lobby_room.ready_button": {
+		"h": 44.0,
+		"w": 600.0,
+		"x": 276.0,
+		"y": 359.5
+	},
+	"lobby_room.start_button": {
+		"h": 44.0,
+		"w": 600.0,
+		"x": 276.0,
+		"y": 415.5
+	},
+	"local_menu.back_button": {
+		"h": 43.0,
+		"w": 820.0,
+		"x": 166.0,
+		"y": 496.0
+	},
+	"local_menu.start_button": {
+		"h": 64.0,
+		"w": 820.0,
+		"x": 166.0,
+		"y": 412.0
+	},
+	"local_menu.subtitle": {
+		"h": 20.0,
+		"w": 820.0,
+		"x": 166.0,
+		"y": 176.0
+	},
+	"local_menu.title": {
+		"h": 47.0,
+		"w": 820.0,
+		"x": 166.0,
+		"y": 109.0
+	},
+	"login_screen.back_button": {
+		"h": 43.0,
+		"w": 375.0,
+		"x": 388.0,
+		"y": 414.0
+	},
+	"login_screen.login_button": {
+		"h": 44.0,
+		"w": 79.0,
+		"x": 388.0,
+		"y": 190.0
+	},
+	"login_screen.logout_button": {
+		"h": 44.0,
+		"w": 375.0,
+		"x": 388.0,
+		"y": 356.0
+	},
+	"login_screen.register_button": {
+		"h": 44.0,
+		"w": 151.0,
+		"x": 388.0,
+		"y": 190.0
+	},
+	"login_screen.subtitle": {
+		"h": 20.0,
+		"w": 375.0,
+		"x": 388.0,
+		"y": 249.0
+	},
+	"login_screen.title": {
+		"h": 45.0,
+		"w": 375.0,
+		"x": 388.0,
+		"y": 190.0
+	},
+	"main_menu.account_button": {
+		"h": 44.0,
+		"w": 150.0,
+		"x": 20.0,
+		"y": 24.0
+	},
+	"main_menu.achievements_button": {
+		"h": 44.0,
+		"w": 150.0,
+		"x": 982.0,
+		"y": 24.0
+	},
+	"main_menu.local_button": {
+		"h": 360.0,
+		"w": 190.0,
+		"x": 585.0,
+		"y": 221.5
+	},
+	"main_menu.online_button": {
+		"h": 360.0,
+		"w": 190.0,
+		"x": 377.0,
+		"y": 221.5
+	},
+	"main_menu.subtitle": {
+		"h": 22.0,
+		"w": 398.0,
+		"x": 377.0,
+		"y": 171.5
+	},
+	"main_menu.title": {
+		"h": 77.0,
+		"w": 398.0,
+		"x": 377.0,
+		"y": 66.5
+	},
+	"match_intro.countdown_label": {
+		"h": 26.0,
+		"w": 320.0,
+		"x": 416.0,
+		"y": 381.0
+	},
+	"match_intro.skip_button": {
+		"h": 43.0,
+		"w": 320.0,
+		"x": 416.0,
+		"y": 421.0
+	},
+	"match_intro.title": {
+		"h": 47.0,
+		"w": 320.0,
+		"x": 416.0,
+		"y": 184.0
+	},
+	"match_results.continue_button": {
+		"h": 43.0,
+		"w": 360.0,
+		"x": 396.0,
+		"y": 501.0
+	},
+	"match_results.rank_label": {
+		"h": 28.0,
+		"w": 360.0,
+		"x": 396.0,
+		"y": 425.0
+	},
+	"match_results.title": {
+		"h": 47.0,
+		"w": 360.0,
+		"x": 396.0,
+		"y": 104.0
+	},
+	"online_menu.back_button": {
+		"h": 43.0,
+		"w": 160.0,
+		"x": 496.0,
+		"y": 511.0
+	},
+	"online_menu.casual_button": {
+		"h": 302.0,
+		"w": 170.0,
+		"x": 218.0,
+		"y": 193.0
+	},
+	"online_menu.friends_button": {
+		"h": 302.0,
+		"w": 170.0,
+		"x": 764.0,
+		"y": 193.0
+	},
+	"online_menu.private_button": {
+		"h": 302.0,
+		"w": 170.0,
+		"x": 582.0,
+		"y": 193.0
+	},
+	"online_menu.ranked_button": {
+		"h": 302.0,
+		"w": 170.0,
+		"x": 400.0,
+		"y": 193.0
+	},
+	"online_menu.subtitle": {
+		"h": 20.0,
+		"w": 920.0,
+		"x": 116.0,
+		"y": 157.0
+	},
+	"online_menu.title": {
+		"h": 47.0,
+		"w": 920.0,
+		"x": 116.0,
+		"y": 94.0
+	},
+	"pause_menu.menu_button": {
+		"h": 43.0,
+		"w": 232.0,
+		"x": 460.0,
+		"y": 353.0
+	},
+	"pause_menu.resume_button": {
+		"h": 44.0,
+		"w": 232.0,
+		"x": 460.0,
+		"y": 293.0
+	},
+	"pause_menu.title": {
+		"h": 39.0,
+		"w": 232.0,
+		"x": 460.0,
+		"y": 238.0
+	},
+	"ranked_playlist_select.back_button": {
+		"h": 43.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 486.0
+	},
+	"ranked_playlist_select.card_1v1": {
+		"h": 54.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 218.0
+	},
+	"ranked_playlist_select.card_1v1_name": {
+		"h": 28.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 220.0
+	},
+	"ranked_playlist_select.card_1v1_sub": {
+		"h": 17.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 252.0
+	},
+	"ranked_playlist_select.card_1v1v1": {
+		"h": 54.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 350.0
+	},
+	"ranked_playlist_select.card_1v1v1_name": {
+		"h": 28.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 352.0
+	},
+	"ranked_playlist_select.card_1v1v1_sub": {
+		"h": 17.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 384.0
+	},
+	"ranked_playlist_select.card_1v1v1v1": {
+		"h": 54.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 416.0
+	},
+	"ranked_playlist_select.card_1v1v1v1_name": {
+		"h": 28.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 418.0
+	},
+	"ranked_playlist_select.card_1v1v1v1_sub": {
+		"h": 17.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 450.0
+	},
+	"ranked_playlist_select.card_2v2": {
+		"h": 54.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 284.0
+	},
+	"ranked_playlist_select.card_2v2_name": {
+		"h": 28.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 286.0
+	},
+	"ranked_playlist_select.card_2v2_sub": {
+		"h": 17.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 318.0
+	},
+	"ranked_playlist_select.subtitle": {
+		"h": 20.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 182.0
+	},
+	"ranked_playlist_select.title": {
+		"h": 47.0,
+		"w": 460.0,
+		"x": 346.0,
+		"y": 119.0
+	},
+	"ranked_queue.back_button": {
+		"h": 43.0,
+		"w": 84.0,
+		"x": 406.0,
+		"y": 163.5
+	},
+	"ranked_queue.cancel_button": {
+		"h": 43.0,
+		"w": 200.0,
+		"x": 476.0,
+		"y": 598.0
+	},
+	"ranked_queue.status_label": {
+		"h": 101.0,
+		"w": 1.0,
+		"x": 406.0,
+		"y": 163.5
+	},
+	"ranked_queue.title": {
+		"h": 47.0,
+		"w": 136.0,
+		"x": 406.0,
+		"y": 163.5
+	}
+}

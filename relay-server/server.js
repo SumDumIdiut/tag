@@ -72,6 +72,23 @@ const MAX_PLATFORM_PERIOD_SEC = 60.0;
 // express.json({limit: '256kb'}) body-parser cap below (a request over that
 // limit never reaches this handler at all, so this can't usefully exceed it).
 const MAX_LEVEL_UPLOAD_BYTES = 150 * 1024;
+// A level's own optional texture library (see the web level editor at
+// public/level-editor.html's Textures panel) -- any number of uploaded
+// images, each independently dragged onto the layout as however many
+// placed copies the level actually wants (a "placement": which library
+// texture, where, how big). Caps here bound the library itself; MAX_LEVEL_
+// PLACEMENTS below bounds how many times those textures get placed.
+const MAX_LEVEL_TEXTURES = 12;
+const MAX_LEVEL_TEXTURE_BYTES = 512 * 1024;
+const MAX_LEVEL_PLACEMENTS = 200;
+const MAX_PLACEMENT_COORD = 2000; // generous grid-cell bound (the grid itself is 60x40) -- just an abuse guard
+// A level's optional backdrop (fills the whole camera view behind
+// everything, see LevelData.build_arena_from_data()) and its optional
+// catalog thumbnail (shown in Local's map grid / the vote screen instead
+// of a generic placeholder icon) -- each just one image, not a library
+// like textures, so no separate MAX_COUNT needed.
+const MAX_LEVEL_BACKGROUND_BYTES = 1024 * 1024;
+const MAX_LEVEL_THUMBNAIL_BYTES = 256 * 1024;
 
 // Live-updatable *built-in* game art -- distinct from the player-drawn
 // custom levels above (those are opt-in per-player content anyone can
@@ -89,15 +106,33 @@ const ASSET_PUBLISH_KEY = process.env.ASSET_PUBLISH_KEY || '';
 // instead of hand-copying. This file can't share that literal source
 // across languages, so this is the one remaining manual-sync copy -- keep
 // both sides updated together.
-const GAME_ASSET_CATEGORIES = ['icons', 'chrome'];
+const GAME_ASSET_CATEGORIES = ['icons', 'chrome', 'platform', 'playlist_thumbnails', 'backgrounds'];
 // The app's shared button/panel/slider box art.
 const CHROME_KEYS = ['button', 'panel', 'slider_groove', 'slider_fill'];
+// The 3 tiles a MovingPlatform assembles itself from left-to-right (see
+// game/levels/moving_platform.gd) -- always exactly 3 tiles, no auto-tiling.
+const PLATFORM_KEYS = ['left', 'middle', 'right'];
+// SYNC: mirrors game/net/game_asset_categories.gd's PLAYLIST_THUMBNAIL_KEYS
+// (itself mirroring game/net/playlist_catalog.gd's PLAYLIST_ORDER).
+const PLAYLIST_THUMBNAIL_KEYS = ['1v1', '2v2', '1v1v1', '1v1v1v1'];
+// SYNC: mirrors game/net/game_asset_categories.gd's BACKGROUND_KEYS -- one
+// per screen that calls UIStyle.add_background()/add_glow_background().
+// casual_playlist_select/ranked_playlist_select deliberately reuse
+// "casual_queue"/"ranked_queue" rather than getting their own keys.
+const BACKGROUND_KEYS = [
+  'main_menu', 'online_menu', 'local_menu', 'casual_queue', 'ranked_queue',
+  'lobby_room', 'achievements_menu', 'friends_menu', 'login_screen',
+  'match_intro', 'match_intro_ranked', 'match_results',
+];
 // Categories that publish as one file per key (like a per-key subfolder)
 // rather than a single shared atlas image (like icons/tiles) -- maps each
 // to its key list so the publish/download routes below don't need one
 // hand-written branch per category.
 const MULTI_KEY_CATEGORIES = {
   chrome: CHROME_KEYS,
+  platform: PLATFORM_KEYS,
+  playlist_thumbnails: PLAYLIST_THUMBNAIL_KEYS,
+  backgrounds: BACKGROUND_KEYS,
 };
 // A full-screen background (1152x648, far bigger than any icon/mode-button
 // canvas) needs more headroom than those -- bumped along with the
@@ -549,6 +584,14 @@ const parties = new Map();       // partyId -> { id, leaderId, members: Set<clie
 const clientParty = new Map();   // clientId -> partyId
 const playerSockets = new Map(); // clientId -> { ws, username }
 const MAX_PARTY_SIZE = 16;
+// How long a dropped party socket gets to reconnect under the same
+// clientId before actually being treated as "left the party" -- see
+// handlePlayerParty's ws.on('close') below. Comfortably longer than
+// party_manager.gd's own RECONNECT_DELAY_SEC (5s) plus real connect+
+// identify time, short enough that a genuinely-gone player still leaves
+// in a reasonable window.
+const PARTY_DISCONNECT_GRACE_MS = 15000;
+const pendingPartyDisconnects = new Map(); // clientId -> Timeout
 
 function partySnapshot(party) {
   return {
@@ -928,12 +971,146 @@ function isValidLevelData(data) {
       if (typeof period !== 'number' || period < MIN_PLATFORM_PERIOD_SEC || period > MAX_PLATFORM_PERIOD_SEC) return false;
     }
   }
+  if (!isValidPlacements(data.placements)) return false;
+  return true;
+}
+
+// `placements` (see public/level-editor.html's Textures panel: drag a
+// library texture onto the layout to add one of these) is optional -- a
+// level with no images at all just omits it, same as platforms. Each entry
+// is {textureIndex, x, y, width, height}: which uploaded texture (by
+// position in the level's own texturesBase64 array, checked against that
+// array's actual length in the upload handler below, where it's in scope --
+// this function alone can't know how many textures were actually
+// uploaded), where its center sits and how big it renders, all in
+// grid-cell-relative units (not canvas-pixel, not world-pixel -- see
+// level-editor.html's own comment on its publish handler for why: this
+// keeps a placement's apparent size/position correct relative to the tiles
+// around it even if the game's TILE_SIZE_PX ever changes, the same
+// resilience tiles already have and a baked-pixel value wouldn't).
+function isValidPlacements(placements) {
+  if (placements === undefined) return true;
+  if (!Array.isArray(placements) || placements.length > MAX_LEVEL_PLACEMENTS) return false;
+  for (const p of placements) {
+    if (!p || typeof p !== 'object') return false;
+    if (!Number.isInteger(p.textureIndex) || p.textureIndex < 0) return false;
+    if (typeof p.x !== 'number' || typeof p.y !== 'number') return false;
+    if (Math.abs(p.x) > MAX_PLACEMENT_COORD || Math.abs(p.y) > MAX_PLACEMENT_COORD) return false;
+    if (typeof p.width !== 'number' || typeof p.height !== 'number') return false;
+    if (p.width <= 0 || p.width > MAX_PLACEMENT_COORD || p.height <= 0 || p.height > MAX_PLACEMENT_COORD) return false;
+  }
   return true;
 }
 
 app.get('/api/levels/catalog', (req, res) => {
   res.json(readCatalog().filter(e => e.type === 'level'));
 });
+
+// Shared by both the create (POST /upload, mints a fresh id) and update
+// (POST /:levelId/update, overwrites an existing id's files) routes below --
+// validates the full level payload and writes it to disk at `id`, returning
+// the fields a catalog entry needs (name/textureCount/hasBackground/
+// hasThumbnail) or null if anything failed, having already sent the error
+// response itself (same "caller checks for null, doesn't build its own
+// error" shape callers of isValidLevelData/isValidPlacements already use).
+function validateAndStoreLevelFiles(req, res, id) {
+  const name = sanitizeName(req.body.name);
+  const data = { tiles: req.body.tiles, spawn_points: req.body.spawn_points };
+  // platforms is optional -- only include it at all if the client actually
+  // sent one, so older/simpler level uploads keep publishing exactly the
+  // same {tiles, spawn_points}-only JSON they always did. The web Level
+  // Editor has no authoring UI for these (only the in-game Art Tool does)
+  // but passes an existing level's own platforms straight through
+  // unmodified when saving an edit, so editing a level never silently
+  // drops them.
+  if (Array.isArray(req.body.platforms) && req.body.platforms.length > 0) {
+    data.platforms = req.body.platforms;
+  }
+  // `placements` references texturesBase64 by index (see below) --
+  // meaningless without a texture library, but stored either way if sent,
+  // same "only include what was actually sent" rule as platforms.
+  if (req.body.placements) data.placements = req.body.placements;
+  if (!isValidLevelData(data)) { res.status(400).json({ error: 'invalid level data' }); return null; }
+
+  // The texture library itself (see public/level-editor.html's Textures
+  // panel) -- any number of plain PNGs, not part of the tile-index JSON
+  // (kept out of it the same way chrome/platform art keeps images separate
+  // from their own small metadata, see publishMultiKeyImages() above),
+  // each validated and stored as its own file so a placement can reference
+  // it by index without duplicating the same bytes per copy placed.
+  const texturesBase64 = req.body.texturesBase64;
+  let textureBytesList = [];
+  if (texturesBase64 !== undefined) {
+    if (!Array.isArray(texturesBase64) || texturesBase64.length > MAX_LEVEL_TEXTURES) {
+      res.status(400).json({ error: 'too many textures' }); return null;
+    }
+    for (const b64 of texturesBase64) {
+      let bytes;
+      try { bytes = Buffer.from(String(b64), 'base64'); } catch { res.status(400).json({ error: 'bad texture data' }); return null; }
+      if (bytes.length === 0 || bytes.length > MAX_LEVEL_TEXTURE_BYTES || !pngDimensions(bytes)) {
+        res.status(400).json({ error: 'a texture is too large, empty, or not a PNG' }); return null;
+      }
+      textureBytesList.push(bytes);
+    }
+  }
+  // Every placement has to actually reference a texture that was uploaded
+  // in this same publish -- isValidPlacements() above only checked
+  // textureIndex is a sane non-negative integer, since it has no way to
+  // know the library's real size.
+  for (const p of (data.placements || [])) {
+    if (p.textureIndex >= textureBytesList.length) { res.status(400).json({ error: 'placement references a texture that was not uploaded' }); return null; }
+  }
+
+  // Background and thumbnail are each a single plain PNG, same validation
+  // shape as one texture-library entry -- just stored under their own
+  // fixed filename instead of an indexed one, since there's only ever one
+  // of each per level.
+  let backgroundBytes = null;
+  if (req.body.backgroundBase64 !== undefined) {
+    try { backgroundBytes = Buffer.from(String(req.body.backgroundBase64), 'base64'); } catch { res.status(400).json({ error: 'bad background data' }); return null; }
+    if (backgroundBytes.length === 0 || backgroundBytes.length > MAX_LEVEL_BACKGROUND_BYTES || !pngDimensions(backgroundBytes)) {
+      res.status(400).json({ error: 'background is too large, empty, or not a PNG' }); return null;
+    }
+  }
+  let thumbnailBytes = null;
+  if (req.body.thumbnailBase64 !== undefined) {
+    try { thumbnailBytes = Buffer.from(String(req.body.thumbnailBase64), 'base64'); } catch { res.status(400).json({ error: 'bad thumbnail data' }); return null; }
+    if (thumbnailBytes.length === 0 || thumbnailBytes.length > MAX_LEVEL_THUMBNAIL_BYTES || !pngDimensions(thumbnailBytes)) {
+      res.status(400).json({ error: 'thumbnail is too large, empty, or not a PNG' }); return null;
+    }
+  }
+
+  const json = JSON.stringify(data);
+  if (Buffer.byteLength(json) > MAX_LEVEL_UPLOAD_BYTES) { res.status(400).json({ error: 'level too large' }); return null; }
+
+  // Wipe any stale per-index texture files beyond the new count -- a no-op
+  // for a fresh create (nothing exists at `id` yet), but matters for an
+  // update that reduced the texture count: without this, an old higher-
+  // index file would linger on disk and (since CustomLevelCache fetches by
+  // index up to the catalog's current textureCount) just go unreferenced
+  // rather than actually being cleaned up.
+  let staleIndex = textureBytesList.length;
+  while (fs.existsSync(path.join(LEVEL_DATA_DIR, `${id}.tex${staleIndex}.png`))) {
+    fs.unlinkSync(path.join(LEVEL_DATA_DIR, `${id}.tex${staleIndex}.png`));
+    staleIndex++;
+  }
+
+  fs.writeFileSync(path.join(LEVEL_DATA_DIR, id + '.json'), json);
+  textureBytesList.forEach((bytes, i) => fs.writeFileSync(path.join(LEVEL_DATA_DIR, `${id}.tex${i}.png`), bytes));
+  // Background/thumbnail: write the new one, or -- unlike a fresh create,
+  // where there's nothing to clean up -- remove a stale leftover file if
+  // this save no longer has one (an edit that removed a previously-set
+  // background/thumbnail), so hasBackground/hasThumbnail below stays
+  // truthful to what's actually still on disk.
+  const bgPath = path.join(LEVEL_DATA_DIR, `${id}.bg.png`);
+  if (backgroundBytes) fs.writeFileSync(bgPath, backgroundBytes);
+  else if (fs.existsSync(bgPath)) fs.unlinkSync(bgPath);
+  const thumbPath = path.join(LEVEL_DATA_DIR, `${id}.thumb.png`);
+  if (thumbnailBytes) fs.writeFileSync(thumbPath, thumbnailBytes);
+  else if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
+
+  return { name, textureCount: textureBytesList.length, hasBackground: !!backgroundBytes, hasThumbnail: !!thumbnailBytes };
+}
 
 app.post('/api/levels/:clientId/upload', (req, res) => {
   if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
@@ -945,24 +1122,52 @@ app.post('/api/levels/:clientId/upload', (req, res) => {
     return res.status(400).json({ error: `max ${MAX_LEVELS_PER_CLIENT} published levels per client` });
   }
 
-  const name = sanitizeName(req.body.name);
-  const data = { tiles: req.body.tiles, spawn_points: req.body.spawn_points };
-  // platforms is optional -- only include it at all if the client actually
-  // sent one, so older/simpler level uploads keep publishing exactly the
-  // same {tiles, spawn_points}-only JSON they always did.
-  if (Array.isArray(req.body.platforms) && req.body.platforms.length > 0) {
-    data.platforms = req.body.platforms;
-  }
-  if (!isValidLevelData(data)) return res.status(400).json({ error: 'invalid level data' });
-  const json = JSON.stringify(data);
-  if (Buffer.byteLength(json) > MAX_LEVEL_UPLOAD_BYTES) return res.status(400).json({ error: 'level too large' });
-
   const id = 'level_' + crypto.randomBytes(8).toString('hex');
-  fs.writeFileSync(path.join(LEVEL_DATA_DIR, id + '.json'), json);
+  const stored = validateAndStoreLevelFiles(req, res, id);
+  if (!stored) return; // error response already sent
+
   const catalog = readCatalog();
-  catalog.push({ id, name, type: 'level', createdBy: clientId, createdAt: Date.now() });
+  const now = Date.now();
+  catalog.push({
+    id, type: 'level', createdBy: clientId, createdAt: now, updatedAt: now,
+    name: stored.name, textureCount: stored.textureCount,
+    hasBackground: stored.hasBackground, hasThumbnail: stored.hasThumbnail,
+  });
   fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
   res.json({ id });
+});
+
+// Overwrites an already-published level in place (same id, same createdBy/
+// createdAt) instead of minting a new one -- what the web Level Editor's
+// "Edit" button + Save Changes actually calls once a level's data has been
+// loaded back into the canvas (see level-editor.html's loadLevelForEdit()).
+// Bumps `updatedAt` so CustomLevelCache's already-cached clients notice
+// their copy is stale and re-fetch it (see that file's own _on_catalog_
+// response() comment) -- without this, an edit here would be invisible to
+// anyone who'd already downloaded the level before it changed.
+app.post('/api/levels/:clientId/:levelId/update', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  if (!/^level_[a-f0-9]{16}$/.test(req.params.levelId)) return res.status(400).json({ error: 'bad level id' });
+  if (!withinRateLimit('action', clientIpFor(req), RATE_LIMIT_ACTION_MAX)) return res.status(429).json({ error: 'slow down' });
+
+  const clientId = req.params.clientId;
+  const levelId = req.params.levelId;
+  const catalog = readCatalog();
+  const entryIndex = catalog.findIndex(e => e.id === levelId && e.type === 'level');
+  if (entryIndex === -1) return res.status(404).json({ error: 'no such level' });
+  if (catalog[entryIndex].createdBy !== clientId) return res.status(403).json({ error: 'not your level' });
+
+  const stored = validateAndStoreLevelFiles(req, res, levelId);
+  if (!stored) return; // error response already sent
+
+  catalog[entryIndex] = {
+    ...catalog[entryIndex],
+    updatedAt: Date.now(),
+    name: stored.name, textureCount: stored.textureCount,
+    hasBackground: stored.hasBackground, hasThumbnail: stored.hasThumbnail,
+  };
+  fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
+  res.json({ id: levelId });
 });
 
 app.get('/api/levels/data/:levelId', (req, res) => {
@@ -974,6 +1179,31 @@ app.get('/api/levels/data/:levelId', (req, res) => {
   res.set('Cache-Control', 'public, max-age=86400');
   fs.createReadStream(dataPath).pipe(res);
 });
+
+app.get('/api/levels/data/:levelId/texture/:index', (req, res) => {
+  const levelId = req.params.levelId;
+  if (!/^level_[a-f0-9]{16}$/.test(levelId)) return res.status(400).end();
+  if (!/^\d+$/.test(req.params.index)) return res.status(400).end();
+  const texPath = path.join(LEVEL_DATA_DIR, `${levelId}.tex${req.params.index}.png`);
+  if (!fs.existsSync(texPath)) return res.status(404).end();
+  res.set('Content-Type', 'image/png');
+  res.set('Cache-Control', 'public, max-age=86400');
+  fs.createReadStream(texPath).pipe(res);
+});
+
+function servePngIfPresent(suffix) {
+  return (req, res) => {
+    const levelId = req.params.levelId;
+    if (!/^level_[a-f0-9]{16}$/.test(levelId)) return res.status(400).end();
+    const imgPath = path.join(LEVEL_DATA_DIR, `${levelId}${suffix}`);
+    if (!fs.existsSync(imgPath)) return res.status(404).end();
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=86400');
+    fs.createReadStream(imgPath).pipe(res);
+  };
+}
+app.get('/api/levels/data/:levelId/background', servePngIfPresent('.bg.png'));
+app.get('/api/levels/data/:levelId/thumbnail', servePngIfPresent('.thumb.png'));
 
 // ─── HTTP: game assets (built-in art, not player cosmetics) ───────────────────
 // One version counter per category, bumped on every publish -- the client's
@@ -1113,6 +1343,82 @@ app.get('/api/game-assets/:category/:key/download', (req, res) => {
   res.set('Content-Type', 'image/png');
   res.set('Cache-Control', 'no-cache');
   fs.createReadStream(imgPath).pipe(res);
+});
+
+// ─── HTTP: ui-layout (live button/label position/size/text overrides) ─────────
+// Published by the website's UI Editor, applied by every client at launch
+// (see game/net/ui_layout_updater.gd) via game/ui/ui_style.gd's
+// apply_layout_override() -- gated by the same ASSET_PUBLISH_KEY as
+// game-assets (this is base-game-default content, not player-generated).
+// One flat file (not per-key, unlike MULTI_KEY_CATEGORIES' images) since
+// the whole payload for even every screen at once is a handful of small
+// numbers/strings, nothing like an image needing its own request.
+const UI_LAYOUT_PATH = path.join(DATA_DIR, 'ui_layout.json');
+// {x, y, w, h, text} per layout_key, all optional -- x/y/w/h are pixel
+// values (never negative-huge/absurd, see MAX_LAYOUT_COORD below), text is
+// a plain string capped the same length a button/label reasonably shows.
+const MAX_LAYOUT_COORD = 4000; // generous headroom past the game's own 1152x648 viewport -- just an abuse guard, not a real constraint
+const MAX_LAYOUT_TEXT_LEN = 200;
+
+function loadUILayout() {
+  try { return JSON.parse(fs.readFileSync(UI_LAYOUT_PATH, 'utf-8')); }
+  catch { return { version: 0, overrides: {} }; }
+}
+function saveUILayout(layout) {
+  fs.writeFileSync(UI_LAYOUT_PATH, JSON.stringify(layout));
+}
+
+// A single override entry -- undefined/missing fields are fine (a caller
+// only overriding text needn't send x/y/w/h too), but anything present has
+// to be sane, same "trust internal, validate at the boundary" rule as
+// everywhere else here.
+function isValidLayoutEntry(entry) {
+  if (!entry || typeof entry !== 'object') return false;
+  for (const k of ['x', 'y', 'w', 'h']) {
+    if (entry[k] === undefined) continue;
+    if (typeof entry[k] !== 'number' || Math.abs(entry[k]) > MAX_LAYOUT_COORD) return false;
+  }
+  if (entry.text !== undefined) {
+    if (typeof entry.text !== 'string' || entry.text.length > MAX_LAYOUT_TEXT_LEN) return false;
+  }
+  return true;
+}
+
+app.get('/api/ui-layout/manifest', (req, res) => {
+  res.json(loadUILayout());
+});
+
+// Merges (not replaces) into the existing stored overrides -- the website's
+// UI Editor publishes one screen's own key set at a time (see
+// level-editor.html's own per-slot-not-whole-catalog publish pattern for
+// the same reasoning), so a full-replace here would silently wipe every
+// OTHER screen's already-published overrides on every single publish.
+// A layout_key mapped to `null` in the request deletes that key (reverts
+// that one element back to its hand-authored default) rather than setting
+// a nonsensical override.
+app.post('/api/ui-layout/publish', (req, res) => {
+  if (!verifyAssetKey(req.body.key)) return res.status(401).json({ error: 'bad or missing publish key' });
+  if (!withinRateLimit('action', clientIpFor(req), RATE_LIMIT_ACTION_MAX)) return res.status(429).json({ error: 'slow down' });
+
+  const incoming = req.body.overrides;
+  if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
+    return res.status(400).json({ error: 'overrides required' });
+  }
+  for (const [layoutKey, entry] of Object.entries(incoming)) {
+    if (entry !== null && !isValidLayoutEntry(entry)) {
+      return res.status(400).json({ error: `invalid override for ${layoutKey}` });
+    }
+  }
+
+  const layout = loadUILayout();
+  for (const [layoutKey, entry] of Object.entries(incoming)) {
+    if (entry === null) delete layout.overrides[layoutKey];
+    else layout.overrides[layoutKey] = entry;
+  }
+  layout.version = (layout.version || 0) + 1;
+  layout.updatedAt = Date.now();
+  saveUILayout(layout);
+  res.json({ ok: true, version: layout.version });
 });
 
 // ─── HTTP: ranked ─────────────────────────────────────────────────────────────
@@ -1577,6 +1883,25 @@ function handlePlayerJoin(ws, serverId) {
 }
 
 function handlePlayerParty(ws, clientId) {
+  // A transient reconnect under the same clientId (WiFi blip, laptop
+  // sleep/wake, a Cloudflare tunnel reset the KEEPALIVE_INTERVAL_SEC
+  // mitigation doesn't fully rule out) cancels whatever grace-period leave
+  // its old socket's close scheduled below -- without this, ANY drop of
+  // this socket (not just the client_id-changed case handleIdentityMigrate
+  // already covers) permanently removed a player from their own party: the
+  // close handler used to call handlePartyLeave() immediately, reassigning
+  // leadership and forgetting this clientId belonged to the party at all,
+  // so the ordinary reconnect a few seconds later found nothing left to
+  // resync into. Confirmed live: a party leader's connection blipped and
+  // their client showed "not in a party" from then on, while the other
+  // member's own client kept showing a (now solo, reassigned-leader) party
+  // fine -- and since is_leader() then read false, hosting a private match
+  // never told that other member to come along either.
+  const pendingLeave = pendingPartyDisconnects.get(clientId);
+  if (pendingLeave) {
+    clearTimeout(pendingLeave);
+    pendingPartyDisconnects.delete(clientId);
+  }
   playerSockets.set(clientId, { ws, username: 'Player' });
   // A client re-connecting (brief drop, page refresh-equivalent) picks its
   // current party state back up immediately rather than starting blank.
@@ -1601,6 +1926,22 @@ function handlePlayerParty(ws, clientId) {
       handlePartyLeave(clientId);
     } else if (msg.type === 'party_kick') {
       handlePartyKick(clientId, String(msg.targetClientId || ''));
+    } else if (msg.type === 'party_resync') {
+      // On-demand "what's my real party state right now" -- unlike the
+      // connect-time resync above (silent if there's nothing to restore),
+      // this always answers, including an explicit {party: null}, so a
+      // client that suspects it's stale (see party_manager.gd's
+      // request_resync(), called whenever the Friends screen opens) can be
+      // CONFIDENT the answer reflects the server's actual current state --
+      // a real fix for any party UI that silently stopped updating,
+      // regardless of what specific race caused it to drift (a fire-and-
+      // forget leave/kick/accept whose send() call landed on a socket that
+      // reported open but wasn't really, same class of issue the
+      // KEEPALIVE_INTERVAL_SEC mitigation exists for but can't fully rule
+      // out between beats).
+      const partyId = clientParty.get(clientId);
+      const party = partyId ? parties.get(partyId) : null;
+      sendToPlayer(clientId, { type: 'party_updated', party: party ? partySnapshot(party) : null });
     } else if (msg.type === 'party_queue_start') {
       handlePartyQueueStart(clientId, msg);
     } else if (msg.type === 'friend_request_accept') {
@@ -1616,7 +1957,14 @@ function handlePlayerParty(ws, clientId) {
     const entry = playerSockets.get(clientId);
     if (entry && entry.ws === ws) {
       playerSockets.delete(clientId);
-      handlePartyLeave(clientId);
+      // Deferred, not immediate -- see this function's own header comment
+      // and PARTY_DISCONNECT_GRACE_MS. Cancelled above if this same
+      // clientId reconnects before the timer fires.
+      const timer = setTimeout(() => {
+        pendingPartyDisconnects.delete(clientId);
+        handlePartyLeave(clientId);
+      }, PARTY_DISCONNECT_GRACE_MS);
+      pendingPartyDisconnects.set(clientId, timer);
     }
   });
 }

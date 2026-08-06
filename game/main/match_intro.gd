@@ -29,6 +29,7 @@ const CIRCLE_REVEAL_DURATION_SEC := 4.0
 const COLUMNS_REVEAL_DURATION_SEC := 4.0
 const CORNERS_REVEAL_DURATION_SEC := 4.0
 
+@onready var title_label: Label = $VBox/Title
 @onready var roster_box: VBoxContainer = $VBox/RosterPanel/RosterBox
 @onready var countdown_label: Label = $VBox/CountdownLabel
 @onready var skip_button: Button = $VBox/SkipButton
@@ -105,6 +106,15 @@ func _ready() -> void:
 		$VBox/RosterPanel.add_theme_stylebox_override("panel", UIStyle.panel_box(UIStyle.COLOR_NEUTRAL))
 		UIStyle.style_back_button(skip_button)
 		skip_button.pressed.connect(_proceed)
+		# Title/CountdownLabel/SkipButton/RosterPanel are only ever actually
+		# visible for a roster shape none of the 4 real playlists produce (see
+		# the mode dispatch above -- every real 2/3/4-player match hides $VBox
+		# entirely in favor of the vs/columns/corners reveal instead).
+		# Registered anyway, same futureproofing reasoning as casual_queue.gd/
+		# ranked_queue.gd's identical fallback UI.
+		UIStyle.apply_layout_override(title_label, "match_intro.title")
+		UIStyle.apply_layout_override(countdown_label, "match_intro.countdown_label")
+		UIStyle.apply_layout_override(skip_button, "match_intro.skip_button")
 		for peer_id in _roster.keys():
 			roster_box.add_child(_build_row(peer_id, _roster[peer_id]))
 
@@ -187,6 +197,12 @@ func _build_vs_layout() -> void:
 	team_view.ranked = _ranked
 	team_view.my_id = _my_id
 	team_view.accent_color = UIStyle.COLOR_RANKED if _ranked else UIStyle.COLOR_ONLINE
+	# Plain reveal style, matching columns_reveal_view.gd/corners_reveal_
+	# view.gd's own 3+-way reveals (no background, no VS badge, flat-
+	# bordered cards with no rank line) -- the richer look is a waiting-
+	# room-only identity cue (see team_lobby_view.gd's own comment), not
+	# part of the "match found" moment itself.
+	team_view.queue_style = false
 	vs_root.add_child(team_view)
 	team_view.set_roster(_roster)
 	team_view.play_full_reveal()

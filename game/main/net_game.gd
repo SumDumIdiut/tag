@@ -3,6 +3,7 @@ extends Node2D
 const REMOTE_AVATAR_SCENE := preload("res://player/remote_avatar.tscn")
 const MATCH_RESULTS_SCENE := preload("res://main/match_results.tscn")
 const OnlineMapCatalog := preload("res://levels/online_maps/catalog.gd")
+const LevelData := preload("res://levels/level_data.gd")
 const UIStyle := preload("res://ui/ui_style.gd")
 const RankBadgeScene := preload("res://ui/rank_badge.gd")
 const FixedView := preload("res://levels/fixed_view.gd")
@@ -43,11 +44,23 @@ func setup(p_my_peer_id: int, p_roster: Dictionary, p_level_id: String = "") -> 
 	level_id = p_level_id
 
 func _ready() -> void:
-	# Resolved purely locally, from the same built-in catalog server_match.gd
-	# uses -- see that file's identical resolution for why there's no
-	# network fetch here anymore either.
-	arena = load(OnlineMapCatalog.scene_path_for(level_id)).instantiate()
+	# Most matches resolve purely locally, from the same built-in catalog
+	# server_match.gd uses. A "level_..." id is a live-published custom
+	# level instead, read straight out of CustomLevelCache -- see
+	# server_match.gd's identical resolution and that autoload's own header
+	# for the full reasoning (same LevelData build, just for rendering here
+	# rather than authoritative collision).
+	if level_id.begins_with("level_"):
+		var data := CustomLevelCache.get_level_data(level_id)
+		if data.is_empty():
+			push_warning("NetGame: custom level %s not in the startup cache -- falling back to the default arena" % level_id)
+			arena = load(OnlineMapCatalog.scene_path_for("")).instantiate()
+		else:
+			arena = LevelData.build_arena_from_data(data, CustomLevelCache.get_level_textures(level_id), CustomLevelCache.get_level_background(level_id))
+	else:
+		arena = load(OnlineMapCatalog.scene_path_for(level_id)).instantiate()
 	add_child(arena)
+
 	# Same fixed, non-following camera local/bot play uses (see game.gd) --
 	# every player, spectator included, sees the whole map at once, so
 	# there's no per-avatar "whose camera is active" logic needed here
@@ -92,7 +105,6 @@ func _ready() -> void:
 		avatar.display_name = info.username
 		avatars[peer_id] = avatar
 		_apply_color(peer_id)
-		avatar.set_rank_tier(info.get("tier", ""))
 
 	# my_peer_id == -1 means we're spectating (see NetworkManager.start_
 	# spectator) -- the fixed camera already shows the whole match either
