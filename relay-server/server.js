@@ -1195,6 +1195,42 @@ app.post('/api/levels/:clientId/:levelId/update', (req, res) => {
   res.json({ id: levelId });
 });
 
+// POST, not a real HTTP DELETE -- matches every other mutating route in
+// this file (upload/update/publish are all POST too), and keeps this
+// reachable through the same client/proxy paths as the rest of the API.
+// Removes the catalog entry AND every file on disk for this level (data
+// json, every per-index texture, background, thumbnail) -- an orphaned
+// file left behind here would just sit on disk forever with nothing left
+// referencing it, unlike update's own same-id overwrite which always has
+// a live catalog entry to eventually clean it up again.
+app.post('/api/levels/:clientId/:levelId/delete', (req, res) => {
+  if (!CLIENT_ID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'bad client id' });
+  if (!/^level_[a-f0-9]{16}$/.test(req.params.levelId)) return res.status(400).json({ error: 'bad level id' });
+  if (!withinRateLimit('action', clientIpFor(req), RATE_LIMIT_ACTION_MAX)) return res.status(429).json({ error: 'slow down' });
+
+  const clientId = req.params.clientId;
+  const levelId = req.params.levelId;
+  const catalog = readCatalog();
+  const entryIndex = catalog.findIndex(e => e.id === levelId && e.type === 'level');
+  if (entryIndex === -1) return res.status(404).json({ error: 'no such level' });
+  if (catalog[entryIndex].createdBy !== clientId) return res.status(403).json({ error: 'not your level' });
+
+  catalog.splice(entryIndex, 1);
+  fs.writeFileSync(CATALOG_JSON_PATH, JSON.stringify(catalog));
+
+  const unlinkIfExists = (p) => { if (fs.existsSync(p)) fs.unlinkSync(p); };
+  unlinkIfExists(path.join(LEVEL_DATA_DIR, levelId + '.json'));
+  unlinkIfExists(path.join(LEVEL_DATA_DIR, `${levelId}.bg.png`));
+  unlinkIfExists(path.join(LEVEL_DATA_DIR, `${levelId}.thumb.png`));
+  let texIndex = 0;
+  while (fs.existsSync(path.join(LEVEL_DATA_DIR, `${levelId}.tex${texIndex}.png`))) {
+    fs.unlinkSync(path.join(LEVEL_DATA_DIR, `${levelId}.tex${texIndex}.png`));
+    texIndex++;
+  }
+
+  res.json({ ok: true });
+});
+
 app.get('/api/levels/data/:levelId', (req, res) => {
   const levelId = req.params.levelId;
   if (!/^level_[a-f0-9]{16}$/.test(levelId)) return res.status(400).end();
