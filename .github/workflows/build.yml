@@ -34,15 +34,19 @@ jobs:
         shell: pwsh
         run: .\godot.exe --headless --path game --editor --quit
 
-      # Stamps this run's number into build_version.gd (committed as 0, i.e.
-      # "dev build") -- UpdateChecker compares a running client's own
-      # BUILD_NUMBER against the numeric suffix of the latest GitHub Release
-      # tag ("build-<run number>", set below in "Publish build as a
-      # release"), so the two need to always match up.
-      - name: Stamp build version
+      # VERSION itself is decided by hand in build_version.gd (part of
+      # whatever commit ships a release-worthy change, see that file's own
+      # comment) -- CI just reads it for the release tag/title/installer
+      # version below, and flips IS_DEV_BUILD true -> false (committed as
+      # true, i.e. "dev build") so UpdateChecker only ever offers updates
+      # against a real CI build, never a local export.
+      - name: Stamp build + read version
         shell: pwsh
         run: |
-          (Get-Content game\build_version.gd) -replace 'const BUILD_NUMBER := 0', "const BUILD_NUMBER := $($env:GITHUB_RUN_NUMBER)" | Set-Content game\build_version.gd
+          (Get-Content game\build_version.gd) -replace 'const IS_DEV_BUILD := true', 'const IS_DEV_BUILD := false' | Set-Content game\build_version.gd
+          $versionLine = Select-String -Path game\build_version.gd -Pattern 'const VERSION := "([^"]+)"'
+          $version = $versionLine.Matches[0].Groups[1].Value
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create builds directory
         shell: pwsh
@@ -110,7 +114,7 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\tag.iss "/DMyAppVersion=$($env:GITHUB_RUN_NUMBER)"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\tag.iss "/DMyAppVersion=$($env:APP_VERSION)"
           if (-not (Test-Path "builds\TagSetup.exe")) { throw "TagSetup.exe missing after ISCC run" }
 
       - name: Export art tool
@@ -131,12 +135,31 @@ jobs:
           }
           if (-not (Test-Path "builds\TagArtTool.exe")) { throw "TagArtTool.exe still missing after $maxAttempts attempts" }
 
+      # The release tag is the human-decided VERSION, not a run number, so
+      # re-running this workflow for the exact same commit (e.g. after a
+      # GitHub Actions outage swallowed the original push event) would
+      # otherwise collide with the release it already published. Checking
+      # the existing release's own notes for this run's commit sha tells
+      # apart that harmless case (silently skip, nothing new to publish)
+      # from the real bug it's actually guarding against: shipping a
+      # genuinely different commit under a VERSION that was never bumped in
+      # build_version.gd, which fails loudly instead of silently clobbering
+      # or skipping a real release.
       - name: Publish build as a release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          $tag = "build-$($env:GITHUB_RUN_NUMBER)"
+          $tag = "v$($env:APP_VERSION)"
+          $viewJson = gh release view $tag --json body 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $body = ($viewJson | ConvertFrom-Json).body
+            if ($body -like "*commit $($env:GITHUB_SHA)*") {
+              Write-Host "Release $tag already exists for this exact commit -- likely a rebuild/retrigger of the same code. Nothing new to publish."
+              exit 0
+            }
+            throw "Release $tag already exists but for a DIFFERENT commit -- BuildVersion.VERSION in game/build_version.gd needs to be bumped before this change can ship."
+          }
           gh release create $tag "builds/TagSetup.exe" "builds/TagArtTool.exe" `
-            --title "Build $($env:GITHUB_RUN_NUMBER)" `
+            --title "Version $($env:APP_VERSION)" `
             --notes "Automated build from commit $($env:GITHUB_SHA). Run TagSetup.exe to install (or update an existing install) -- it hosts too (Casual/Private/Ranked all just spawn a second copy of itself as a local server, nothing extra to download). Download TagArtTool.exe to paint levels and menu chrome/icons -- see ART_GUIDE.md."

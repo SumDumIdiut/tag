@@ -14,7 +14,7 @@ class_name UpdatePrompt
 const UIStyle := preload("res://ui/ui_style.gd")
 
 var _download_url := ""
-var _version := 0
+var _version := ""
 var _status_label: Label
 var _update_button: Button
 var _skip_button: Button
@@ -22,11 +22,11 @@ var _skip_button: Button
 ## Safe to call either before or after this node enters the tree -- callers
 ## typically do `add_child(prompt); prompt.setup(...)`, but nothing here
 ## depends on that order.
-func setup(version: int, download_url: String) -> void:
+func setup(version: String, download_url: String) -> void:
 	_version = version
 	_download_url = download_url
 	if _status_label:
-		_status_label.text = "Build %d is available." % version
+		_status_label.text = "Version %s is available." % version
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -55,7 +55,7 @@ func _ready() -> void:
 	var title := UIStyle.title_label("UPDATE AVAILABLE", 20)
 	box.add_child(title)
 
-	var initial_text := "Build %d is available." % _version if _version > 0 else "A newer build is available."
+	var initial_text := "Version %s is available." % _version if not _version.is_empty() else "A newer build is available."
 	_status_label = UIStyle.subtitle_label(initial_text)
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	box.add_child(_status_label)
