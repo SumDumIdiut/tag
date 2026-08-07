@@ -19,9 +19,9 @@
 ;
 ; Built via: "C:\Users\<you>\AppData\Local\Programs\Inno Setup 6\ISCC.exe" installer\tag.iss
 ; (or on CI -- windows-latest runners ship Inno Setup 6 preinstalled, see
-; .github/workflows/build.yml). Pass /DMyAppVersion=<build number> to stamp
-; a real version into Add/Remove Programs; defaults to 0.0.0 (dev build)
-; if omitted, matching build_version.gd's own "0 = dev build" convention.
+; .github/workflows/build.yml). Pass /DMyAppVersion=<BuildVersion.VERSION>
+; to stamp the real version into Add/Remove Programs; defaults to 0.0.0
+; (dev build) if omitted.
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
