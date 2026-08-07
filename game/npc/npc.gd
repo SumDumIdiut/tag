@@ -124,6 +124,22 @@ func _look_distance() -> float:
 	var skill_term: float = lerpf(20.0, 50.0, _skill_t())
 	return maxf(skill_term, speed_term + 20.0)
 
+## Same idea as _look_distance() but for the level-edge check specifically,
+## which needs a wider margin: _look_distance()'s speed_term uses CURRENT
+## velocity, which is stale right after a spawn or a fresh direction
+## reversal (reads ~0 even though the NPC is about to accelerate toward
+## MOVE_SPEED) -- exactly when a fleeing NPC is most likely to be pointed
+## straight at a nearby edge. Using the worst-case distance actually
+## coverable before the NEXT decision tick (full MOVE_SPEED for one whole
+## reaction interval, +20% margin) instead of current velocity closes that
+## gap. Confirmed live: an NPC spawned only 40px from the real edge, fleeing
+## an "it" that spawned on top of it (so _look_distance()'s speed_term was
+## 0, falling back to its ~35px skill-based minimum), walked straight past
+## the edge and off into the void before its next decision ever got a
+## chance to re-check -- 35px of look-ahead doesn't cover 40px of actual gap.
+func _edge_look_distance() -> float:
+	return maxf(_look_distance(), MOVE_SPEED * _reaction_interval() * 1.2)
+
 func _make_decision() -> void:
 	var target := tag_mode.get_ai_target(self)
 	if target == null:
@@ -243,7 +259,8 @@ func _make_decision() -> void:
 	# to just skip the check while airborne, was worse -- it left a
 	# genuinely-toward-the-edge direction from that same airborne window
 	# completely unchecked instead).
-	var at_level_edge := not _floor_ahead_deep(dir_sign, look) and not _floor_resumes_ahead(dir_sign, look)
+	var edge_look := _edge_look_distance()
+	var at_level_edge := not _floor_ahead_deep(dir_sign, edge_look) and not _floor_resumes_ahead(dir_sign, edge_look)
 	if at_level_edge:
 		dir_sign = -dir_sign
 		_decision_move_dir = Vector2(dir_sign, 0.0)
