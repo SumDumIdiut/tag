@@ -1,24 +1,25 @@
 extends Node
 class_name UpdateChecker
 
-# Checks the tag repo's GitHub Releases against this build's own stamped
-# version (see build_version.gd) and reports whether a newer build exists,
-# plus the direct download URL for whichever asset this instance was told
-# to care about ("TagSetup.exe", the Inno Setup installer -- see
+# Checks the tag repo's GitHub Releases against this build's own version
+# (see build_version.gd) and reports whether a newer release exists, plus
+# the direct download URL for whichever asset this instance was told to
+# care about ("TagSetup.exe", the Inno Setup installer -- see
 # installer/tag.iss -- or "TagArtTool.exe"; the same release always carries
 # both, see .github/workflows/build.yml). Never fires "update available"
-# for a local/dev build (BUILD_NUMBER == 0, never stamped outside CI) --
-# there's no sane "newer" comparison to make against that.
+# for a local/dev build (BuildVersion.IS_DEV_BUILD, never flipped false
+# outside CI) -- there's no sane "newer" comparison to make against that.
 #
 # Scans /releases (plural, up to RELEASES_PAGE_SIZE most recent) and picks
-# the highest "build-<N>" tag itself, rather than trusting GitHub's own
-# /releases/latest -- that endpoint is "most recently created, non-draft,
-# non-prerelease," which is usually the newest CI build but isn't
-# guaranteed to be if anything else ever creates a release (a manual test,
-# a docs-only tag) that doesn't match this project's own build-<N>
-# convention; a release like that would silently outrank the real latest
-# build and make every check underneath it report "no update" even years
-# after a real one shipped, without a page size this small.
+# the highest "v<version>" tag itself (via BuildVersion.compare(), so
+# "v0.2" correctly outranks "v0.1.9.9" despite fewer segments), rather than
+# trusting GitHub's own /releases/latest -- that endpoint is "most recently
+# created, non-draft, non-prerelease," which is usually the newest CI build
+# but isn't guaranteed to be if anything else ever creates a release (a
+# manual test, a docs-only tag) that doesn't match this project's own
+# v<version> convention; a release like that would silently outrank the
+# real latest build and make every check underneath it report "no update"
+# even years after a real one shipped, without a page size this small.
 #
 # Retries a few times on a transient failure (network hiccup, GitHub rate-
 # limiting an unauthenticated request) before giving up -- previously a
@@ -28,7 +29,7 @@ class_name UpdateChecker
 # A clean 200 response that just resolves to "nothing newer" is NOT
 # retried -- that's a correct, final answer, not a failure.
 
-signal check_completed(result: Dictionary) # {available: bool, version: int, download_url: String}
+signal check_completed(result: Dictionary) # {available: bool, version: String, download_url: String}
 
 const RELEASES_PAGE_SIZE := 20
 const RELEASES_URL := "https://api.github.com/repos/SumDumIdiut/tag/releases?per_page=%d" % RELEASES_PAGE_SIZE
@@ -41,8 +42,22 @@ var _attempt := 0
 func _init(asset_filename: String) -> void:
 	_asset_filename = asset_filename
 
+## "v0.1.2" -> "0.1.2"; rejects anything not "v" + 1-4 dot-separated
+## non-negative integers (a stray manual/docs-only tag, say).
+static func _parse_tag(tag: String) -> String:
+	if not tag.begins_with("v"):
+		return ""
+	var version := tag.substr(1)
+	var parts := version.split(".")
+	if parts.size() < 1 or parts.size() > 4:
+		return ""
+	for part in parts:
+		if not part.is_valid_int() or part.to_int() < 0:
+			return ""
+	return version
+
 func check() -> void:
-	if BuildVersion.BUILD_NUMBER <= 0:
+	if BuildVersion.IS_DEV_BUILD:
 		check_completed.emit({"available": false})
 		return
 	_attempt = 0
@@ -68,19 +83,18 @@ func _on_completed(result: int, response_code: int, _headers: PackedStringArray,
 	if typeof(parsed) != TYPE_ARRAY:
 		_retry_or_give_up()
 		return
-	var best_version := -1
+	var best_version := ""
 	var best_release: Dictionary = {}
 	for release in parsed:
 		if typeof(release) != TYPE_DICTIONARY:
 			continue
-		var tag: String = str(release.get("tag_name", ""))
-		if not tag.begins_with("build-") or not tag.substr(6).is_valid_int():
+		var version := _parse_tag(str(release.get("tag_name", "")))
+		if version.is_empty():
 			continue
-		var v := int(tag.substr(6))
-		if v > best_version:
-			best_version = v
+		if best_version.is_empty() or BuildVersion.compare(version, best_version) > 0:
+			best_version = version
 			best_release = release
-	if best_release.is_empty() or best_version <= BuildVersion.BUILD_NUMBER:
+	if best_release.is_empty() or BuildVersion.compare(best_version, BuildVersion.VERSION) <= 0:
 		check_completed.emit({"available": false})
 		return
 	var download_url := ""
