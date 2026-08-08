@@ -58,10 +58,18 @@ const TILE_SIZE_PX := 40
 # without the underlying tile art or built-in maps ever needing to change.
 const REAL_TILE_PX := 10
 const TILES_PER_LOGICAL_TILE := TILE_SIZE_PX / REAL_TILE_PX
-# Same padding generate_online_maps.gd uses around a built-in map's platform
-# rects before fitting to the fixed camera -- kept identical so a custom
-# level's camera framing reads the same as every built-in one.
-const BG_MARGIN := 150.0
+# Padding around a custom level's combined tile+placement bounds before
+# fitting to the fixed camera -- a separate constant from
+# generate_online_maps.gd's own BG_MARGIN (built-in maps), not shared,
+# since a hand-authored custom level is far more likely to be a small,
+# thin shape (e.g. a single-row platform) than the boxier built-in maps
+# that constant was originally tuned for. That shape makes the aspect-fit
+# in FixedView.compute() end up dominated by width, framing the level
+# uncomfortably tight/zoomed-in at the built-in maps' own margin -- bumped
+# up from 150 (confirmed live: 250 gives noticeably more breathing room
+# without shrinking players/platforms enough to hurt actual playability,
+# unlike much larger values).
+const BG_MARGIN := 250.0
 
 const MAX_TILES := 6000 # generous headroom over the default arena's own ~2968 cells -- just an abuse guard
 const MIN_SPAWN_POINTS := 2
