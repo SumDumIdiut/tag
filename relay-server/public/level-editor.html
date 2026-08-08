@@ -403,7 +403,15 @@ function key(x, y) { return x + ',' + y; }
 
 // Combined bounds of every tile + visible placement, in WORLD pixels --
 // mirrors level_data.gd's build_arena_from_data() min_px/max_px loop
-// exactly, including its own empty-level fallback (Rect2(-200,-200,400,400)).
+// exactly -- EXCEPT its empty-level fallback, which is deliberately larger
+// here (level_data.gd's own Rect2(-200,-200,400,400) would never actually
+// be hit in a real published level anyway, is_valid() requires at least
+// one tile). Confirmed live: level_data.gd's small fallback, once
+// VERTICAL_BIAS pushes the camera up relative to it, leaves cells that
+// look like an obviously reasonable "start painting here" spot (e.g.
+// (10,10)) just outside the camera's own view -- unclickable on a genuinely
+// brand-new, nothing-painted-yet level. A bigger starting rect gives real
+// room to click before the camera has anything real to fit to.
 function computeContentBounds() {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const k of tiles) {
@@ -421,7 +429,7 @@ function computeContentBounds() {
     maxX = Math.max(maxX, r.x + r.w);
     maxY = Math.max(maxY, r.y + r.h);
   }
-  if (minX === Infinity) return { x: -200, y: -200, w: 400, h: 400 };
+  if (minX === Infinity) return { x: -400, y: -400, w: 800, h: 800 };
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
@@ -461,6 +469,25 @@ function worldToScreen(wx, wy, view, camScale) {
 }
 function screenToWorld(sx, sy, view, camScale) {
   return { x: view.x + sx / camScale, y: view.y + sy / camScale };
+}
+
+// Frozen for the duration of one continuous gesture (mousedown through
+// mouseup -- set in beginPointer(), cleared in endPointer()), null the rest
+// of the time. Confirmed live as a real, serious bug without this: dragging
+// a placement moves it, which shifts computeContentBounds() (the placement
+// itself is part of what the camera fits to), which shifts computeViewRect()
+// -- so mid-drag, the NEXT mousemove's screen-to-world conversion used a
+// DIFFERENT camera than the one dragStart/dragOrigin were captured under,
+// compounding into wildly amplified movement (a 200px intended drag
+// measured as 1100+px). Same risk for a multi-cell paint/marquee drag,
+// since new tiles also affect content bounds. currentView() is what every
+// mouse handler and draw() itself should call during a gesture instead of
+// computeViewRect() directly, so they all agree on one camera for its
+// entire duration -- a fresh one is only computed again once the gesture
+// actually ends.
+let activeGestureView = null;
+function currentView() {
+  return activeGestureView || computeViewRect();
 }
 
 let tiles = new Set(); // "x,y" strings
@@ -572,7 +599,7 @@ function screenPointAt(evt) {
 }
 
 function cellAt(evt) {
-  const view = computeViewRect();
+  const view = currentView();
   const scale = CANVAS_W / view.w;
   const s = screenPointAt(evt);
   const w = screenToWorld(s.x, s.y, view, scale);
@@ -585,7 +612,7 @@ function cellAt(evt) {
 // treats the result as a placement position/drag delta, so no caller needed
 // to change when this stopped being canvas-pixel-space.
 function rawPointAt(evt) {
-  const view = computeViewRect();
+  const view = currentView();
   const scale = CANVAS_W / view.w;
   const s = screenPointAt(evt);
   return screenToWorld(s.x, s.y, view, scale);
@@ -649,7 +676,8 @@ function placedRect(p) {
 }
 
 // This canvas IS the camera now -- draw() always renders exactly
-// computeViewRect()'s current world-pixel rectangle, stretched to fill
+// currentView()'s world-pixel rectangle (computeViewRect(), frozen for an
+// active gesture -- see currentView()'s own comment), stretched to fill
 // CANVAS_W x CANVAS_H, via worldToScreen() for every single thing drawn
 // (background, tiles, placements, spawns, grid, selection). No separate
 // "authoring scale" vs "real camera crop" anymore, so there's nothing left
@@ -659,7 +687,7 @@ function placedRect(p) {
 // painting/aligning them, unlike the dedicated Preview modal (see
 // renderPreview()) which omits them for a true "what a player sees" render.
 function draw() {
-  const view = computeViewRect();
+  const view = currentView();
   const scale = CANVAS_W / view.w;
   const toScreen = (wx, wy) => worldToScreen(wx, wy, view, scale);
 
@@ -773,6 +801,7 @@ function hitTestPlaced(pt) {
 
 function beginPointer(evt) {
   painting = true;
+  activeGestureView = computeViewRect(); // see currentView()'s own comment for why
   if (mode === 'select') {
     const p = rawPointAt(evt);
     selectedIndex = hitTestPlaced(p);
@@ -827,6 +856,7 @@ function movePointer(evt) {
 function endPointer() {
   const wasPainting = painting;
   painting = false;
+  activeGestureView = null; // next gesture (or the next draw()) gets a fresh camera
   if (!wasPainting) return;
   if (mode === 'select' && selectedIndex >= 0 && dragStart) {
     pushHistory();
@@ -836,6 +866,7 @@ function endPointer() {
   dragStart = null;
   dragOrigin = null;
   marqueeStartCell = null;
+  draw(); // the frozen camera above may be stale now that the gesture is over
 }
 
 canvas.addEventListener('mousedown', beginPointer);
