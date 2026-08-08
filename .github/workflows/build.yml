@@ -3,6 +3,16 @@ name: Build Tag
 on:
   push:
     branches: [main]
+    # Only game-code changes actually need a Windows build + release --
+    # without this, every push (including relay-server-only Level Editor
+    # work, which correctly never bumps BuildVersion.VERSION) still
+    # triggers a full build that fails at the "Publish build as a
+    # release" step, since that step's own safety check rightly refuses
+    # to reuse an existing version tag for a genuinely different commit.
+    paths:
+      - 'game/**'
+      - 'installer/**'
+      - '.github/workflows/build.yml'
 
 permissions:
   contents: write
