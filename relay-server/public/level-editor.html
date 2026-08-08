@@ -643,14 +643,22 @@ function draw() {
   ctx.fillStyle = '#0d0f18';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Background fills the whole camera view behind everything else, same as
-  // in-game (see LevelData.build_arena_from_data) -- stretched to exactly
-  // the computed camera crop (see computeViewRectCanvasPx() above), NOT
-  // this whole 60x40 authoring canvas, so it's positioned/scaled relative
-  // to the tiles/placements around it exactly like the real game.
-  const viewRect = computeViewRectCanvasPx();
+  // Stretched across this ENTIRE 60x40 authoring canvas -- not pixel-
+  // accurate to the real camera crop (see computeViewRectCanvasPx() and
+  // the dashed border drawn near the end of this function for that), but
+  // deliberately so: this main canvas is the AUTHORING view, and an artist
+  // painting tiles or placing art needs the whole background visible as
+  // a reference the whole time, including well outside the camera's
+  // current crop (e.g. while extending a platform further than it
+  // currently reaches). Confirmed live as a real regression when this was
+  // briefly changed to crop-only: nearly this whole canvas turned into a
+  // dead empty void with only a small windowed patch of background
+  // visible, which broke the actual authoring experience it needs to
+  // support. Pixel-accurate verification against the real game belongs in
+  // the dedicated Preview button/modal instead (see renderPreview()),
+  // which this main canvas was never meant to substitute for.
   if (background) {
-    ctx.drawImage(background.img, viewRect.x, viewRect.y, viewRect.w, viewRect.h);
+    ctx.drawImage(background.img, 0, 0, canvas.width, canvas.height);
   }
 
   // Tiles are the base layer -- plain flat color always, never any texture
@@ -721,7 +729,12 @@ function draw() {
   // Marks exactly what the real in-game camera will show (see
   // computeViewRectCanvasPx() above) -- drawn last, on top of everything
   // else, since the rest of this canvas is deliberately larger than that
-  // (room to paint/place beyond the current camera crop as a level grows).
+  // (room to paint/place beyond the current camera crop as a level grows,
+  // and to keep the background visible as a reference the whole time --
+  // see the background block earlier in this function for why that's
+  // stretched across the whole canvas rather than cropped to this box).
+  // Use the Preview button for a pixel-accurate render of just this region.
+  const viewRect = computeViewRectCanvasPx();
   ctx.save();
   ctx.strokeStyle = 'rgba(52,209,212,.6)';
   ctx.lineWidth = 2;
