@@ -111,25 +111,28 @@
     border: 2px solid rgba(0,224,255,.16); background: var(--panel-deep);
   }
 
+  /* Big, chunky mode-select bar docked under the canvas -- GD's own editor
+     keeps its object-category icons in one large bottom-docked row rather
+     than a side rail, so this moved out of app-frame's left column into
+     stage-col, between the canvas and the smaller action-icon bar. */
   .tool-rail {
-    flex: 0 0 84px; padding: 10px;
-    background: linear-gradient(180deg, #140d22, #0f0a1a); border-right: 2px solid rgba(0,224,255,.12);
-    display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; align-content: start;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 12px; background: #171025; border-top: 2px solid rgba(0,224,255,.1);
   }
   .tool-btn {
-    width: 32px; height: 32px; padding: 0;
+    width: 44px; height: 44px; padding: 0;
     display: flex; align-items: center; justify-content: center;
-    border-radius: 8px; border: 2px solid transparent;
+    border-radius: 10px; border: 2px solid transparent;
     background: rgba(255,255,255,.03); color: #7c799e; cursor: pointer;
     transition: transform .08s ease;
   }
-  .tool-btn svg { width: 17px; height: 17px; display: block; }
+  .tool-btn svg { width: 22px; height: 22px; display: block; }
   .tool-btn:hover { background: rgba(255,255,255,.08); color: var(--ink); transform: translateY(-1px); }
   .tool-btn.active {
     background: linear-gradient(180deg, var(--accent-a), #0098b3); border-color: rgba(0,0,0,.5); color: #04222a;
-    box-shadow: 0 0 0 3px var(--accent-a-soft), 0 2px 0 rgba(0,0,0,.4);
+    box-shadow: 0 0 0 3px var(--accent-a-soft), 0 3px 0 rgba(0,0,0,.4);
   }
-  .tool-rail-sep { grid-column: 1 / -1; height: 2px; background: rgba(0,224,255,.12); margin: 4px 2px; border-radius: 1px; }
+  .tool-rail-sep { width: 2px; align-self: stretch; background: rgba(0,224,255,.14); margin: 0 4px; border-radius: 1px; }
 
   .stage-col { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
   .stage-bar {
@@ -225,9 +228,6 @@
   }
   .selected-bar.visible { display: flex; }
   .selected-bar > span:first-child { font-weight: 800; text-transform: uppercase; font-size: 11px; letter-spacing: .04em; color: var(--accent-b); }
-  .selected-bar label { font-size: 11.5px; color: var(--ink-dim); font-weight: 700; }
-  .selected-bar input[type="range"] { width: 120px; accent-color: var(--accent-b); }
-  .selected-bar .scale-value { font-size: 11.5px; color: var(--ink-dim); min-width: 36px; font-weight: 700; }
 
   footer { margin-top: 30px; color: var(--ink-faint); font-size: 11px; text-align: center; text-transform: uppercase; letter-spacing: .04em; }
 
@@ -267,31 +267,6 @@
 
     <div class="card">
       <div class="app-frame">
-        <div class="tool-rail">
-          <button class="tool-btn active" id="modePaint" type="button" title="Paint Tiles" aria-label="Paint Tiles">
-            <svg viewBox="0 0 20 20" fill="none"><path d="M4 16l1-4.2L12.8 4 16 7.2 8.2 15 4 16z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M11 5.2l3.8 3.8" stroke="currentColor" stroke-width="1.5"/></svg>
-          </button>
-          <button class="tool-btn" id="modeErase" type="button" title="Erase Tiles" aria-label="Erase Tiles">
-            <svg viewBox="0 0 20 20" fill="none"><rect x="3.5" y="10" width="9" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 10L13 3.5l3.5 3.5L10 14" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-          </button>
-          <button class="tool-btn" id="modeBucket" type="button" title="Bucket Fill" aria-label="Bucket Fill">
-            <svg viewBox="0 0 20 20" fill="none"><path d="M3.5 9L10 2.5 17.5 10 10 17.5 3.5 11c-1-1-1-1 0-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="16" cy="16.3" r="1.4" fill="currentColor"/></svg>
-          </button>
-          <button class="tool-btn" id="modeSelectTiles" type="button" title="Select Tiles" aria-label="Select Tiles">
-            <svg viewBox="0 0 20 20" fill="none"><rect x="3.5" y="3.5" width="13" height="13" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2.6 2.2"/></svg>
-          </button>
-          <button class="tool-btn" id="modeSpawn" type="button" title="Place Spawn" aria-label="Place Spawn">
-            <svg viewBox="0 0 20 20" fill="none"><path d="M10 17.5S15 12 15 8a5 5 0 10-10 0c0 4 5 9.5 5 9.5z" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="8" r="1.8" fill="currentColor"/></svg>
-          </button>
-          <button class="tool-btn" id="modeEraseSpawn" type="button" title="Erase Spawn" aria-label="Erase Spawn">
-            <svg viewBox="0 0 20 20" fill="none"><path d="M10 17.5S15 12 15 8a5 5 0 10-10 0c0 4 5 9.5 5 9.5z" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="8" r="1.8" fill="currentColor"/><path d="M3.5 3.5l13 13" stroke="currentColor" stroke-width="1.6"/></svg>
-          </button>
-          <div class="tool-rail-sep"></div>
-          <button class="tool-btn" id="modeSelect" type="button" title="Select / Move Texture" aria-label="Select / Move Texture" style="grid-column: 1 / -1; width: auto;">
-            <svg viewBox="0 0 20 20" fill="none"><path d="M10 2.5v15M2.5 10h15" stroke="currentColor" stroke-width="1.5"/><path d="M10 2.5L7.7 5M10 2.5L12.3 5M10 17.5L7.7 15M10 17.5L12.3 15M2.5 10L5 7.7M2.5 10L5 12.3M17.5 10L15 7.7M17.5 10L15 12.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          </button>
-        </div>
-
         <div class="stage-col">
           <div class="stage-bar">
             <button class="icon-btn" id="undoBtn" type="button" title="Undo (Ctrl+Z)">
@@ -322,6 +297,31 @@
             <div class="canvas-scroll" id="canvasScroll">
               <canvas id="gridCanvas"></canvas>
             </div>
+          </div>
+
+          <div class="tool-rail">
+            <button class="tool-btn active" id="modePaint" type="button" title="Paint Tiles" aria-label="Paint Tiles">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M4 16l1-4.2L12.8 4 16 7.2 8.2 15 4 16z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M11 5.2l3.8 3.8" stroke="currentColor" stroke-width="1.5"/></svg>
+            </button>
+            <button class="tool-btn" id="modeErase" type="button" title="Erase Tiles" aria-label="Erase Tiles">
+              <svg viewBox="0 0 20 20" fill="none"><rect x="3.5" y="10" width="9" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 10L13 3.5l3.5 3.5L10 14" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="tool-btn" id="modeBucket" type="button" title="Bucket Fill" aria-label="Bucket Fill">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M3.5 9L10 2.5 17.5 10 10 17.5 3.5 11c-1-1-1-1 0-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="16" cy="16.3" r="1.4" fill="currentColor"/></svg>
+            </button>
+            <button class="tool-btn" id="modeSelectTiles" type="button" title="Select Tiles" aria-label="Select Tiles">
+              <svg viewBox="0 0 20 20" fill="none"><rect x="3.5" y="3.5" width="13" height="13" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2.6 2.2"/></svg>
+            </button>
+            <button class="tool-btn" id="modeSpawn" type="button" title="Place Spawn" aria-label="Place Spawn">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M10 17.5S15 12 15 8a5 5 0 10-10 0c0 4 5 9.5 5 9.5z" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="8" r="1.8" fill="currentColor"/></svg>
+            </button>
+            <button class="tool-btn" id="modeEraseSpawn" type="button" title="Erase Spawn" aria-label="Erase Spawn">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M10 17.5S15 12 15 8a5 5 0 10-10 0c0 4 5 9.5 5 9.5z" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="8" r="1.8" fill="currentColor"/><path d="M3.5 3.5l13 13" stroke="currentColor" stroke-width="1.6"/></svg>
+            </button>
+            <div class="tool-rail-sep"></div>
+            <button class="tool-btn" id="modeSelect" type="button" title="Select / Move Texture" aria-label="Select / Move Texture">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M10 2.5v15M2.5 10h15" stroke="currentColor" stroke-width="1.5"/><path d="M10 2.5L7.7 5M10 2.5L12.3 5M10 17.5L7.7 15M10 17.5L12.3 15M2.5 10L5 7.7M2.5 10L5 12.3M17.5 10L15 7.7M17.5 10L15 12.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
           </div>
 
           <div class="stage-bar bottom">
@@ -398,18 +398,13 @@
 
       <div class="selected-bar" id="selectedBar">
         <span>Selected texture</span>
-        <label for="selScaleX">Width</label>
-        <input type="range" id="selScaleX" min="10" max="400" value="100">
-        <span class="scale-value" id="selScaleXVal">100%</span>
-        <label for="selScaleY">Height</label>
-        <input type="range" id="selScaleY" min="10" max="400" value="100">
-        <span class="scale-value" id="selScaleYVal">100%</span>
-        <label class="check-field"><input type="checkbox" id="selLockAspect" checked> Lock aspect</label>
+        <span class="hint" style="margin:0;">Drag its corner/edge handles on the canvas to resize or stretch.</span>
+        <label class="check-field"><input type="checkbox" id="selLockAspect" checked> Lock aspect (corners)</label>
         <button class="btn small danger" id="selDelete" type="button">Delete</button>
         <button class="btn small" id="selDeselect" type="button">Deselect</button>
       </div>
 
-      <p class="hint">Click/drag to paint, erase, or bucket-fill tiles. Select Tiles to marquee-select a region for Copy/Flip/Rotate/Delete (Paste stamps a copy nearby). Select / Move Texture picks up a placed texture to drag, scale, or delete. Spawn points need at least 2 before publishing.</p>
+      <p class="hint">Click/drag to paint, erase, or bucket-fill tiles. Select Tiles to marquee-select a region for Copy/Flip/Rotate/Delete (Paste stamps a copy nearby). Select / Move Texture picks up a placed texture to drag, or grabs its corner/edge handles to resize/stretch. Spawn points need at least 2 before publishing.</p>
     </div>
 
     <div class="card">
@@ -584,6 +579,17 @@ let painting = false;
 let dragStart = null; // raw pixel {x,y} at mousedown, only used while dragging a selected placement
 let dragOrigin = null; // that placement's own {x,y} at drag start
 let marqueeStartCell = null; // cell {x,y} where a Select Tiles drag began
+
+// On-canvas resize/stretch (GD-style corner/edge handles on the selected
+// placement, replacing the old Width/Height sliders with direct
+// manipulation). resizeStartRect is the placement's WORLD-pixel rect
+// frozen at gesture start -- every subsequent mousemove computes the new
+// rect from this fixed reference rather than compounding deltas, so drift
+// can't accumulate over a long drag.
+let resizeHandle = null; // one of 'nw','ne','sw','se','n','s','e','w', or null
+let resizeStartRect = null;
+const HANDLE_HIT_RADIUS = 10; // canvas-internal px tolerance for grabbing a handle
+const MIN_PLACEMENT_WORLD_PX = 8; // floor so a handle drag can't invert/zero the rect
 
 let zoom = 1; // multiplier on top of "fit to container width"
 let showGrid = true;
@@ -808,10 +814,21 @@ function draw() {
     ctx.drawImage(lib.img, s.x, s.y, sw, sh);
     if (i === selectedIndex) {
       ctx.save();
-      ctx.strokeStyle = '#34d1d4';
+      ctx.strokeStyle = '#ff2ec4';
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
       ctx.strokeRect(s.x + 1, s.y + 1, sw - 2, sh - 2);
+      ctx.restore();
+      ctx.save();
+      ctx.setLineDash([]);
+      for (const h of getHandlePositions(r)) {
+        const hs = toScreen(h.wx, h.wy);
+        ctx.fillStyle = '#0c0714';
+        ctx.strokeStyle = '#ff2ec4';
+        ctx.lineWidth = 2;
+        ctx.fillRect(hs.x - 5, hs.y - 5, 10, 10);
+        ctx.strokeRect(hs.x - 5, hs.y - 5, 10, 10);
+      }
       ctx.restore();
     }
   }
@@ -871,10 +888,95 @@ function hitTestPlaced(pt) {
   return -1;
 }
 
+// The 8 GD-style drag handles for a WORLD-space rect {x,y,w,h} -- 4 corners
+// (resize both axes, see beginPointer/movePointer's 'nw'/'ne'/'sw'/'se'
+// branches) and 4 edge midpoints (resize a single axis only, the direct-
+// manipulation equivalent of the old single-axis Width/Height sliders).
+function getHandlePositions(r) {
+  return [
+    { id: 'nw', wx: r.x, wy: r.y },
+    { id: 'ne', wx: r.x + r.w, wy: r.y },
+    { id: 'sw', wx: r.x, wy: r.y + r.h },
+    { id: 'se', wx: r.x + r.w, wy: r.y + r.h },
+    { id: 'n', wx: r.x + r.w / 2, wy: r.y },
+    { id: 's', wx: r.x + r.w / 2, wy: r.y + r.h },
+    { id: 'w', wx: r.x, wy: r.y + r.h / 2 },
+    { id: 'e', wx: r.x + r.w, wy: r.y + r.h / 2 },
+  ];
+}
+
+// Which handle (if any) of the currently-selected placement is under `evt`,
+// in canvas-internal screen pixels -- checked before hitTestPlaced() so
+// grabbing a handle always wins over re-selecting/dragging the body.
+function hitTestHandle(evt) {
+  if (selectedIndex < 0 || !placed[selectedIndex]) return null;
+  const p = placed[selectedIndex];
+  const lib = libTextures[p.libIndex];
+  if (!lib) return null;
+  const rect = placedRect(p);
+  const view = currentView();
+  const scale = CANVAS_W / view.w;
+  const s = screenPointAt(evt);
+  for (const h of getHandlePositions(rect)) {
+    const hs = worldToScreen(h.wx, h.wy, view, scale);
+    if (Math.hypot(s.x - hs.x, s.y - hs.y) <= HANDLE_HIT_RADIUS) return h.id;
+  }
+  return null;
+}
+
+// Recomputes the selected placement's rect from resizeStartRect (frozen at
+// gesture start) + the current mouse world position, per which handle is
+// being dragged -- corners move two edges (optionally aspect-locked, driven
+// off whichever axis moved further), edges move exactly one, matching a
+// standard direct-manipulation resize/stretch idiom.
+function applyResize(handleId, mp) {
+  const p = placed[selectedIndex];
+  const lib = libTextures[p.libIndex];
+  if (!lib) return;
+  const r0 = resizeStartRect;
+  const minPx = MIN_PLACEMENT_WORLD_PX;
+  let left = r0.x, top = r0.y, right = r0.x + r0.w, bottom = r0.y + r0.h;
+
+  if (handleId === 'se') { right = Math.max(mp.x, left + minPx); bottom = Math.max(mp.y, top + minPx); }
+  else if (handleId === 'sw') { left = Math.min(mp.x, right - minPx); bottom = Math.max(mp.y, top + minPx); }
+  else if (handleId === 'ne') { right = Math.max(mp.x, left + minPx); top = Math.min(mp.y, bottom - minPx); }
+  else if (handleId === 'nw') { left = Math.min(mp.x, right - minPx); top = Math.min(mp.y, bottom - minPx); }
+  else if (handleId === 'e') { right = Math.max(mp.x, left + minPx); }
+  else if (handleId === 'w') { left = Math.min(mp.x, right - minPx); }
+  else if (handleId === 's') { bottom = Math.max(mp.y, top + minPx); }
+  else if (handleId === 'n') { top = Math.min(mp.y, bottom - minPx); }
+
+  // Edge handles are always single-axis (that's their whole purpose --
+  // independent stretch), so Lock Aspect only ever applies to corners.
+  if (handleId.length === 2 && selLockAspect.checked) {
+    const aspect = r0.w / r0.h;
+    let w = right - left, h = bottom - top;
+    if (Math.abs(w - r0.w) > Math.abs(h - r0.h)) h = w / aspect; else w = h * aspect;
+    if (handleId === 'se') { right = left + w; bottom = top + h; }
+    else if (handleId === 'sw') { left = right - w; bottom = top + h; }
+    else if (handleId === 'ne') { right = left + w; top = bottom - h; }
+    else if (handleId === 'nw') { left = right - w; top = bottom - h; }
+  }
+
+  p.x = (left + right) / 2;
+  p.y = (top + bottom) / 2;
+  p.scaleX = (right - left) / lib.img.naturalWidth * 100;
+  p.scaleY = (bottom - top) / lib.img.naturalHeight * 100;
+}
+
 function beginPointer(evt) {
   painting = true;
   activeGestureView = computeViewRect(); // see currentView()'s own comment for why
   if (mode === 'select') {
+    if (selectedIndex >= 0) {
+      const h = hitTestHandle(evt);
+      if (h) {
+        resizeHandle = h;
+        resizeStartRect = placedRect(placed[selectedIndex]);
+        draw();
+        return;
+      }
+    }
     const p = rawPointAt(evt);
     selectedIndex = hitTestPlaced(p);
     updateSelectedBar();
@@ -906,6 +1008,11 @@ function beginPointer(evt) {
 function movePointer(evt) {
   if (!painting) return;
   if (mode === 'select') {
+    if (resizeHandle) {
+      applyResize(resizeHandle, rawPointAt(evt));
+      draw();
+      return;
+    }
     if (selectedIndex < 0) return;
     const p = rawPointAt(evt);
     placed[selectedIndex].x = dragOrigin.x + (p.x - dragStart.x);
@@ -930,11 +1037,15 @@ function endPointer() {
   painting = false;
   activeGestureView = null; // next gesture (or the next draw()) gets a fresh camera
   if (!wasPainting) return;
-  if (mode === 'select' && selectedIndex >= 0 && dragStart) {
+  if (resizeHandle) {
+    pushHistory();
+  } else if (mode === 'select' && selectedIndex >= 0 && dragStart) {
     pushHistory();
   } else if (mode === 'paint' || mode === 'erase' || mode === 'spawn' || mode === 'eraseSpawn') {
     pushHistory();
   }
+  resizeHandle = null;
+  resizeStartRect = null;
   dragStart = null;
   dragOrigin = null;
   marqueeStartCell = null;
@@ -1347,15 +1458,14 @@ canvas.addEventListener('drop', evt => {
 // ─── Selected-placement controls ────────────────────────────────────────────
 // Width/Height are independent (see placedRect()'s own comment on why --
 // the wire format/game already supported non-uniform size, this exposes
-// it). Lock Aspect (checked by default, matching the old single-slider
-// behavior every existing placement was authored under) keeps both in
-// sync when either one moves; unchecking it is what actually lets you
-// stretch a placement deliberately.
+// it), resized via the on-canvas corner/edge handles (see
+// getHandlePositions()/hitTestHandle()/applyResize()) rather than sliders --
+// direct manipulation on the object itself, not a side panel of numbers.
+// Lock Aspect (checked by default, matching the old single-slider behavior
+// every existing placement was authored under) only applies to the corner
+// handles; the edge handles are always single-axis, since independent
+// stretch is their entire purpose.
 const selectedBar = document.getElementById('selectedBar');
-const selScaleX = document.getElementById('selScaleX');
-const selScaleY = document.getElementById('selScaleY');
-const selScaleXVal = document.getElementById('selScaleXVal');
-const selScaleYVal = document.getElementById('selScaleYVal');
 const selLockAspect = document.getElementById('selLockAspect');
 
 function updateSelectedBar() {
@@ -1365,27 +1475,7 @@ function updateSelectedBar() {
     return;
   }
   selectedBar.classList.add('visible');
-  selScaleX.value = p.scaleX;
-  selScaleY.value = p.scaleY;
-  selScaleXVal.textContent = p.scaleX + '%';
-  selScaleYVal.textContent = p.scaleY + '%';
 }
-function applyScaleInput(axis, value) {
-  if (selectedIndex < 0 || !placed[selectedIndex]) return;
-  const p = placed[selectedIndex];
-  p[axis] = value;
-  if (selLockAspect.checked) {
-    const other = axis === 'scaleX' ? 'scaleY' : 'scaleX';
-    p[other] = value;
-  }
-  selScaleX.value = p.scaleX; selScaleXVal.textContent = p.scaleX + '%';
-  selScaleY.value = p.scaleY; selScaleYVal.textContent = p.scaleY + '%';
-  draw();
-}
-selScaleX.addEventListener('input', () => applyScaleInput('scaleX', Number(selScaleX.value)));
-selScaleY.addEventListener('input', () => applyScaleInput('scaleY', Number(selScaleY.value)));
-selScaleX.addEventListener('change', pushHistory);
-selScaleY.addEventListener('change', pushHistory);
 document.getElementById('selDelete').addEventListener('click', () => {
   if (selectedIndex < 0) return;
   placed.splice(selectedIndex, 1);
