@@ -170,7 +170,7 @@
   }
   .selected-bar.visible { display: flex; }
   .selected-bar label { font-size: 11.5px; color: #6d7288; }
-  .selected-bar input[type="range"] { width: 160px; accent-color: #34d1d4; }
+  .selected-bar input[type="range"] { width: 120px; accent-color: #34d1d4; }
   .selected-bar .scale-value { font-size: 11.5px; color: #9095ac; min-width: 36px; }
 
   footer { margin-top: 28px; color: #444858; font-size: 11px; text-align: center; }
@@ -335,9 +335,13 @@
 
       <div class="selected-bar" id="selectedBar">
         <span>Selected texture</span>
-        <label for="selScale">Scale</label>
-        <input type="range" id="selScale" min="10" max="400" value="100">
-        <span class="scale-value" id="selScaleVal">100%</span>
+        <label for="selScaleX">Width</label>
+        <input type="range" id="selScaleX" min="10" max="400" value="100">
+        <span class="scale-value" id="selScaleXVal">100%</span>
+        <label for="selScaleY">Height</label>
+        <input type="range" id="selScaleY" min="10" max="400" value="100">
+        <span class="scale-value" id="selScaleYVal">100%</span>
+        <label class="check-field"><input type="checkbox" id="selLockAspect" checked> Lock aspect</label>
         <button class="btn small danger" id="selDelete" type="button">Delete</button>
         <button class="btn small" id="selDeselect" type="button">Deselect</button>
       </div>
@@ -662,16 +666,21 @@ function normalizedSelection(sel) {
   };
 }
 
-// A placement's rect in real WORLD pixels. `scale` means "% of the source
-// image's natural resolution, as real-world size" (100% = published at
-// native pixel resolution, matching the publish/load conversions below
-// exactly) -- since p.x/p.y are ALSO now real world pixels, this needs no
-// conversion factor of any kind: what you paint is what gets published is
-// what the game renders, all the same numbers throughout.
+// A placement's rect in real WORLD pixels. scaleX/scaleY each mean "% of
+// the source image's natural resolution (that axis), as real-world size"
+// (100% = published at native pixel resolution, matching the publish/load
+// conversions below exactly) -- independent so a placement can be
+// deliberately stretched non-uniformly (see the Width/Height sliders),
+// not just uniformly scaled. Since p.x/p.y are ALSO real world pixels,
+// this needs no conversion factor of any kind: what you paint is what gets
+// published is what the game renders, all the same numbers throughout --
+// level_data.gd already computes sprite.scale as desired_size/tex_size per
+// axis independently, so a non-uniform width/height was always supported
+// on the game/wire-format side, this is purely an editor-side gap closed.
 function placedRect(p) {
   const img = libTextures[p.libIndex].img;
-  const w = img.naturalWidth * p.scale / 100;
-  const h = img.naturalHeight * p.scale / 100;
+  const w = img.naturalWidth * p.scaleX / 100;
+  const h = img.naturalHeight * p.scaleY / 100;
   return { x: p.x - w / 2, y: p.y - h / 2, w, h };
 }
 
@@ -1263,7 +1272,7 @@ canvas.addEventListener('drop', evt => {
   const libIndex = Number(evt.dataTransfer.getData('text/plain'));
   if (!Number.isInteger(libIndex) || !libTextures[libIndex]) return;
   const p = rawPointAt(evt);
-  placed.push({ id: uid(), libIndex, x: p.x, y: p.y, scale: 100, visible: true });
+  placed.push({ id: uid(), libIndex, x: p.x, y: p.y, scaleX: 100, scaleY: 100, visible: true });
   selectedIndex = placed.length - 1;
   setMode('select');
   updateSelectedBar();
@@ -1273,9 +1282,18 @@ canvas.addEventListener('drop', evt => {
 });
 
 // ─── Selected-placement controls ────────────────────────────────────────────
+// Width/Height are independent (see placedRect()'s own comment on why --
+// the wire format/game already supported non-uniform size, this exposes
+// it). Lock Aspect (checked by default, matching the old single-slider
+// behavior every existing placement was authored under) keeps both in
+// sync when either one moves; unchecking it is what actually lets you
+// stretch a placement deliberately.
 const selectedBar = document.getElementById('selectedBar');
-const selScale = document.getElementById('selScale');
-const selScaleVal = document.getElementById('selScaleVal');
+const selScaleX = document.getElementById('selScaleX');
+const selScaleY = document.getElementById('selScaleY');
+const selScaleXVal = document.getElementById('selScaleXVal');
+const selScaleYVal = document.getElementById('selScaleYVal');
+const selLockAspect = document.getElementById('selLockAspect');
 
 function updateSelectedBar() {
   const p = placed[selectedIndex];
@@ -1284,16 +1302,27 @@ function updateSelectedBar() {
     return;
   }
   selectedBar.classList.add('visible');
-  selScale.value = p.scale;
-  selScaleVal.textContent = p.scale + '%';
+  selScaleX.value = p.scaleX;
+  selScaleY.value = p.scaleY;
+  selScaleXVal.textContent = p.scaleX + '%';
+  selScaleYVal.textContent = p.scaleY + '%';
 }
-selScale.addEventListener('input', () => {
+function applyScaleInput(axis, value) {
   if (selectedIndex < 0 || !placed[selectedIndex]) return;
-  placed[selectedIndex].scale = Number(selScale.value);
-  selScaleVal.textContent = placed[selectedIndex].scale + '%';
+  const p = placed[selectedIndex];
+  p[axis] = value;
+  if (selLockAspect.checked) {
+    const other = axis === 'scaleX' ? 'scaleY' : 'scaleX';
+    p[other] = value;
+  }
+  selScaleX.value = p.scaleX; selScaleXVal.textContent = p.scaleX + '%';
+  selScaleY.value = p.scaleY; selScaleYVal.textContent = p.scaleY + '%';
   draw();
-});
-selScale.addEventListener('change', pushHistory);
+}
+selScaleX.addEventListener('input', () => applyScaleInput('scaleX', Number(selScaleX.value)));
+selScaleY.addEventListener('input', () => applyScaleInput('scaleY', Number(selScaleY.value)));
+selScaleX.addEventListener('change', pushHistory);
+selScaleY.addEventListener('change', pushHistory);
 document.getElementById('selDelete').addEventListener('click', () => {
   if (selectedIndex < 0) return;
   placed.splice(selectedIndex, 1);
@@ -1508,15 +1537,22 @@ async function loadLevelForEdit(entry) {
       y: s[1] / TILE_SIZE_PX - 0.5,
     }));
     libTextures = newLibTextures;
+    // scaleX/scaleY derived independently from width/height -- deriving a
+    // single scale from width alone (as this used to) silently discarded
+    // height's own real ratio on reload, snapping any placement that had
+    // ever been genuinely stretched non-uniformly back to square the
+    // moment it was loaded for editing again.
     placed = (data.placements || []).map(p => {
       const lib = libTextures[p.textureIndex];
       const w = p.width * TILE_SIZE_PX;
+      const h = p.height * TILE_SIZE_PX;
       return {
         id: uid(),
         libIndex: p.textureIndex,
         x: p.x * TILE_SIZE_PX,
         y: p.y * TILE_SIZE_PX,
-        scale: lib ? (w / lib.img.naturalWidth) * 100 : 100,
+        scaleX: lib ? (w / lib.img.naturalWidth) * 100 : 100,
+        scaleY: lib ? (h / lib.img.naturalHeight) * 100 : 100,
         visible: true,
       };
     });
