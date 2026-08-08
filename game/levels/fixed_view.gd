@@ -18,6 +18,16 @@ const VIEWPORT_SIZE := Vector2(1152, 648) # matches project.godot's display/wind
 # screen", not a second, larger invisible arena past what you can see.
 const DEATH_MARGIN_PX := 80.0
 
+## Shifts the fitted view's own center this much further UP (as a fraction
+## of the final view height) than the level content's true center, so the
+## content itself reads as sitting in the LOWER part of the frame instead
+## of dead center -- more sky/backdrop above, less empty space below.
+## Matches how this kind of side-view platformer camera is conventionally
+## composed (a level's own "horizon" sits in the lower half of frame, not
+## the middle), confirmed against a live render: dead-center read as
+## visually wrong/unbalanced even though it was mathematically centered.
+const VERTICAL_BIAS := 0.12
+
 ## `platform_bounds` is the raw extent of a map's platform rects (see each
 ## catalog's own data); `margin` pads that before fitting -- extra breathing
 ## room around the actual level geometry, same role BG_MARGIN always played.
@@ -33,8 +43,9 @@ static func compute(platform_bounds: Rect2, margin: float) -> Rect2:
 		view_size = Vector2(padded.size.x, padded.size.x / viewport_aspect)
 	else:
 		view_size = Vector2(padded.size.y * viewport_aspect, padded.size.y)
-	var center := padded.position + padded.size * 0.5
-	return Rect2(center - view_size * 0.5, view_size)
+	var content_center := padded.position + padded.size * 0.5
+	var view_center := content_center - Vector2(0.0, view_size.y * VERTICAL_BIAS)
+	return Rect2(view_center - view_size * 0.5, view_size)
 
 ## A plain, static (non-follow) Camera2D framed exactly on `view_rect` --
 ## uniform zoom from VIEWPORT_SIZE fills the screen edge-to-edge since
