@@ -378,54 +378,40 @@
 
 <script>
 // ─── Grid/model ─────────────────────────────────────────────────────────────
-// Mirrors game/levels/level_data.gd's wire format exactly: tiles are
-// [x, y, tile_type] cell coordinates (tile_type is always 0, ignored by the
-// renderer -- see that file's own comment), spawn_points are world-pixel
-// positions (cell center * TILE_SIZE_PX). TILE_SIZE_PX is a LOGICAL grid
-// cell (one tile = one player, see level_data.gd's own header) -- the real
-// TileSet art stays 10px/cell (tag_tileset.tres's texture_region_size,
-// never changes), level_data.gd fills a solid block of those per logical
-// cell instead of ever touching tile art/resolution.
-const TILE_SIZE_PX = 40;
-const COLS = 60, ROWS = 40;
-const CELL_PX = 20; // native/backing on-screen cell size, independent of the game's own 10px tile size
-
-// Mirrors game/levels/fixed_view.gd's FixedView.compute() exactly, so the
-// background preview below shows precisely the same crop/scale the real
-// in-game camera will -- previously the background was just stretched
-// across this ENTIRE 60x40 canvas (see the old comment removed from
-// draw()'s background block), while the game only ever shows a small,
-// zoomed camera window fit to the actual tiles+placements bounds (plus
-// margin, aspect-fit, and a vertical bias toward the lower part of frame).
-// Confirmed live as the actual source of "doesn't match the game" reports:
-// the editor and the game were rendering the background at fundamentally
-// different scales relative to the tiles/placements around it.
-//
-// BG_MARGIN/VERTICAL_BIAS are real-world-pixel/fraction constants in
-// fixed_view.gd and level_data.gd; margin is converted to this canvas's
-// own CELL_PX scale below (CELL_PX/TILE_SIZE_PX = 0.5) since every other
-// coordinate in this editor (tiles, placements) is already CELL_PX-scaled,
-// not real-world-pixel-scaled. VERTICAL_BIAS itself needs no conversion --
-// it's a dimensionless fraction of view height either way.
-const BG_MARGIN_CANVAS = 250 * (CELL_PX / TILE_SIZE_PX); // level_data.gd's BG_MARGIN=250, converted
+// This canvas is now a genuine, always-on camera view of the level's real
+// WORLD-PIXEL space -- the same space level_data.gd/fixed_view.gd render
+// in -- rather than a separately-scaled "authoring grid" that needed its
+// own conversion factors to stay in sync with the game. tiles are stored
+// as {x,y} grid-cell integers (unchanged, matches level_data.gd's wire
+// format directly: [x, y, tile_type] cell coordinates); spawn_points are
+// published as world-pixel (cell center * TILE_SIZE_PX). Placements now
+// store their position/size in real WORLD PIXELS directly (see placedRect()
+// below) -- no more CELL_PX at all anywhere in this file, no more "two
+// different implicit scales on the same canvas" (the actual root cause,
+// found live, of every "doesn't match the game" report this went through:
+// a fixed 60x40 CELL_PX=20 authoring grid, with the real camera crop
+// approximated as a sub-region within it via a conversion factor, instead
+// of just... being the camera).
+const TILE_SIZE_PX = 40; // level_data.gd's own LOGICAL tile-grid cell size, see its header comment
 const VIEWPORT_ASPECT = 1152 / 648; // fixed_view.gd's VIEWPORT_SIZE
 const VERTICAL_BIAS = 0.12; // fixed_view.gd's VERTICAL_BIAS
+const BG_MARGIN = 250; // level_data.gd's own BG_MARGIN (custom levels' copy, not the built-in maps' separate one)
+const CANVAS_W = 1152, CANVAS_H = 648; // matches project.godot's window/size AND fixed_view.gd's VIEWPORT_SIZE exactly
 
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function key(x, y) { return x + ',' + y; }
 
-// Combined bounds of every tile + visible placement, in this canvas's own
-// CELL_PX-scaled pixel space -- mirrors level_data.gd's build_arena_from_data()
-// min_px/max_px loop exactly (same "fold placements into the same bounds
-// tiles use" reasoning, see that function's own comment).
-function computeContentBoundsCanvasPx() {
+// Combined bounds of every tile + visible placement, in WORLD pixels --
+// mirrors level_data.gd's build_arena_from_data() min_px/max_px loop
+// exactly, including its own empty-level fallback (Rect2(-200,-200,400,400)).
+function computeContentBounds() {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const k of tiles) {
     const [x, y] = k.split(',').map(Number);
-    minX = Math.min(minX, x * CELL_PX);
-    minY = Math.min(minY, y * CELL_PX);
-    maxX = Math.max(maxX, (x + 1) * CELL_PX);
-    maxY = Math.max(maxY, (y + 1) * CELL_PX);
+    minX = Math.min(minX, x * TILE_SIZE_PX);
+    minY = Math.min(minY, y * TILE_SIZE_PX);
+    maxX = Math.max(maxX, (x + 1) * TILE_SIZE_PX);
+    maxY = Math.max(maxY, (y + 1) * TILE_SIZE_PX);
   }
   for (const p of placed) {
     if (!p.visible) continue;
@@ -435,17 +421,19 @@ function computeContentBoundsCanvasPx() {
     maxX = Math.max(maxX, r.x + r.w);
     maxY = Math.max(maxY, r.y + r.h);
   }
-  if (minX === Infinity) return { x: -100, y: -100, w: 200, h: 200 }; // level_data.gd's own empty-level fallback, CELL_PX-scaled
+  if (minX === Infinity) return { x: -200, y: -200, w: 400, h: 400 };
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
-// Exact port of FixedView.compute() + its VERTICAL_BIAS step, operating in
-// this canvas's CELL_PX-scaled space via BG_MARGIN_CANVAS above.
-function computeViewRectCanvasPx() {
-  const content = computeContentBoundsCanvasPx();
+// Exact port of FixedView.compute() + its VERTICAL_BIAS step. This IS the
+// camera -- the whole canvas always renders exactly this world-pixel
+// rectangle, stretched to fill CANVAS_W x CANVAS_H, the same way the real
+// game's Camera2D fills VIEWPORT_SIZE from this same computation.
+function computeViewRect() {
+  const content = computeContentBounds();
   const padded = {
-    x: content.x - BG_MARGIN_CANVAS, y: content.y - BG_MARGIN_CANVAS,
-    w: content.w + BG_MARGIN_CANVAS * 2, h: content.h + BG_MARGIN_CANVAS * 2,
+    x: content.x - BG_MARGIN, y: content.y - BG_MARGIN,
+    w: content.w + BG_MARGIN * 2, h: content.h + BG_MARGIN * 2,
   };
   const paddedAspect = padded.w / padded.h;
   let viewW, viewH;
@@ -461,12 +449,26 @@ function computeViewRectCanvasPx() {
   return { x: viewCenterX - viewW / 2, y: viewCenterY - viewH / 2, w: viewW, h: viewH };
 }
 
+// World <-> screen, the same transform fixed_view.gd's make_camera() gives
+// the real Camera2D (screen = (world - view.pos) * zoom). `view` and
+// `camScale` are passed in rather than recomputed here since draw() and
+// every mouse handler need to agree on the exact same camera for a single
+// frame/gesture -- recomputing independently could drift by a tile's worth
+// of screen space the instant a paint stroke itself changes the content
+// bounds mid-drag.
+function worldToScreen(wx, wy, view, camScale) {
+  return { x: (wx - view.x) * camScale, y: (wy - view.y) * camScale };
+}
+function screenToWorld(sx, sy, view, camScale) {
+  return { x: view.x + sx / camScale, y: view.y + sy / camScale };
+}
+
 let tiles = new Set(); // "x,y" strings
 let spawns = []; // {x, y} in grid-cell units (converted to world pixels on publish)
 let libTextures = []; // {name, img, base64} -- the upload library, never part of undo history
 let background = null; // {img, base64} or null -- fills the whole camera view behind everything, see draw()/LevelData
 let thumbnail = null; // {img, base64} or null -- shown in map pickers instead of a generic icon
-let placed = []; // {id, libIndex, x, y, scale, visible} -- x/y are the CENTER, in canvas-pixel space
+let placed = []; // {id, libIndex, x, y, scale, visible} -- x/y are the CENTER, in real WORLD pixels
 let selectedIndex = -1; // index into `placed`, -1 = none selected
 let tileSelection = null; // {x0,y0,x1,y1} inclusive cell-coord marquee, or null
 let clipboard = null; // {w, h, cells: Set of "dx,dy" relative offsets} from the last Copy
@@ -493,8 +495,8 @@ let zoom = 1; // multiplier on top of "fit to container width"
 let showGrid = true;
 
 const canvas = document.getElementById('gridCanvas');
-canvas.width = COLS * CELL_PX;
-canvas.height = ROWS * CELL_PX;
+canvas.width = CANVAS_W;
+canvas.height = CANVAS_H;
 const ctx = canvas.getContext('2d');
 const canvasScroll = document.getElementById('canvasScroll');
 
@@ -558,17 +560,10 @@ function updateHistoryButtons() {
   document.getElementById('redoBtn').disabled = historyIndex >= history.length - 1;
 }
 
-function cellAt(evt) {
-  const rect = canvas.getBoundingClientRect();
-  const x = Math.floor((evt.clientX - rect.left) * (canvas.width / rect.width) / CELL_PX);
-  const y = Math.floor((evt.clientY - rect.top) * (canvas.height / rect.height) / CELL_PX);
-  return { x, y };
-}
-
-// Raw canvas-pixel coordinates (unlike cellAt's grid-cell coordinates) --
-// what placing/dragging a texture actually needs, since its position isn't
-// cell-quantized.
-function rawPointAt(evt) {
+// Screen pixel (in this canvas's own CANVAS_W x CANVAS_H space) for a mouse/
+// touch event -- shared by cellAt()/worldPointAt() below before they each
+// finish the conversion their own way.
+function screenPointAt(evt) {
   const rect = canvas.getBoundingClientRect();
   return {
     x: (evt.clientX - rect.left) * (canvas.width / rect.width),
@@ -576,10 +571,27 @@ function rawPointAt(evt) {
   };
 }
 
-function clampCell(v, max) { return Math.max(0, Math.min(max, v)); }
+function cellAt(evt) {
+  const view = computeViewRect();
+  const scale = CANVAS_W / view.w;
+  const s = screenPointAt(evt);
+  const w = screenToWorld(s.x, s.y, view, scale);
+  return { x: Math.floor(w.x / TILE_SIZE_PX), y: Math.floor(w.y / TILE_SIZE_PX) };
+}
+
+// WORLD pixel coordinates (unlike cellAt's grid-cell coordinates) -- what
+// placing/dragging a texture actually needs, since its position isn't
+// cell-quantized. Named for what it now returns; every call site already
+// treats the result as a placement position/drag delta, so no caller needed
+// to change when this stopped being canvas-pixel-space.
+function rawPointAt(evt) {
+  const view = computeViewRect();
+  const scale = CANVAS_W / view.w;
+  const s = screenPointAt(evt);
+  return screenToWorld(s.x, s.y, view, scale);
+}
 
 function paintCell(x, y) {
-  if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return;
   if (mode === 'paint') tiles.add(key(x, y));
   else if (mode === 'erase') tiles.delete(key(x, y));
   else if (mode === 'spawn') {
@@ -592,18 +604,21 @@ function paintCell(x, y) {
 }
 
 // Flood fill from (x,y): adds tiles to every 4-directionally-connected
-// currently-EMPTY cell, stopping at already-filled cells or the grid edge
-// -- the standard "bucket" behavior, filling a bounded empty region rather
-// than the whole canvas when the layout is fully enclosed.
+// currently-EMPTY cell, stopping at already-filled cells -- the standard
+// "bucket" behavior, filling a bounded empty region rather than running
+// away forever now that there's no fixed grid edge to stop it. Capped at
+// MAX_FILL_CELLS as a sane backstop for an accidentally-unbounded region
+// (e.g. bucket-filling outside an unclosed shape).
+const MAX_FILL_CELLS = 4000;
 function bucketFill(x, y) {
-  if (x < 0 || y < 0 || x >= COLS || y >= ROWS || tiles.has(key(x, y))) return;
+  if (tiles.has(key(x, y))) return;
   const stack = [[x, y]];
   const seen = new Set([key(x, y)]);
   while (stack.length) {
+    if (seen.size > MAX_FILL_CELLS) break;
     const [cx, cy] = stack.pop();
     tiles.add(key(cx, cy));
     for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
-      if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
       const k = key(nx, ny);
       if (tiles.has(k) || seen.has(k)) continue;
       seen.add(k);
@@ -620,43 +635,37 @@ function normalizedSelection(sel) {
   };
 }
 
-// A placement's on-canvas rect. `scale` means "% of the source image's
-// natural resolution, as REAL-WORLD size" (100% = published at native
-// pixel resolution) -- the same meaning the publish/load conversions below
-// already give it. Converting that to a canvas-pixel rect needs the same
-// CELL_PX/TILE_SIZE_PX factor tiles get (one real-world TILE_SIZE_PX unit
-// draws as one CELL_PX-sized cell on this canvas), or the placement draws
-// at TILE_SIZE_PX/CELL_PX = 2x the size it'll actually have relative to
-// the tiles around it in-game -- confirmed live: a placement stretched to
-// exactly match a level's own tile row rendered at roughly double that
-// row's width on this canvas even though the published data was already
-// correct, since this was the one remaining place still treating canvas
-// pixels as real-world pixels 1:1.
+// A placement's rect in real WORLD pixels. `scale` means "% of the source
+// image's natural resolution, as real-world size" (100% = published at
+// native pixel resolution, matching the publish/load conversions below
+// exactly) -- since p.x/p.y are ALSO now real world pixels, this needs no
+// conversion factor of any kind: what you paint is what gets published is
+// what the game renders, all the same numbers throughout.
 function placedRect(p) {
   const img = libTextures[p.libIndex].img;
-  const w = img.naturalWidth * p.scale / 100 * (CELL_PX / TILE_SIZE_PX);
-  const h = img.naturalHeight * p.scale / 100 * (CELL_PX / TILE_SIZE_PX);
+  const w = img.naturalWidth * p.scale / 100;
+  const h = img.naturalHeight * p.scale / 100;
   return { x: p.x - w / 2, y: p.y - h / 2, w, h };
 }
 
+// This canvas IS the camera now -- draw() always renders exactly
+// computeViewRect()'s current world-pixel rectangle, stretched to fill
+// CANVAS_W x CANVAS_H, via worldToScreen() for every single thing drawn
+// (background, tiles, placements, spawns, grid, selection). No separate
+// "authoring scale" vs "real camera crop" anymore, so there's nothing left
+// that could disagree with the real game's own FixedView-driven rendering.
+// Tiles are still shown here (as a translucent reference layer) even
+// though they're invisible collision in-game -- essential while actually
+// painting/aligning them, unlike the dedicated Preview modal (see
+// renderPreview()) which omits them for a true "what a player sees" render.
 function draw() {
+  const view = computeViewRect();
+  const scale = CANVAS_W / view.w;
+  const toScreen = (wx, wy) => worldToScreen(wx, wy, view, scale);
+
   ctx.fillStyle = '#0d0f18';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Stretched across this ENTIRE 60x40 authoring canvas -- not pixel-
-  // accurate to the real camera crop (see computeViewRectCanvasPx() and
-  // the dashed border drawn near the end of this function for that), but
-  // deliberately so: this main canvas is the AUTHORING view, and an artist
-  // painting tiles or placing art needs the whole background visible as
-  // a reference the whole time, including well outside the camera's
-  // current crop (e.g. while extending a platform further than it
-  // currently reaches). Confirmed live as a real regression when this was
-  // briefly changed to crop-only: nearly this whole canvas turned into a
-  // dead empty void with only a small windowed patch of background
-  // visible, which broke the actual authoring experience it needs to
-  // support. Pixel-accurate verification against the real game belongs in
-  // the dedicated Preview button/modal instead (see renderPreview()),
-  // which this main canvas was never meant to substitute for.
   if (background) {
     ctx.drawImage(background.img, 0, 0, canvas.width, canvas.height);
   }
@@ -664,17 +673,23 @@ function draw() {
   // Tiles are the base layer -- plain flat color always, never any texture
   // of their own. Placed textures are drawn afterward, on top of tiles, so
   // a texture is always fully visible wherever it sits rather than getting
-  // covered by whatever tiles happen to be underneath it.
+  // covered by whatever tiles happen to be underneath it. Semi-transparent
+  // specifically to read as "collision reference, not real game art" (see
+  // this function's own header comment on why tiles show here at all).
   if (tiles.size > 0) {
-    ctx.fillStyle = '#3a3d52';
+    ctx.fillStyle = 'rgba(58,61,82,.75)';
     for (const k of tiles) {
       const [x, y] = k.split(',').map(Number);
-      ctx.fillRect(x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX);
+      const s = toScreen(x * TILE_SIZE_PX, y * TILE_SIZE_PX);
+      const cellScreen = TILE_SIZE_PX * scale;
+      ctx.fillRect(s.x, s.y, cellScreen, cellScreen);
     }
-    ctx.strokeStyle = 'rgba(255,255,255,.06)';
+    ctx.strokeStyle = 'rgba(255,255,255,.1)';
     for (const k of tiles) {
       const [x, y] = k.split(',').map(Number);
-      ctx.strokeRect(x * CELL_PX + 0.5, y * CELL_PX + 0.5, CELL_PX - 1, CELL_PX - 1);
+      const s = toScreen(x * TILE_SIZE_PX, y * TILE_SIZE_PX);
+      const cellScreen = TILE_SIZE_PX * scale;
+      ctx.strokeRect(s.x + 0.5, s.y + 0.5, cellScreen - 1, cellScreen - 1);
     }
   }
 
@@ -688,59 +703,62 @@ function draw() {
     const lib = libTextures[p.libIndex];
     if (!lib) continue; // defensive -- shouldn't happen, see removeLibTexture()
     const r = placedRect(p);
-    ctx.drawImage(lib.img, r.x, r.y, r.w, r.h);
+    const s = toScreen(r.x, r.y);
+    const sw = r.w * scale, sh = r.h * scale;
+    ctx.drawImage(lib.img, s.x, s.y, sw, sh);
     if (i === selectedIndex) {
       ctx.save();
       ctx.strokeStyle = '#34d1d4';
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
-      ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+      ctx.strokeRect(s.x + 1, s.y + 1, sw - 2, sh - 2);
       ctx.restore();
     }
   }
 
   ctx.fillStyle = '#3ef5a8';
-  for (const s of spawns) {
-    const cx = s.x * CELL_PX + CELL_PX / 2;
-    const cy = s.y * CELL_PX + CELL_PX / 2;
+  for (const sp of spawns) {
+    const world = { x: (sp.x + 0.5) * TILE_SIZE_PX, y: (sp.y + 0.5) * TILE_SIZE_PX };
+    const s = toScreen(world.x, world.y);
     ctx.beginPath();
-    ctx.arc(cx, cy, CELL_PX * 0.32, 0, Math.PI * 2);
+    ctx.arc(s.x, s.y, TILE_SIZE_PX * 0.32 * scale, 0, Math.PI * 2);
     ctx.fill();
   }
 
   if (showGrid) {
     ctx.strokeStyle = 'rgba(255,255,255,.04)';
     ctx.beginPath();
-    for (let x = 0; x <= COLS; x += 5) { ctx.moveTo(x * CELL_PX, 0); ctx.lineTo(x * CELL_PX, canvas.height); }
-    for (let y = 0; y <= ROWS; y += 5) { ctx.moveTo(0, y * CELL_PX); ctx.lineTo(canvas.width, y * CELL_PX); }
+    // 5-tile grid lines, spanning generously past the visible view on every
+    // side so panning/zooming (however this canvas's own CSS display scale
+    // is set, see applyZoom()) never runs off the drawn grid.
+    const step = TILE_SIZE_PX * 5;
+    const startX = Math.floor((view.x - step) / step) * step;
+    const endX = view.x + view.w + step;
+    const startY = Math.floor((view.y - step) / step) * step;
+    const endY = view.y + view.h + step;
+    for (let x = startX; x <= endX; x += step) {
+      const a = toScreen(x, view.y), b = toScreen(x, view.y + view.h);
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    }
+    for (let y = startY; y <= endY; y += step) {
+      const a = toScreen(view.x, y), b = toScreen(view.x + view.w, y);
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    }
     ctx.stroke();
   }
 
   if (tileSelection) {
     const s = normalizedSelection(tileSelection);
+    const topLeft = toScreen(s.x0 * TILE_SIZE_PX, s.y0 * TILE_SIZE_PX);
+    const w = (s.x1 - s.x0 + 1) * TILE_SIZE_PX * scale;
+    const h = (s.y1 - s.y0 + 1) * TILE_SIZE_PX * scale;
     ctx.save();
     ctx.strokeStyle = '#f5c542';
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 4]);
-    ctx.strokeRect(s.x0 * CELL_PX + 1, s.y0 * CELL_PX + 1, (s.x1 - s.x0 + 1) * CELL_PX - 2, (s.y1 - s.y0 + 1) * CELL_PX - 2);
+    ctx.strokeRect(topLeft.x + 1, topLeft.y + 1, w - 2, h - 2);
     ctx.restore();
   }
-
-  // Marks exactly what the real in-game camera will show (see
-  // computeViewRectCanvasPx() above) -- drawn last, on top of everything
-  // else, since the rest of this canvas is deliberately larger than that
-  // (room to paint/place beyond the current camera crop as a level grows,
-  // and to keep the background visible as a reference the whole time --
-  // see the background block earlier in this function for why that's
-  // stretched across the whole canvas rather than cropped to this box).
-  // Use the Preview button for a pixel-accurate render of just this region.
-  const viewRect = computeViewRectCanvasPx();
-  ctx.save();
-  ctx.strokeStyle = 'rgba(52,209,212,.6)';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([8, 6]);
-  ctx.strokeRect(viewRect.x, viewRect.y, viewRect.w, viewRect.h);
-  ctx.restore();
 }
 
 // Topmost (last-drawn, visible) placement whose rect contains `pt`, or -1.
@@ -797,7 +815,7 @@ function movePointer(evt) {
   if (mode === 'selectTiles') {
     if (!marqueeStartCell) return;
     const c = cellAt(evt);
-    tileSelection = { x0: marqueeStartCell.x, y0: marqueeStartCell.y, x1: clampCell(c.x, COLS - 1), y1: clampCell(c.y, ROWS - 1) };
+    tileSelection = { x0: marqueeStartCell.x, y0: marqueeStartCell.y, x1: c.x, y1: c.y };
     draw();
     return;
   }
@@ -859,30 +877,29 @@ document.getElementById('clearBtn').addEventListener('click', () => {
 });
 
 // ─── In-game camera preview ─────────────────────────────────────────────────
-// Renders EXACTLY what the real fixed camera shows -- background stretched
-// to fill the frame, placements positioned/scaled via the same world-to-
-// screen camera transform the game itself uses (screen = (world - view.pos)
-// * zoom, see fixed_view.gd's own make_camera()). Tiles are deliberately
-// left out: they're collision-only in-game (tiles_layer.visible = false,
-// see level_data.gd's own comment), never drawn, so showing them here would
-// make this preview LESS accurate to the real game, not more -- the main
-// canvas keeps showing them since they're essential while authoring.
+// The main canvas above is now itself an exact camera view (see draw()'s
+// own header comment), so this modal is really just draw() minus the
+// editing-only chrome: tiles (collision-only in-game, tiles_layer.visible
+// = false, see level_data.gd's own comment -- never actually drawn, so
+// showing them here would make this LESS accurate, not more), the grid,
+// and any selection outline. Kept as a separate button/modal anyway since
+// a clean, chrome-free render is still useful to actually LOOK at without
+// the reference overlays fighting for attention.
 const previewOverlay = document.getElementById('previewOverlay');
 const previewCanvas = document.getElementById('previewCanvas');
 const previewCtx = previewCanvas.getContext('2d');
-const PREVIEW_W = 1152, PREVIEW_H = 648; // matches project.godot's window/size exactly
 
 function renderPreview() {
-  previewCanvas.width = PREVIEW_W;
-  previewCanvas.height = PREVIEW_H;
-  const view = computeViewRectCanvasPx();
-  const scale = PREVIEW_W / view.w; // view.h * scale == PREVIEW_H too, aspect is already forced to match
+  previewCanvas.width = CANVAS_W;
+  previewCanvas.height = CANVAS_H;
+  const view = computeViewRect();
+  const scale = CANVAS_W / view.w;
 
   previewCtx.fillStyle = '#0d0f18';
-  previewCtx.fillRect(0, 0, PREVIEW_W, PREVIEW_H);
+  previewCtx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
   if (background) {
-    previewCtx.drawImage(background.img, 0, 0, PREVIEW_W, PREVIEW_H);
+    previewCtx.drawImage(background.img, 0, 0, CANVAS_W, CANVAS_H);
   }
 
   for (const p of placed) {
@@ -926,8 +943,8 @@ document.getElementById('pasteBtn').addEventListener('click', () => {
   // last stamped), so mashing Paste visibly walks a trail of copies
   // instead of invisibly restacking on the exact same cells.
   const base = tileSelection ? normalizedSelection(tileSelection) : { x0: 0, y0: 0 };
-  const ox = clampCell(base.x0 + 3, COLS - clipboard.w);
-  const oy = clampCell(base.y0 + 3, ROWS - clipboard.h);
+  const ox = base.x0 + 3;
+  const oy = base.y0 + 3;
   for (const k of clipboard.cells) {
     const [dx, dy] = k.split(',').map(Number);
     tiles.add(key(ox + dx, oy + dy));
@@ -1303,26 +1320,18 @@ publishBtn.addEventListener('click', async () => {
     // what actually publishes -- "what you see is what you get," the same
     // convention any layered editor's own export follows.
     //
-    // x/y and width/height are both CELL_PX-relative now -- placedRect()
-    // already applies the CELL_PX/TILE_SIZE_PX display factor to r.w/r.h
-    // (see its own comment), so dividing by CELL_PX here undoes exactly
-    // that and recovers the same real-world-based tile-unit value as
-    // always (algebraically identical to the previous width/TILE_SIZE_PX
-    // formula for any given scale% -- this only changes how the placement
-    // LOOKS on this canvas, never what gets published). x/y themselves
-    // were already CELL_PX-relative (p.x/p.y are this canvas's own raw
-    // pixel position of where the placement was dragged, and dividing by
-    // CELL_PX -- the same constant tiles use to paint themselves here, see
-    // draw()'s own `x * CELL_PX` -- converts that into "how many grid-cells
-    // over," the same grid-relative unit tiles/spawn_points already use).
+    // p.x/p.y and placedRect()'s w/h are ALL real world pixels now (see
+    // both of their own comments) -- exactly the same space tiles/spawns
+    // already publish in, so every field here divides by the same
+    // TILE_SIZE_PX to land in the wire format's grid-cell-relative units.
     body.placements = placed.filter(p => p.visible).map(p => {
       const r = placedRect(p);
       return {
         textureIndex: p.libIndex,
-        x: p.x / CELL_PX,
-        y: p.y / CELL_PX,
-        width: r.w / CELL_PX,
-        height: r.h / CELL_PX,
+        x: p.x / TILE_SIZE_PX,
+        y: p.y / TILE_SIZE_PX,
+        width: r.w / TILE_SIZE_PX,
+        height: r.h / TILE_SIZE_PX,
       };
     });
   }
@@ -1457,14 +1466,11 @@ async function loadLevelForEdit(entry) {
 
     // Inverse of the Publish handler's own conversions (see its comments
     // there): tiles are already grid-cell coordinates, spawn_points are
-    // world-pixel (cell-center * TILE_SIZE_PX), placements' x/y need
-    // CELL_PX multiplied back in (this canvas's own grid-relative scale).
-    // width/height come back as `scale` (a %, not a canvas size directly --
-    // placedRect() derives the actual on-canvas rect from it) via
-    // TILE_SIZE_PX, since `scale` means "% of natural resolution as
-    // REAL-WORLD size" and stored width/height are already real-world-
-    // based (tile-units * TILE_SIZE_PX), independent of this canvas's own
-    // CELL_PX display scale entirely.
+    // world-pixel (cell-center * TILE_SIZE_PX). Placements' x/y are real
+    // world pixels (tile-units * TILE_SIZE_PX), same space p.x/p.y already
+    // live in -- no separate canvas-display scale to convert through
+    // anymore. width/height come back as `scale` (a %, not a size
+    // directly -- placedRect() derives the actual rect from it).
     tiles = new Set((data.tiles || []).map(t => key(t[0], t[1])));
     spawns = (data.spawn_points || []).map(s => ({
       x: s[0] / TILE_SIZE_PX - 0.5,
@@ -1477,8 +1483,8 @@ async function loadLevelForEdit(entry) {
       return {
         id: uid(),
         libIndex: p.textureIndex,
-        x: p.x * CELL_PX,
-        y: p.y * CELL_PX,
+        x: p.x * TILE_SIZE_PX,
+        y: p.y * TILE_SIZE_PX,
         scale: lib ? (w / lib.img.naturalWidth) * 100 : 100,
         visible: true,
       };
