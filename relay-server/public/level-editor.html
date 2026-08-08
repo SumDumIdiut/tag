@@ -174,6 +174,24 @@
   .selected-bar .scale-value { font-size: 11.5px; color: #9095ac; min-width: 36px; }
 
   footer { margin-top: 28px; color: #444858; font-size: 11px; text-align: center; }
+
+  .preview-overlay {
+    display: none; position: fixed; inset: 0; z-index: 50;
+    background: rgba(5,6,10,.85); align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .preview-overlay.visible { display: flex; }
+  .preview-box {
+    background: #131217; border-radius: 12px; padding: 14px;
+    border: 1px solid rgba(255,255,255,.09); max-width: 96vw;
+  }
+  .preview-box header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .preview-box h2 { font-size: 14px; color: #e4e7f0; font-weight: 700; }
+  .preview-box .sub { font-size: 11.5px; color: #6d7288; margin-top: 2px; }
+  #previewCanvas { display: block; max-width: 88vw; max-height: 78vh; border-radius: 6px; background: #000; }
 </style>
 </head>
 <body>
@@ -233,6 +251,7 @@
             <div class="rail-sep"></div>
             <label class="check-field"><input type="checkbox" id="gridToggle" checked> Grid</label>
             <span style="flex:1 1 auto"></span>
+            <button class="btn small" id="previewBtn" type="button" title="Show exactly what the real in-game camera will render">Preview</button>
             <button class="btn small" id="clearBtn" type="button">Clear All</button>
           </div>
 
@@ -340,6 +359,21 @@
     </div>
 
     <footer>codecade.co.za/tag</footer>
+  </div>
+
+  <div class="preview-overlay" id="previewOverlay">
+    <div class="preview-box">
+      <header>
+        <div>
+          <h2>In-Game Camera Preview</h2>
+          <p class="sub">Exactly what the fixed camera actually shows -- tiles are invisible collision in-game, so only the background and placed art render here, same as a real match.</p>
+        </div>
+        <button class="icon-btn" id="previewCloseBtn" type="button" title="Close">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M4.5 4.5l11 11M15.5 4.5l-11 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <canvas id="previewCanvas"></canvas>
+    </div>
   </div>
 
 <script>
@@ -809,6 +843,57 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   renderLayerList();
   draw();
   pushHistory();
+});
+
+// ─── In-game camera preview ─────────────────────────────────────────────────
+// Renders EXACTLY what the real fixed camera shows -- background stretched
+// to fill the frame, placements positioned/scaled via the same world-to-
+// screen camera transform the game itself uses (screen = (world - view.pos)
+// * zoom, see fixed_view.gd's own make_camera()). Tiles are deliberately
+// left out: they're collision-only in-game (tiles_layer.visible = false,
+// see level_data.gd's own comment), never drawn, so showing them here would
+// make this preview LESS accurate to the real game, not more -- the main
+// canvas keeps showing them since they're essential while authoring.
+const previewOverlay = document.getElementById('previewOverlay');
+const previewCanvas = document.getElementById('previewCanvas');
+const previewCtx = previewCanvas.getContext('2d');
+const PREVIEW_W = 1152, PREVIEW_H = 648; // matches project.godot's window/size exactly
+
+function renderPreview() {
+  previewCanvas.width = PREVIEW_W;
+  previewCanvas.height = PREVIEW_H;
+  const view = computeViewRectCanvasPx();
+  const scale = PREVIEW_W / view.w; // view.h * scale == PREVIEW_H too, aspect is already forced to match
+
+  previewCtx.fillStyle = '#0d0f18';
+  previewCtx.fillRect(0, 0, PREVIEW_W, PREVIEW_H);
+
+  if (background) {
+    previewCtx.drawImage(background.img, 0, 0, PREVIEW_W, PREVIEW_H);
+  }
+
+  for (const p of placed) {
+    if (!p.visible) continue;
+    const lib = libTextures[p.libIndex];
+    if (!lib) continue;
+    const r = placedRect(p);
+    previewCtx.drawImage(
+      lib.img,
+      (r.x - view.x) * scale, (r.y - view.y) * scale,
+      r.w * scale, r.h * scale
+    );
+  }
+}
+
+document.getElementById('previewBtn').addEventListener('click', () => {
+  renderPreview();
+  previewOverlay.classList.add('visible');
+});
+document.getElementById('previewCloseBtn').addEventListener('click', () => {
+  previewOverlay.classList.remove('visible');
+});
+previewOverlay.addEventListener('click', (evt) => {
+  if (evt.target === previewOverlay) previewOverlay.classList.remove('visible');
 });
 
 // ─── Selection actions: copy / paste / flip / rotate / delete ──────────────
