@@ -51,6 +51,19 @@ const JUMP_BUFFER_TIME := 0.1
 const WALL_JUMP_VELOCITY := Vector2(130.0 * SCALE, -105.0 * SCALE) # Celeste: WallJumpHSpeed, same vertical as a normal jump
 const SUPER_WALL_JUMP_VELOCITY := Vector2(170.0 * SCALE, -160.0 * SCALE) # Celeste: SuperWallJumpH / SuperWallJumpSpeed -- dashing into a wall then jumping off it
 const WALL_JUMP_LOCK_TIME := 0.16 # Celeste: WallJumpForceTime
+# Two players stuck in sustained physical contact (TagMode watches for this)
+# get shoved apart -- otherwise a chaser and their target can end up just
+# standing inside each other, and worse, it lets "it" ping-pong rapidly back
+# and forth between the same two players the instant each tag's immunity
+# window expires, since they never actually separated in the first place.
+# This needs to read as a genuine launch, not a nudge -- both players get
+# thrown hard, with a strong upward component regardless of the horizontal
+# away direction (which is often nearly flat, e.g. two players standing
+# side by side), since a purely horizontal shove at any speed still just
+# reads as a fast slide, not a launch.
+const REPEL_SPEED := 900.0
+const REPEL_UPWARD_BOOST := 320.0
+const REPEL_LOCK_TIME := 0.35
 # Wall-jump doesn't require actually pressing into the wall -- being
 # airborne and within this reach of one is enough (Celeste: WallJumpCheckDist
 # = 3px in its own scale), checked via a short raycast when not in contact.
@@ -133,6 +146,7 @@ var _corner_correction_timer := 0.0
 var coyote_timer := 0.0
 var jump_buffer_timer := 0.0
 var wall_jump_lock_timer := 0.0
+var repel_lock_timer := 0.0
 var var_jump_timer := 0.0
 var _held_jump_velocity_y := 0.0
 
@@ -295,6 +309,18 @@ func _update_it_label(active: bool) -> void:
 		_it_pulse_tween.tween_property(_it_label, "modulate:a", 0.35, 0.5).set_trans(Tween.TRANS_SINE)
 		_it_pulse_tween.tween_property(_it_label, "modulate:a", 1.0, 0.5).set_trans(Tween.TRANS_SINE)
 
+## Called by TagMode when this player's been in sustained physical contact
+## with another participant for too long. Sets velocity straight away from
+## them and briefly locks out normal horizontal control (same mechanism as
+## a wall-jump's lock) so the push actually separates the two instead of
+## being immediately re-absorbed by whatever direction either is already
+## holding.
+func apply_repel(away_direction: Vector2) -> void:
+	velocity = away_direction * REPEL_SPEED
+	velocity.y -= REPEL_UPWARD_BOOST
+	repel_lock_timer = REPEL_LOCK_TIME
+	_trigger_action("repel")
+
 ## Squash/stretch that drives both the cosmetic Visual node and the actual
 ## CollisionShape2D (see squash_scale's own comment) -- called once per
 ## physics tick from apply_input(), after move_and_slide(), so it reflects
@@ -420,6 +446,7 @@ func _tick_timers(delta: float) -> void:
 	coyote_timer = maxf(coyote_timer - delta, 0.0)
 	jump_buffer_timer = maxf(jump_buffer_timer - delta, 0.0)
 	wall_jump_lock_timer = maxf(wall_jump_lock_timer - delta, 0.0)
+	repel_lock_timer = maxf(repel_lock_timer - delta, 0.0)
 	var_jump_timer = maxf(var_jump_timer - delta, 0.0)
 	landed_grace_timer = maxf(landed_grace_timer - delta, 0.0)
 	_speed_boost_timer = maxf(_speed_boost_timer - delta, 0.0)
@@ -463,7 +490,7 @@ func _process_climb(move_dir: Vector2, delta: float) -> void:
 		velocity.y = CLIMB_SLIP_SPEED
 
 func _process_horizontal(move_dir: Vector2, delta: float, on_floor: bool) -> void:
-	if wall_jump_lock_timer > 0.0:
+	if wall_jump_lock_timer > 0.0 or repel_lock_timer > 0.0:
 		return
 	# Dash-jump speed boost: fully retained (no accel/friction at all) while
 	# still airborne mid-arc -- that's the actual point of the move, covering

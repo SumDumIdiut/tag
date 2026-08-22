@@ -3,6 +3,13 @@ class_name TagMode
 
 const IMMUNITY_TIME := 1.0
 const TAG_DISTANCE := 40.0
+# Two participants physically colliding (not just within TAG_DISTANCE) for
+# this long get shoved apart. Without this, a chaser and target can end up
+# just standing inside each other -- and worse, since actual collision
+# contact is much closer than TAG_DISTANCE, it's exactly what lets "it"
+# ping-pong rapidly back and forth between the same two the instant each
+# tag's immunity window expires, since they never actually separated.
+const REPEL_CONTACT_THRESHOLD_SEC := 3.0
 
 const DEFAULT_ROUND_DURATION_SEC := 180.0
 
@@ -30,6 +37,7 @@ var participants: Array = []
 ## it it's always been, unchanged in effect.
 var _it_by_team: Dictionary = {}
 var _immunity_timers: Dictionary = {} # team -> remaining seconds before that bucket's it can change again
+var _contact_timers := {} # "instance_id_a_instance_id_b" (a < b) -> seconds in continuous contact
 
 var ranked := false
 var round_timer := 0.0
@@ -98,6 +106,9 @@ func remove_participant(p: Node) -> void:
 	var was_it: bool = _it_by_team.get(p_team, null) == p
 	participants.remove_at(idx)
 	var removed_id := p.get_instance_id()
+	for key in _contact_timers.keys().duplicate():
+		if str(removed_id) in String(key).split("_"):
+			_contact_timers.erase(key)
 	it_time.erase(removed_id)
 	if not was_it:
 		return
@@ -153,6 +164,7 @@ func get_ai_target(requester: Node) -> Node:
 func _physics_process(delta: float) -> void:
 	for team in _immunity_timers.keys():
 		_immunity_timers[team] = maxf(_immunity_timers[team] - delta, 0.0)
+	_update_contact_repel(delta)
 	for team in _it_by_team.keys():
 		var it: Node = _it_by_team[team]
 		if it:
@@ -202,3 +214,45 @@ func _apply_it_color() -> void:
 	for p in participants:
 		if p.has_method("set_tagged_it"):
 			p.set_tagged_it(is_it(p))
+
+func _pair_key(a: Node, b: Node) -> String:
+	var ia := a.get_instance_id()
+	var ib := b.get_instance_id()
+	return "%d_%d" % [mini(ia, ib), maxi(ia, ib)]
+
+func _is_colliding_with(a: Node, b: Node) -> bool:
+	if not (a is CharacterBody2D):
+		return false
+	for i in a.get_slide_collision_count():
+		if a.get_slide_collision(i).get_collider() == b:
+			return true
+	return false
+
+## Tracks how long each pair of participants has been in continuous physical
+## contact (run after Player.apply_input()/move_and_slide() for this tick,
+## per server_match.gd's child order, so collision info here is fresh) and
+## shoves them apart once that crosses REPEL_CONTACT_THRESHOLD_SEC.
+func _update_contact_repel(delta: float) -> void:
+	for i in participants.size():
+		for j in range(i + 1, participants.size()):
+			var a: Node2D = participants[i]
+			var b: Node2D = participants[j]
+			var key := _pair_key(a, b)
+			if _is_colliding_with(a, b) or _is_colliding_with(b, a):
+				var t: float = _contact_timers.get(key, 0.0) + delta
+				if t >= REPEL_CONTACT_THRESHOLD_SEC:
+					_repel(a, b)
+					t = 0.0
+				_contact_timers[key] = t
+			else:
+				_contact_timers.erase(key)
+
+func _repel(a: Node2D, b: Node2D) -> void:
+	var away: Vector2 = b.global_position - a.global_position
+	if away.length() < 0.01:
+		away = Vector2(1.0, 0.0) # degenerate case: exactly overlapping, pick an arbitrary direction
+	away = away.normalized()
+	if a.has_method("apply_repel"):
+		a.apply_repel(-away)
+	if b.has_method("apply_repel"):
+		b.apply_repel(away)
