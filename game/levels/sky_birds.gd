@@ -8,11 +8,12 @@ class_name SkyBirds
 # MapBackground.background_texture != null, so it doesn't clutter every
 # built-in map's flat backdrop -- currently just the "Stage" custom level).
 #
-# Each bird is drawn as 5 points forming a wide "M": two low wingtips, two
-# raised peaks, and a low body-center between them. Animating the peak
-# height with abs(sin(...)) continuously morphs it from a flat line (wings
-# level) to a full "M" (wings raised) and back -- a smooth version of the
-# classic multi-frame flapping-bird sprite, without needing sprite frames.
+# Art is a real hand-drawn Piskel sprite sheet (assets/sky_birds/bird_flap.png,
+# extracted from the artist's original sheet -- see that PNG's own commit for
+# provenance): 5 frames, each 32x32, laid out left-to-right, showing one wing
+# from fully raised down to nearly flat. Each bird picks its current frame by
+# running that same index through abs(sin(...)) (0 -> 4 -> 0 -> ...), a smooth
+# ping-pong through the real art instead of a procedural redraw every frame.
 
 @export var bounds: Rect2 = Rect2(-1100, -100, 2200, 700)
 
@@ -21,8 +22,10 @@ const SKY_BAND_TOP := 0.06 # fraction of bounds.size.y -- birds stay in the uppe
 const SKY_BAND_BOTTOM := 0.42
 const WRAP_MARGIN := 60.0 # how far off-screen a bird flies before recycling to the far edge
 const BOB_AMPLITUDE := 8.0
-const BIRD_COLOR := Color(0.05, 0.05, 0.07, 0.85)
-const LINE_WIDTH := 2.2
+
+const FRAME_STRIP := preload("res://assets/sky_birds/bird_flap.png")
+const FRAME_COUNT := 5
+const FRAME_PX := 32.0
 
 var _birds: Array[Dictionary] = []
 var _time := 0.0
@@ -82,14 +85,7 @@ func _recycle(b: Dictionary) -> void:
 
 func _draw() -> void:
 	for b in _birds:
-		var h: float = b.wing_span * 0.5 * absf(sin(_time * b.flap_speed + b.flap_phase))
-		var w: float = b.wing_span * 0.5
-		var p: Vector2 = b.pos
-		var pts := PackedVector2Array([
-			p + Vector2(-w, 0.0),
-			p + Vector2(-w * 0.5, -h),
-			p,
-			p + Vector2(w * 0.5, -h),
-			p + Vector2(w, 0.0),
-		])
-		draw_polyline(pts, BIRD_COLOR, LINE_WIDTH, true)
+		var frame_index: int = roundi((FRAME_COUNT - 1) * absf(sin(_time * b.flap_speed + b.flap_phase)))
+		var src := Rect2(frame_index * FRAME_PX, 0.0, FRAME_PX, FRAME_PX)
+		var dest := Rect2(b.pos - Vector2(b.wing_span, b.wing_span) * 0.5, Vector2(b.wing_span, b.wing_span))
+		draw_texture_rect_region(FRAME_STRIP, dest, src)
