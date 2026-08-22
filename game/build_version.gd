@@ -10,7 +10,7 @@ class_name BuildVersion
 # UpdateChecker compares this against release tags component-wise (missing
 # trailing segments count as 0), so any of those forms sort correctly
 # against each other regardless of length.
-const VERSION := "0.1.5"
+const VERSION := "0.1.6"
 
 # Flipped true -> false by CI (see .github/workflows/build.yml's "Stamp
 # build" step) on every real release build. Stays true in every local/dev
