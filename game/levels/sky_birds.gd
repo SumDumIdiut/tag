@@ -54,7 +54,7 @@ func _make_bird(initial: bool) -> Dictionary:
 		base_y = base_y,
 		direction = direction,
 		speed = randf_range(40.0, 90.0),
-		wing_span = randf_range(16.0, 26.0),
+		wing_span = randf_range(22.0, 34.0),
 		flap_speed = randf_range(3.5, 5.5),
 		flap_phase = randf() * TAU,
 		bob_speed = randf_range(0.8, 1.6),
