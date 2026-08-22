@@ -4,6 +4,7 @@ const NPC_SCENE := preload("res://npc/npc.tscn")
 const PLAYER_SCENE := preload("res://player/player.tscn")
 const LevelData := preload("res://levels/level_data.gd")
 const FixedView := preload("res://levels/fixed_view.gd")
+const SkyBirdsScript := preload("res://levels/sky_birds.gd")
 
 @onready var hud: Label = $HUD
 
@@ -35,9 +36,19 @@ func _ready() -> void:
 	# Same rect MapBackground draws itself to -- reusing it here means the
 	# camera, the backdrop, and the death boundary below can never drift out
 	# of sync with each other.
-	var view_rect: Rect2 = arena.get_node("Background").bounds
+	var background: MapBackground = arena.get_node("Background")
+	var view_rect: Rect2 = background.bounds
 	add_child(FixedView.make_camera(view_rect))
 	_death_rect = FixedView.death_rect(view_rect)
+
+	# Only levels with a real uploaded backdrop get birds -- every built-in
+	# map's Background node has background_texture == null (see
+	# MapBackground), so this stays scoped to custom levels like "Stage"
+	# rather than cluttering the shared flat-fill backdrop everywhere.
+	if background.background_texture != null:
+		var birds := SkyBirdsScript.new()
+		birds.bounds = view_rect
+		add_child(birds)
 
 	_spawn_points = arena.get_node("SpawnPoints").get_children()
 	_spawn_points.shuffle()
