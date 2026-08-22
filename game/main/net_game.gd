@@ -7,6 +7,7 @@ const LevelData := preload("res://levels/level_data.gd")
 const UIStyle := preload("res://ui/ui_style.gd")
 const RankBadgeScene := preload("res://ui/rank_badge.gd")
 const FixedView := preload("res://levels/fixed_view.gd")
+const SkyBirdsScript := preload("res://levels/sky_birds.gd")
 
 # Leaderboard panel sizing -- see _build_leaderboard()/_render_leaderboard().
 # Header is the "LEAST TIME AS IT WINS" title + its separation from the row
@@ -65,7 +66,15 @@ func _ready() -> void:
 	# every player, spectator included, sees the whole map at once, so
 	# there's no per-avatar "whose camera is active" logic needed here
 	# anymore at all.
-	add_child(FixedView.make_camera(arena.get_node("Background").bounds))
+	var background: MapBackground = arena.get_node("Background")
+	add_child(FixedView.make_camera(background.bounds))
+
+	# See game.gd's identical gate -- only levels with a real uploaded
+	# backdrop get birds.
+	if background.background_texture != null:
+		var birds := SkyBirdsScript.new()
+		birds.bounds = background.bounds
+		add_child(birds)
 
 	_ui_layer = CanvasLayer.new()
 	add_child(_ui_layer)
